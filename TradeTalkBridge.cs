@@ -42,9 +42,10 @@ namespace cAlgo.Robots
             }
 
             Print("=================================================");
-            Print("TradeTalk.AI cBot Bridge ACTIVE");
+            Print("TradeTalk.AI Autonomous cBot Bridge Started");
             Print("Account Number: " + Account.Number);
             Print("Live Balance: " + Account.Balance + " " + assetName);
+            Print("Symbol: " + Symbol.Name + " | Bid: " + Symbol.Bid + " | Ask: " + Symbol.Ask);
             Print("Target Server: " + ServerUrl);
             Print("=================================================");
 
@@ -59,7 +60,7 @@ namespace cAlgo.Robots
         {
             try
             {
-                // 1. Send live telemetry (Balance, Equity, FreeMargin)
+                // 1. Send live telemetry (Balance, Equity, Live Bid/Ask Prices)
                 SendTelemetry();
 
                 // 2. Poll & Execute pending approved orders
@@ -82,24 +83,30 @@ namespace cAlgo.Robots
                 string assetName = (Account.Asset != null && !string.IsNullOrEmpty(Account.Asset.Name)) ? Account.Asset.Name : "USD";
                 string broker = Account.BrokerName ?? "IC Markets cTrader Live";
 
+                // Normalize symbol name (e.g. XAUUSDm -> XAUUSD)
+                string symClean = Symbol.Name.Replace("m", "").Replace(".pro", "").ToUpperInvariant();
+
                 // Ensure culture-invariant float format (e.g. 39.61 not 39,61)
                 string jsonPayload = string.Format(
                     CultureInfo.InvariantCulture,
-                    "{{\"account_id\":\"{0}\",\"accountNumber\":\"{0}\",\"balance\":{1},\"equity\":{2},\"margin\":{3},\"freeMargin\":{4},\"currency\":\"{5}\",\"broker\":\"{6}\"}}",
+                    "{{\"account_id\":\"{0}\",\"accountNumber\":\"{0}\",\"balance\":{1},\"equity\":{2},\"margin\":{3},\"freeMargin\":{4},\"currency\":\"{5}\",\"broker\":\"{6}\",\"symbol\":\"{7}\",\"bid\":{8},\"ask\":{9},\"live_price\":{8}}}",
                     Account.Number,
                     Account.Balance,
                     Account.Equity,
                     Account.Margin,
                     Account.FreeMargin,
                     assetName,
-                    broker
+                    broker,
+                    symClean,
+                    Symbol.Bid,
+                    Symbol.Ask
                 );
 
                 var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
                 var res = await httpClient.PostAsync(url, content);
                 if (res.IsSuccessStatusCode)
                 {
-                    Print(string.Format(CultureInfo.InvariantCulture, "[Telemetry Synced] Balance: ${0} {1} -> Server 200 OK", Account.Balance, assetName));
+                    // Success
                 }
                 else
                 {
@@ -166,7 +173,7 @@ namespace cAlgo.Robots
                 if (result.IsSuccessful && result.Position != null)
                 {
                     Position pos = result.Position;
-                    Print("🟢 Order Filled! Position ID: " + pos.Id + " @ " + pos.EntryPrice);
+                    Print("🟢 cTrader Order Executed! Position ID: " + pos.Id + " @ " + pos.EntryPrice);
 
                     if (sl > 0 || tp > 0)
                     {

@@ -77,27 +77,7 @@ SYSTEM_STATE = {
     "total_executed": 0
 }
 
-SIGNALS_HISTORY = [
-    {
-        "id": "ORD-1082",
-        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        "symbol": "XAUUSD",
-        "action": "BUY",
-        "entry_price": 2748.50,
-        "stop_loss": 2736.50,
-        "take_profit": 2773.50,
-        "timeframe": "15m",
-        "strategy_name": "Autonomous_Market_Scanner",
-        "decision_status": "APPROVED",
-        "lot_size": 0.25,
-        "tech_report": "گولڈ 15m پر EMA 50 کے اوپر ٹریڈ کر رہا ہے اور RSI 54 ہے جو کہ پُراعتماد بلش مومینٹم کی علامت ہے۔ R:R ریشو 1:2.08 ہے۔",
-        "news_report": "مارکیٹ میں ڈالر کے خلاف محفوظ سرمایہ کاری (Safe Haven) کا رجحان قائم ہے۔ فی الحال کوئی فوری ہائی امپیکٹ نیوز خطرہ نہیں ہے۔",
-        "risk_report": "$10,000 بیلنس پر 1% رسک ($100) کے مطابق 12 ڈالر SL کے لیے درست لاٹ سائز 0.25 Lots ہے۔",
-        "final_decision": "[DECISION: APPROVED] - تمام ٹیکنیکل، فنڈامنٹل اور رسک شرائط مکمل ہیں۔ 0.25 Lots کی BUY ٹریڈ منظور کی جاتی ہے۔",
-        "analysis": "1. Technical Analysis:\nگولڈ 15m پر EMA 50 کے اوپر ٹریڈ کر رہا ہے اور RSI 54 ہے جو کہ پُراعتماد بلش مومینٹم کی علامت ہے۔ R:R ریشو 1:2.08 ہے۔\n\n2. News Analysis:\nمارکیٹ میں ڈالر کے خلاف محفوظ سرمایہ کاری (Safe Haven) کا رجحان قائم ہے۔ فی الحال کوئی فوری ہائی امپیکٹ نیوز خطرہ نہیں ہے۔\n\n3. Risk Assessment:\n$10,000 بیلنس پر 1% رسک ($100) کے مطابق 12 ڈالر SL کے لیے درست لاٹ سائز 0.25 Lots ہے۔\n\n4. Final Desk Decision:\n[DECISION: APPROVED] - تمام ٹیکنیکل، فنڈامنٹل اور رسک شرائط مکمل ہیں۔ 0.25 Lots کی BUY ٹریڈ منظور کی جاتی ہے۔",
-        "ctrader": {"status": "EXECUTED", "order_id": "MT5_TICKET_98412", "fill_price": 2748.50, "lot_size": 0.25}
-    }
-]
+SIGNALS_HISTORY = []
 
 # -------------------------------------------------------------
 # 3. ڈیٹا ماڈلز
@@ -115,20 +95,24 @@ class TradingViewSignal(BaseModel):
 # 4. ایگزیکیوشن انجن (cTrader cBot Bridge & Open API Execution Engine)
 # -------------------------------------------------------------
 def execute_order(symbol: str, action: str, lot_size: float, sl: float, tp: float, fill_price: float):
-    # 1. Queue order for direct cBot execution in cTrader
-    sig_id = f"ORD_{random_digits(5)}"
+    # Queue order for direct cBot execution in cTrader
+    sig_id = f"CT_{random_digits(5)}"
     cbot_bridge.queue_trade_for_cbot(symbol, action, lot_size, sl, tp, sig_id)
 
-    # 2. Execute via cTrader Open API if active
-    res = ctrader_executor.execute_ctrader_trade(
-        symbol=symbol,
-        action=action,
-        lot_size=lot_size,
-        sl_price=sl,
-        tp_price=tp,
-        comment="TradeTalk.AI Consensus"
-    )
-    res["cbot_queued"] = True
+    res = {
+        "status": "QUEUED_TO_CBOT",
+        "broker": "cTrader Live Bridge",
+        "account_id": "1005621",
+        "order_id": f"Pending Fill ({sig_id})",
+        "ticket": sig_id,
+        "symbol": symbol,
+        "action": action.upper(),
+        "lot_size": lot_size,
+        "fill_price": fill_price,
+        "sl": sl,
+        "tp": tp,
+        "executed_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    }
     SYSTEM_STATE["total_executed"] += 1
     return res
 
@@ -433,7 +417,22 @@ def get_cbot_orders():
 
 @app.post("/api/cbot/order-filled")
 def cbot_order_filled(receipt: dict):
-    return cbot_bridge.record_cbot_execution(receipt)
+    rec = cbot_bridge.record_cbot_execution(receipt)
+    # Update matched signal in SIGNALS_HISTORY
+    order_id = receipt.get("id")
+    ticket_id = receipt.get("ticket_id") or f"CT_{receipt.get('position_id')}"
+    for sig in SIGNALS_HISTORY:
+        if sig.get("id") == order_id or (sig.get("ctrader") and sig["ctrader"].get("ticket") == order_id):
+            sig["ctrader"] = {
+                "status": "FILLED",
+                "order_id": ticket_id,
+                "ticket_id": receipt.get("position_id"),
+                "fill_price": receipt.get("fill_price"),
+                "symbol": receipt.get("symbol"),
+                "action": receipt.get("action")
+            }
+            break
+    return rec
 
 @app.get("/api/cbot/download")
 def download_cbot_file():

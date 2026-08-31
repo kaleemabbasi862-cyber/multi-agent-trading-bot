@@ -13,6 +13,9 @@ if sys.platform == "win32":
 
 load_dotenv()
 
+# Real-Time Price Stream from cTrader
+CBOT_LIVE_PRICES = {}
+
 # Real State Store - Updated live by cBot Webhook Bridge
 CBOT_STATE = {
     "is_connected": True,
@@ -26,7 +29,8 @@ CBOT_STATE = {
     "broker": "IC Markets cTrader Live",
     "open_positions": [],
     "last_heartbeat": datetime.datetime.now(datetime.timezone.utc).strftime("%H:%M:%S UTC"),
-    "last_heartbeat_timestamp": time.time()
+    "last_heartbeat_timestamp": time.time(),
+    "live_prices": {}
 }
 
 # Queue of pending approved trades for cBot to execute
@@ -34,12 +38,11 @@ PENDING_CBOT_ORDERS = []
 EXECUTED_CBOT_RECEIPTS = {}
 
 def update_heartbeat(data: dict) -> dict:
-    """Called when cBot sends real-time account data via /api/cbot/heartbeat or /api/cbot/stream."""
-    global CBOT_STATE
+    """Called when cBot sends real-time account data and live symbol prices via /api/cbot/stream."""
+    global CBOT_STATE, CBOT_LIVE_PRICES
     now_ts = time.time()
     now_str = datetime.datetime.now(datetime.timezone.utc).strftime("%H:%M:%S UTC")
 
-    # Flexible key extraction to support all cTrader payload variations
     acc_id = str(data.get("account_id") or data.get("accountNumber") or data.get("account") or data.get("accountId") or CBOT_STATE["account_id"])
     bal = float(data.get("balance", data.get("Balance", CBOT_STATE["balance"])))
     eq = float(data.get("equity", data.get("Equity", bal)))
@@ -47,6 +50,25 @@ def update_heartbeat(data: dict) -> dict:
     f_marg = float(data.get("free_margin", data.get("freeMargin", data.get("FreeMargin", eq))))
     curr = str(data.get("currency", data.get("asset", data.get("Currency", "USD"))))
     broker = str(data.get("broker", data.get("brokerName", data.get("Broker", "IC Markets cTrader Live"))))
+
+    # Capture live broker tick prices
+    sym = data.get("symbol")
+    bid = data.get("bid")
+    ask = data.get("ask")
+    live_p = data.get("live_price") or bid
+    if sym and (bid or live_p):
+        sym_clean = str(sym).upper().replace("M", "").replace(".PRO", "")
+        p_val = float(live_p or bid)
+        bid_val = float(bid or p_val)
+        ask_val = float(ask or (bid_val + 0.25))
+        CBOT_LIVE_PRICES[sym_clean] = {
+            "symbol": sym_clean,
+            "price": p_val,
+            "bid": bid_val,
+            "ask": ask_val,
+            "updated_at": now_ts
+        }
+        print(f"[cBot Tick] 🔴 Live Broker Price for {sym_clean}: Bid=${bid_val} | Ask=${ask_val}")
 
     CBOT_STATE["is_connected"] = True
     CBOT_STATE["mode"] = "CBOT_BRIDGE_ACTIVE"
@@ -60,15 +82,24 @@ def update_heartbeat(data: dict) -> dict:
     CBOT_STATE["open_positions"] = data.get("open_positions", data.get("positions", []))
     CBOT_STATE["last_heartbeat"] = now_str
     CBOT_STATE["last_heartbeat_timestamp"] = now_ts
+    CBOT_STATE["live_prices"] = CBOT_LIVE_PRICES
 
-    print(f"[cBot Stream] 🟢 Telemetry Synced -> Account #{acc_id} | Live Balance: ${CBOT_STATE['balance']} {curr} | Equity: ${CBOT_STATE['equity']}")
     return CBOT_STATE
 
+def get_cbot_live_price(symbol: str) -> dict:
+    """Returns live broker price streamed by cBot if fresh (< 30s)."""
+    sym_clean = symbol.upper().replace("M", "")
+    item = CBOT_LIVE_PRICES.get(sym_clean)
+    if item and (time.time() - item.get("updated_at", 0) < 30):
+        return item
+    return None
+
 def get_cbot_status() -> dict:
-    """Returns live cBot bridge status with active balance."""
+    """Returns live cBot bridge status with active balance and live prices."""
     global CBOT_STATE
     CBOT_STATE["is_connected"] = True
     CBOT_STATE["mode"] = "CBOT_BRIDGE_ACTIVE"
+    CBOT_STATE["live_prices"] = CBOT_LIVE_PRICES
     return CBOT_STATE
 
 def queue_trade_for_cbot(symbol: str, action: str, lot_size: float, sl_price: float, tp_price: float, signal_id: str) -> dict:
@@ -97,5 +128,5 @@ def record_cbot_execution(receipt: dict) -> dict:
     """cBot reports filled order execution receipt."""
     order_id = receipt.get("id") or receipt.get("order_id")
     EXECUTED_CBOT_RECEIPTS[order_id] = receipt
-    print(f"[cBot Bridge] [+] Live Order Confirmed by cBot: Ticket #{receipt.get('ticket_id')} for {receipt.get('symbol')} @ {receipt.get('fill_price')}")
+    print(f"[cBot Bridge] [+] 🟢 Authentic cTrader Order Filled: Ticket #{receipt.get('ticket_id')} ({receipt.get('position_id')}) for {receipt.get('symbol')} @ {receipt.get('fill_price')}")
     return receipt
