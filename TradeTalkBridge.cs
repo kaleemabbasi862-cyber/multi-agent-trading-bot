@@ -31,7 +31,10 @@ namespace cAlgo.Robots
             string assetName = "USD";
             try
             {
-                assetName = Account.Asset != null ? Account.Asset.Name : Account.CurrencyName;
+                if (Account.Asset != null && !string.IsNullOrEmpty(Account.Asset.Name))
+                {
+                    assetName = Account.Asset.Name;
+                }
             }
             catch
             {
@@ -76,7 +79,7 @@ namespace cAlgo.Robots
             try
             {
                 string url = ServerUrl.TrimEnd('/') + "/api/cbot/stream";
-                string assetName = Account.Asset != null ? Account.Asset.Name : (Account.CurrencyName ?? "USD");
+                string assetName = (Account.Asset != null && !string.IsNullOrEmpty(Account.Asset.Name)) ? Account.Asset.Name : "USD";
                 string broker = Account.BrokerName ?? "cTrader Live Broker";
 
                 // Ensure culture-invariant float format (e.g. 39.61 not 39,61)
@@ -93,15 +96,11 @@ namespace cAlgo.Robots
                 );
 
                 var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
-                var res = await httpClient.PostAsync(url, content);
-                if (res.IsSuccessStatusCode)
-                {
-                    // Successfully synced with TradeTalk.AI
-                }
+                await httpClient.PostAsync(url, content);
             }
             catch (Exception ex)
             {
-                Print("Telemetry send note: " + ex.Message);
+                Print("Telemetry error: " + ex.Message);
             }
         }
 
@@ -122,7 +121,7 @@ namespace cAlgo.Robots
             }
             catch (Exception ex)
             {
-                Print("Poll note: " + ex.Message);
+                Print("Order poll error: " + ex.Message);
             }
         }
 
@@ -165,7 +164,7 @@ namespace cAlgo.Robots
                     {
                         double? slPrice = sl > 0 ? (double?)sl : null;
                         double? tpPrice = tp > 0 ? (double?)tp : null;
-                        ModifyPosition(pos, slPrice, tpPrice);
+                        ModifyPosition(pos, slPrice, tpPrice, ProtectionType.Absolute);
                     }
 
                     ReportOrderFilled(signalId, pos.Id, pos.EntryPrice, targetSymbol.Name, action);
@@ -191,7 +190,9 @@ namespace cAlgo.Robots
                 var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
                 await httpClient.PostAsync(url, content);
             }
-            catch {}
+            catch
+            {
+            }
         }
 
         private string ExtractJsonValue(string json, string key)
