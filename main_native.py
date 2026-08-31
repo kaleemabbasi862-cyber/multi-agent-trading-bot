@@ -24,11 +24,24 @@ def get_llm():
     api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY") or ""
     if not api_key:
         api_key = "placeholder"
-    return ChatGoogleGenerativeAI(
+    
+    primary = ChatGoogleGenerativeAI(
+        model="gemini-3.5-flash",
+        google_api_key=api_key,
+        temperature=0.2
+    )
+    fallback_lite = ChatGoogleGenerativeAI(
+        model="gemini-3.5-flash-lite",
+        google_api_key=api_key,
+        temperature=0.2
+    )
+    fallback_flash = ChatGoogleGenerativeAI(
         model="gemini-3.6-flash",
         google_api_key=api_key,
         temperature=0.2
     )
+    
+    return primary.with_fallbacks([fallback_lite, fallback_flash])
 
 app = FastAPI(title="Forex Multi-Agent Trading System (Native LangChain)")
 
