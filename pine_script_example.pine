@@ -1,0 +1,49 @@
+//@version=5
+strategy("Trend Crossover with Dynamic SL/TP", overlay=true, margin_long=100, margin_short=100)
+
+// 1. اشاریے (Indicators)
+ema_fast = ta.ema(close, 9)
+ema_slow = ta.ema(close, 21)
+atr = ta.atr(14)
+
+plot(ema_fast, color=color.green, title="Fast EMA")
+plot(ema_slow, color=color.red, title="Slow EMA")
+
+// 2. اسٹریٹیجی لاجک (Strategy Logic)
+longCondition = ta.crossover(ema_fast, ema_slow)
+shortCondition = ta.crossunder(ema_fast, ema_slow)
+
+// 3. اسٹاپ لاس اور ٹیک پرافٹ ویلیوز
+var float stopLossVal = na
+var float takeProfitVal = na
+
+if (longCondition)
+    stopLossVal := close - (atr * 1.5)
+    takeProfitVal := close + (atr * 3.0)
+    strategy.entry("BUY", strategy.long)
+
+if (shortCondition)
+    stopLossVal := close + (atr * 1.5)
+    takeProfitVal := close - (atr * 3.0)
+    strategy.entry("SELL", strategy.short)
+
+// 4. الرٹ میسج کے لیے پلاٹس (Webhook Alert Plots)
+// ان پلاٹس کا نام الرٹ میسج میں {{plot("StopLoss")}} اور {{plot("TakeProfit")}} سے میل کھاتا ہے
+plot(stopLossVal, "StopLoss", display=display.none)
+plot(takeProfitVal, "TakeProfit", display=display.none)
+
+/*
+------------------------------------------------------------
+TradingView Alert Message (یہ میسج الرٹ باکس میں پیسٹ کریں):
+------------------------------------------------------------
+{
+  "symbol": "{{ticker}}",
+  "action": "{{strategy.order.action}}",
+  "entry_price": {{close}},
+  "stop_loss": {{plot("StopLoss")}},
+  "take_profit": {{plot("TakeProfit")}},
+  "timeframe": "{{interval}}",
+  "strategy_name": "Trend_Crossover_v1"
+}
+------------------------------------------------------------
+*/
