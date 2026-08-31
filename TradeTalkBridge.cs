@@ -22,6 +22,18 @@ namespace cAlgo.Robots
         [Parameter("Enable Auto Execution", DefaultValue = true)]
         public bool EnableAutoExecution { get; set; }
 
+        [Parameter("Enable AI Break-Even Protection", DefaultValue = true)]
+        public bool EnableBreakEven { get; set; }
+
+        [Parameter("Break-Even Trigger (Pips)", DefaultValue = 15, MinValue = 5, MaxValue = 100)]
+        public double BreakEvenTriggerPips { get; set; }
+
+        [Parameter("Enable Smart Trailing Stop", DefaultValue = true)]
+        public bool EnableTrailingStop { get; set; }
+
+        [Parameter("Trailing Stop Distance (Pips)", DefaultValue = 20, MinValue = 5, MaxValue = 200)]
+        public double TrailingDistancePips { get; set; }
+
         private static readonly HttpClient httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
 
         protected override void OnStart()
@@ -42,10 +54,11 @@ namespace cAlgo.Robots
             }
 
             Print("=================================================");
-            Print("TradeTalk.AI Autonomous cBot Bridge Started");
+            Print("TradeTalk.AI Autonomous Trade Manager Started");
             Print("Account Number: " + Account.Number);
             Print("Live Balance: " + Account.Balance + " " + assetName);
-            Print("Symbol: " + Symbol.Name + " | Bid: " + Symbol.Bid + " | Ask: " + Symbol.Ask);
+            Print("AI Break-Even: " + (EnableBreakEven ? "ENABLED" : "DISABLED"));
+            Print("AI Trailing Stop: " + (EnableTrailingStop ? "ENABLED" : "DISABLED"));
             Print("Target Server: " + ServerUrl);
             Print("=================================================");
 
@@ -60,10 +73,13 @@ namespace cAlgo.Robots
         {
             try
             {
-                // 1. Send live telemetry (Balance, Equity, Live Prices, Open Positions)
+                // 1. Autonomous Position Management (Break-Even & Trailing Stop on Open Trades)
+                ManageOpenPositionsAutonomously();
+
+                // 2. Send live telemetry (Balance, Equity, Live Prices, Open Positions)
                 SendTelemetry();
 
-                // 2. Poll & Execute pending approved orders
+                // 3. Poll & Execute pending approved orders / AI management commands
                 if (EnableAutoExecution)
                 {
                     PollOrders();
@@ -72,6 +88,78 @@ namespace cAlgo.Robots
             catch (Exception ex)
             {
                 Print("Timer exception: " + ex.Message);
+            }
+        }
+
+        private void ManageOpenPositionsAutonomously()
+        {
+            try
+            {
+                foreach (var pos in Positions)
+                {
+                    Symbol symbol = Symbols.GetSymbol(pos.SymbolName);
+                    if (symbol == null) continue;
+
+                    double pipSize = symbol.PipSize;
+                    double currentProfitPips = pos.Pips;
+
+                    // 1. Auto Break-Even Protection (Lock in Profit, Zero Risk)
+                    if (EnableBreakEven && currentProfitPips >= BreakEvenTriggerPips)
+                    {
+                        double beSlPrice = (pos.TradeType == TradeType.Buy) 
+                            ? pos.EntryPrice + (pipSize * 2) 
+                            : pos.EntryPrice - (pipSize * 2);
+
+                        bool needBe = false;
+                        if (pos.TradeType == TradeType.Buy && (pos.StopLoss == null || pos.StopLoss < beSlPrice))
+                        {
+                            needBe = true;
+                        }
+                        else if (pos.TradeType == TradeType.Sell && (pos.StopLoss == null || pos.StopLoss > beSlPrice))
+                        {
+                            needBe = true;
+                        }
+
+                        if (needBe)
+                        {
+                            Print(string.Format(CultureInfo.InvariantCulture, "🛡️ [TradeTalk AI Guard] Position #{0} ({1}) in +{2:F1} pips profit! Moving SL to Break-Even @ {3}", pos.Id, pos.SymbolName, currentProfitPips, beSlPrice));
+                            ModifyPosition(pos, beSlPrice, pos.TakeProfit, ProtectionType.Absolute);
+                        }
+                    }
+
+                    // 2. Smart Trailing Stop (Trailing profit locked)
+                    if (EnableTrailingStop && currentProfitPips >= TrailingDistancePips)
+                    {
+                        if (pos.TradeType == TradeType.Buy)
+                        {
+                            double newSl = symbol.Bid - (TrailingDistancePips * pipSize);
+                            if (pos.StopLoss == null || newSl > (pos.StopLoss + (pipSize * 3)))
+                            {
+                                if (newSl > pos.EntryPrice) // Only trail in profit
+                                {
+                                    Print(string.Format(CultureInfo.InvariantCulture, "📈 [TradeTalk Trailing SL] Trailing SL for #{0} ({1}) to {2:F2} (Net Profit: +${3:F2})", pos.Id, pos.SymbolName, newSl, pos.NetProfit));
+                                    ModifyPosition(pos, newSl, pos.TakeProfit, ProtectionType.Absolute);
+                                }
+                            }
+                        }
+                        else if (pos.TradeType == TradeType.Sell)
+                        {
+                            double newSl = symbol.Ask + (TrailingDistancePips * pipSize);
+                            if (pos.StopLoss == null || newSl < (pos.StopLoss - (pipSize * 3)))
+                            {
+                                if (newSl < pos.EntryPrice)
+                                {
+                                    Print(string.Format(CultureInfo.InvariantCulture, "📉 [TradeTalk Trailing SL] Trailing SL for #{0} ({1}) to {2:F2} (Net Profit: +${3:F2})", pos.Id, pos.SymbolName, newSl, pos.NetProfit));
+                                    ModifyPosition(pos, newSl, pos.TakeProfit, ProtectionType.Absolute);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Print("Position Management error: " + ex.Message);
             }
         }
 
@@ -85,15 +173,23 @@ namespace cAlgo.Robots
 
                 string symClean = Symbol.Name.Replace("m", "").Replace(".pro", "").ToUpperInvariant();
 
-                // Serialize Active Open Positions
+                // Serialize Active Open Positions with AI Guard metadata
                 StringBuilder positionsJson = new StringBuilder("[");
                 int count = 0;
                 foreach (var pos in Positions)
                 {
                     if (count > 0) positionsJson.Append(",");
+                    
+                    bool isBeActive = false;
+                    if (pos.StopLoss != null)
+                    {
+                        if (pos.TradeType == TradeType.Buy && pos.StopLoss >= pos.EntryPrice) isBeActive = true;
+                        if (pos.TradeType == TradeType.Sell && pos.StopLoss <= pos.EntryPrice) isBeActive = true;
+                    }
+
                     positionsJson.Append(string.Format(
                         CultureInfo.InvariantCulture,
-                        "{{\"id\":{0},\"symbol\":\"{1}\",\"trade_type\":\"{2}\",\"volume\":{3},\"entry_price\":{4},\"net_profit\":{5},\"pips\":{6},\"sl\":{7},\"tp\":{8}}}",
+                        "{{\"id\":{0},\"symbol\":\"{1}\",\"trade_type\":\"{2}\",\"volume\":{3},\"entry_price\":{4},\"net_profit\":{5},\"pips\":{6},\"sl\":{7},\"tp\":{8},\"be_active\":{9}}}",
                         pos.Id,
                         pos.SymbolName,
                         pos.TradeType,
@@ -102,7 +198,8 @@ namespace cAlgo.Robots
                         pos.NetProfit,
                         pos.Pips,
                         pos.StopLoss ?? 0,
-                        pos.TakeProfit ?? 0
+                        pos.TakeProfit ?? 0,
+                        isBeActive ? "true" : "false"
                     ));
                     count++;
                 }
@@ -143,15 +240,48 @@ namespace cAlgo.Robots
                 if (response.IsSuccessStatusCode)
                 {
                     string jsonResponse = await response.Content.ReadAsStringAsync();
-                    if (!string.IsNullOrEmpty(jsonResponse) && jsonResponse != "[]" && jsonResponse.Contains("symbol"))
+                    if (!string.IsNullOrEmpty(jsonResponse) && jsonResponse != "[]")
                     {
-                        ProcessOrders(jsonResponse);
+                        if (jsonResponse.Contains("\"action\":\"CLOSE\""))
+                        {
+                            // Process manual close command from dashboard
+                            ProcessCloseCommand(jsonResponse);
+                        }
+                        else if (jsonResponse.Contains("symbol"))
+                        {
+                            ProcessOrders(jsonResponse);
+                        }
                     }
                 }
             }
             catch (Exception ex)
             {
                 Print("Order poll error: " + ex.Message);
+            }
+        }
+
+        private void ProcessCloseCommand(string json)
+        {
+            try
+            {
+                long posId = 0;
+                long.TryParse(ExtractJsonValue(json, "position_id"), NumberStyles.Any, CultureInfo.InvariantCulture, out posId);
+                if (posId > 0)
+                {
+                    foreach (var pos in Positions)
+                    {
+                        if (pos.Id == posId)
+                        {
+                            Print("🚨 [TradeTalk Dashboard Command] Closing Position #" + posId + " with Net Profit: $" + pos.NetProfit);
+                            ClosePosition(pos);
+                            break;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Print("Close command error: " + ex.Message);
             }
         }
 
@@ -182,6 +312,10 @@ namespace cAlgo.Robots
                 if (targetSymbol.Name.Contains("XAU") || targetSymbol.Name.Contains("GOLD"))
                 {
                     volumeInUnits = targetSymbol.NormalizeVolumeInUnits(lotSize * 100);
+                }
+                else if (targetSymbol.Name.Contains("XAG") || targetSymbol.Name.Contains("SILVER"))
+                {
+                    volumeInUnits = targetSymbol.NormalizeVolumeInUnits(lotSize * 1000);
                 }
 
                 TradeResult result = ExecuteMarketOrder(tradeType, targetSymbol.Name, volumeInUnits, "TradeTalk.AI");

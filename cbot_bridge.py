@@ -117,6 +117,17 @@ def queue_trade_for_cbot(symbol: str, action: str, lot_size: float, sl_price: fl
     print(f"[cBot Bridge] [+] Queued Approved Trade for cBot: {action} {lot_size} Lots of {symbol} (SL: {sl_price}, TP: {tp_price})")
     return order_item
 
+def queue_close_position(position_id: int) -> dict:
+    """Queues an order to close an open position in cTrader."""
+    order_item = {
+        "action": "CLOSE",
+        "position_id": str(position_id),
+        "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat()
+    }
+    PENDING_CBOT_ORDERS.append(order_item)
+    print(f"[cBot Bridge] [!] Queued Close Command for Position #{position_id}")
+    return order_item
+
 def get_pending_orders_for_cbot() -> list:
     """cBot polls this function to fetch unexecuted approved orders."""
     global PENDING_CBOT_ORDERS
@@ -130,3 +141,4 @@ def record_cbot_execution(receipt: dict) -> dict:
     EXECUTED_CBOT_RECEIPTS[order_id] = receipt
     print(f"[cBot Bridge] [+] 🟢 Authentic cTrader Order Filled: Ticket #{receipt.get('ticket_id')} ({receipt.get('position_id')}) for {receipt.get('symbol')} @ {receipt.get('fill_price')}")
     return receipt
+

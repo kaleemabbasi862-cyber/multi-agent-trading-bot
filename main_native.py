@@ -434,6 +434,13 @@ def cbot_order_filled(receipt: dict):
             break
     return rec
 
+@app.post("/api/cbot/close-position")
+def close_cbot_position(data: dict):
+    pos_id = data.get("position_id")
+    if pos_id:
+        return cbot_bridge.queue_close_position(pos_id)
+    return {"status": "ERROR", "message": "Missing position_id"}
+
 @app.get("/api/cbot/download")
 def download_cbot_file():
     path = Path(__file__).parent / "TradeTalkBridge.cs"

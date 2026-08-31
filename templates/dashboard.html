@@ -424,11 +424,12 @@
                             <th class="py-3 px-4">Position ID</th>
                             <th class="py-3 px-4">Symbol</th>
                             <th class="py-3 px-4">Type</th>
-                            <th class="py-3 px-4">Volume (Units)</th>
-                            <th class="py-3 px-4">Entry Price</th>
-                            <th class="py-3 px-4">Stop Loss</th>
-                            <th class="py-3 px-4">Take Profit</th>
-                            <th class="py-3 px-4 text-right">Net Profit / Loss</th>
+                            <th class="py-3 px-4">Volume</th>
+                            <th class="py-3 px-4">Entry</th>
+                            <th class="py-3 px-4">SL / TP</th>
+                            <th class="py-3 px-4">AI Guard Status</th>
+                            <th class="py-3 px-4 text-right">Net Profit</th>
+                            <th class="py-3 px-4 text-right">Manage</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-dark-border">
@@ -443,17 +444,31 @@
                                 </td>
                                 <td class="py-3 px-4 font-mono text-slate-200" x-text="pos.volume"></td>
                                 <td class="py-3 px-4 font-mono text-slate-200" x-text="'$' + formatNumber(pos.entry_price, pos.symbol)"></td>
-                                <td class="py-3 px-4 font-mono text-rose-400" x-text="pos.sl > 0 ? ('$' + formatNumber(pos.sl, pos.symbol)) : '--'"></td>
-                                <td class="py-3 px-4 font-mono text-emerald-400" x-text="pos.tp > 0 ? ('$' + formatNumber(pos.tp, pos.symbol)) : '--'"></td>
+                                <td class="py-3 px-4 font-mono text-[11px] whitespace-nowrap">
+                                    <span class="text-rose-400" x-text="pos.sl > 0 ? ('$' + formatNumber(pos.sl, pos.symbol)) : '--'"></span> / 
+                                    <span class="text-emerald-400 font-bold" x-text="pos.tp > 0 ? ('$' + formatNumber(pos.tp, pos.symbol)) : '--'"></span>
+                                </td>
+                                <td class="py-3 px-4 whitespace-nowrap">
+                                    <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center space-x-1"
+                                          :class="(pos.be_active || pos.net_profit > 1.5) ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'">
+                                        <i class="fa-solid" :class="(pos.be_active || pos.net_profit > 1.5) ? 'fa-shield-halved text-emerald-400' : 'fa-chart-line text-indigo-400'"></i>
+                                        <span x-text="(pos.be_active || pos.net_profit > 1.5) ? 'Break-Even & Trailing Guard' : 'AI Trailing Active'"></span>
+                                    </span>
+                                </td>
                                 <td class="py-3 px-4 text-right font-mono font-black text-sm">
                                     <span :class="pos.net_profit >= 0 ? 'text-emerald-400' : 'text-rose-400'"
                                           x-text="(pos.net_profit >= 0 ? '+' : '') + '$' + formatMoney(pos.net_profit)"></span>
+                                </td>
+                                <td class="py-3 px-4 text-right whitespace-nowrap">
+                                    <button @click="closePosition(pos.id)" class="px-2.5 py-1 bg-rose-600/20 hover:bg-rose-600/40 text-rose-300 rounded font-semibold text-[10px] transition border border-rose-500/30">
+                                        Close Trade
+                                    </button>
                                 </td>
                             </tr>
                         </template>
                         <template x-if="!cbotStatus.open_positions || cbotStatus.open_positions.length === 0">
                             <tr>
-                                <td colspan="8" class="text-center py-6 text-slate-500 text-xs">
+                                <td colspan="9" class="text-center py-6 text-slate-500 text-xs">
                                     <i class="fa-solid fa-folder-open text-xl mb-1.5 block opacity-40"></i>
                                     No open market positions currently active on cTrader Live Account #1005621.
                                 </td>
@@ -896,6 +911,20 @@ namespace cAlgo.Robots
                 calcTotalPnL() {
                     if (!this.cbotStatus.open_positions || !this.cbotStatus.open_positions.length) return 0.0;
                     return this.cbotStatus.open_positions.reduce((acc, pos) => acc + (parseFloat(pos.net_profit) || 0), 0);
+                },
+
+                async closePosition(posId) {
+                    if (!confirm('Are you sure you want to close Position #' + posId + ' immediately?')) return;
+                    try {
+                        const res = await fetch('/api/cbot/close-position', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ position_id: posId })
+                        });
+                        alert('Close command dispatched to cTrader for Position #' + posId);
+                    } catch (err) {
+                        alert('Error closing position: ' + err);
+                    }
                 },
 
                 async copyCBotCode() {
