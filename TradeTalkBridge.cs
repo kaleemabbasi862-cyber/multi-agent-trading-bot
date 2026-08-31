@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Http;
@@ -31,10 +32,11 @@ namespace cAlgo.Robots
         [Parameter("Enable Smart Trailing Stop", DefaultValue = true)]
         public bool EnableTrailingStop { get; set; }
 
-        [Parameter("Trailing Stop Distance (Pips)", DefaultValue = 20, MinValue = 5, MaxValue = 200)]
+        [Parameter("Trailing Stop Distance (Pips)", DefaultValue = 25, MinValue = 10, MaxValue = 200)]
         public double TrailingDistancePips { get; set; }
 
         private static readonly HttpClient httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+        private readonly Dictionary<long, DateTime> _lastModifiedMap = new Dictionary<long, DateTime>();
 
         protected override void OnStart()
         {
@@ -73,7 +75,7 @@ namespace cAlgo.Robots
         {
             try
             {
-                // 1. Autonomous Position Management (Break-Even & Trailing Stop on Open Trades)
+                // 1. Autonomous Position Management with strict Broker Range Validation
                 ManageOpenPositionsAutonomously();
 
                 // 2. Send live telemetry (Balance, Equity, Live Prices, Open Positions)
@@ -95,62 +97,128 @@ namespace cAlgo.Robots
         {
             try
             {
+                DateTime now = DateTime.UtcNow;
+
                 foreach (var pos in Positions)
                 {
+                    // Rate limit: modify each position at most once every 10 seconds
+                    if (_lastModifiedMap.TryGetValue(pos.Id, out DateTime lastMod))
+                    {
+                        if ((now - lastMod).TotalSeconds < 10)
+                        {
+                            continue;
+                        }
+                    }
+
                     Symbol symbol = Symbols.GetSymbol(pos.SymbolName);
                     if (symbol == null) continue;
 
                     double pipSize = symbol.PipSize;
                     double currentProfitPips = pos.Pips;
 
-                    // 1. Auto Break-Even Protection (Lock in Profit, Zero Risk)
-                    if (EnableBreakEven && currentProfitPips >= BreakEvenTriggerPips)
+                    // Calculate broker safe distance (at least 10 pips away from current price)
+                    double safeBuffer = Math.Max(pipSize * 10, symbol.TickSize * 20);
+
+                    double? targetSl = null;
+
+                    if (pos.TradeType == TradeType.Buy)
                     {
-                        double beSlPrice = (pos.TradeType == TradeType.Buy) 
-                            ? pos.EntryPrice + (pipSize * 2) 
-                            : pos.EntryPrice - (pipSize * 2);
+                        double currentBid = symbol.Bid;
 
-                        bool needBe = false;
-                        if (pos.TradeType == TradeType.Buy && (pos.StopLoss == null || pos.StopLoss < beSlPrice))
+                        // 1. Check Break-Even trigger
+                        if (EnableBreakEven && currentProfitPips >= BreakEvenTriggerPips)
                         {
-                            needBe = true;
-                        }
-                        else if (pos.TradeType == TradeType.Sell && (pos.StopLoss == null || pos.StopLoss > beSlPrice))
-                        {
-                            needBe = true;
-                        }
-
-                        if (needBe)
-                        {
-                            Print(string.Format(CultureInfo.InvariantCulture, "🛡️ [TradeTalk AI Guard] Position #{0} ({1}) in +{2:F1} pips profit! Moving SL to Break-Even @ {3}", pos.Id, pos.SymbolName, currentProfitPips, beSlPrice));
-                            ModifyPosition(pos, beSlPrice, pos.TakeProfit, ProtectionType.Absolute);
-                        }
-                    }
-
-                    // 2. Smart Trailing Stop (Trailing profit locked)
-                    if (EnableTrailingStop && currentProfitPips >= TrailingDistancePips)
-                    {
-                        if (pos.TradeType == TradeType.Buy)
-                        {
-                            double newSl = symbol.Bid - (TrailingDistancePips * pipSize);
-                            if (pos.StopLoss == null || newSl > (pos.StopLoss + (pipSize * 3)))
+                            double bePrice = pos.EntryPrice + (pipSize * 2);
+                            // Valid range check: must be below current Bid with safe buffer
+                            if (bePrice < (currentBid - safeBuffer))
                             {
-                                if (newSl > pos.EntryPrice) // Only trail in profit
+                                if (pos.StopLoss == null || pos.StopLoss < bePrice)
                                 {
-                                    Print(string.Format(CultureInfo.InvariantCulture, "📈 [TradeTalk Trailing SL] Trailing SL for #{0} ({1}) to {2:F2} (Net Profit: +${3:F2})", pos.Id, pos.SymbolName, newSl, pos.NetProfit));
-                                    ModifyPosition(pos, newSl, pos.TakeProfit, ProtectionType.Absolute);
+                                    targetSl = bePrice;
                                 }
                             }
                         }
-                        else if (pos.TradeType == TradeType.Sell)
+
+                        // 2. Check Trailing Stop
+                        if (EnableTrailingStop && currentProfitPips >= TrailingDistancePips)
                         {
-                            double newSl = symbol.Ask + (TrailingDistancePips * pipSize);
-                            if (pos.StopLoss == null || newSl < (pos.StopLoss - (pipSize * 3)))
+                            double trailPrice = currentBid - (TrailingDistancePips * pipSize);
+                            // Valid range check: must be below current Bid and higher than entry
+                            if (trailPrice < (currentBid - safeBuffer) && trailPrice > pos.EntryPrice)
                             {
-                                if (newSl < pos.EntryPrice)
+                                if (pos.StopLoss == null || trailPrice > (pos.StopLoss.Value + (pipSize * 3)))
                                 {
-                                    Print(string.Format(CultureInfo.InvariantCulture, "📉 [TradeTalk Trailing SL] Trailing SL for #{0} ({1}) to {2:F2} (Net Profit: +${3:F2})", pos.Id, pos.SymbolName, newSl, pos.NetProfit));
-                                    ModifyPosition(pos, newSl, pos.TakeProfit, ProtectionType.Absolute);
+                                    targetSl = trailPrice;
+                                }
+                            }
+                        }
+
+                        // Apply modification if valid and meaningfully different
+                        if (targetSl.HasValue)
+                        {
+                            double newSlRounded = Math.Round(targetSl.Value, symbol.Digits);
+                            if (pos.StopLoss == null || Math.Abs(pos.StopLoss.Value - newSlRounded) >= (pipSize * 2))
+                            {
+                                if (newSlRounded < (currentBid - safeBuffer))
+                                {
+                                    Print(string.Format(CultureInfo.InvariantCulture, "🛡️ [TradeTalk AI Guard] Modifying SL for #{0} ({1}) to {2:F2} | Current Bid: {3:F2}", pos.Id, pos.SymbolName, newSlRounded, currentBid));
+                                    var res = ModifyPosition(pos, newSlRounded, pos.TakeProfit, ProtectionType.Absolute);
+                                    _lastModifiedMap[pos.Id] = now;
+                                    if (!res.IsSuccessful)
+                                    {
+                                        Print("[Protection Warning]: " + res.Error);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    else if (pos.TradeType == TradeType.Sell)
+                    {
+                        double currentAsk = symbol.Ask;
+
+                        // 1. Check Break-Even trigger
+                        if (EnableBreakEven && currentProfitPips >= BreakEvenTriggerPips)
+                        {
+                            double bePrice = pos.EntryPrice - (pipSize * 2);
+                            // Valid range check: must be above current Ask with safe buffer
+                            if (bePrice > (currentAsk + safeBuffer))
+                            {
+                                if (pos.StopLoss == null || pos.StopLoss > bePrice)
+                                {
+                                    targetSl = bePrice;
+                                }
+                            }
+                        }
+
+                        // 2. Check Trailing Stop
+                        if (EnableTrailingStop && currentProfitPips >= TrailingDistancePips)
+                        {
+                            double trailPrice = currentAsk + (TrailingDistancePips * pipSize);
+                            // Valid range check: must be above current Ask and lower than entry
+                            if (trailPrice > (currentAsk + safeBuffer) && trailPrice < pos.EntryPrice)
+                            {
+                                if (pos.StopLoss == null || trailPrice < (pos.StopLoss.Value - (pipSize * 3)))
+                                {
+                                    targetSl = trailPrice;
+                                }
+                            }
+                        }
+
+                        // Apply modification if valid and meaningfully different
+                        if (targetSl.HasValue)
+                        {
+                            double newSlRounded = Math.Round(targetSl.Value, symbol.Digits);
+                            if (pos.StopLoss == null || Math.Abs(pos.StopLoss.Value - newSlRounded) >= (pipSize * 2))
+                            {
+                                if (newSlRounded > (currentAsk + safeBuffer))
+                                {
+                                    Print(string.Format(CultureInfo.InvariantCulture, "🛡️ [TradeTalk AI Guard] Modifying SL for #{0} ({1}) to {2:F2} | Current Ask: {3:F2}", pos.Id, pos.SymbolName, newSlRounded, currentAsk));
+                                    var res = ModifyPosition(pos, newSlRounded, pos.TakeProfit, ProtectionType.Absolute);
+                                    _lastModifiedMap[pos.Id] = now;
+                                    if (!res.IsSuccessful)
+                                    {
+                                        Print("[Protection Warning]: " + res.Error);
+                                    }
                                 }
                             }
                         }
@@ -159,7 +227,7 @@ namespace cAlgo.Robots
             }
             catch (Exception ex)
             {
-                Print("Position Management error: " + ex.Message);
+                Print("Position Management note: " + ex.Message);
             }
         }
 
