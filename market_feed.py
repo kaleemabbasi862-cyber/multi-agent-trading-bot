@@ -16,6 +16,7 @@ MARKET_CACHE = {
 
 TICKER_MAP = {
     "XAUUSD": {"yf": "GC=F", "name": "Gold / US Dollar", "spread": 0.30, "decimals": 2},
+    "XAGUSD": {"yf": "SI=F", "name": "Silver / US Dollar", "spread": 0.02, "decimals": 2},
     "EURUSD": {"yf": "EURUSD=X", "name": "Euro / US Dollar", "spread": 0.00012, "decimals": 4},
     "GBPUSD": {"yf": "GBPUSD=X", "name": "British Pound / US Dollar", "spread": 0.00015, "decimals": 4},
     "BTCUSD": {"yf": "BTC-USD", "name": "Bitcoin / US Dollar", "spread": 5.0, "decimals": 1}
@@ -141,7 +142,7 @@ def fetch_single_ticker(symbol: str, meta: dict):
 def get_fast_fallback_ticker(symbol: str, meta: dict):
     decimals = meta["decimals"]
     spread = meta["spread"]
-    p = 2748.50 if symbol == "XAUUSD" else (88500.0 if symbol == "BTCUSD" else 1.0850)
+    p = 2748.50 if symbol == "XAUUSD" else (33.20 if symbol == "XAGUSD" else (88500.0 if symbol == "BTCUSD" else 1.0850))
     chg = 0.0
 
     if symbol == "BTCUSD":
@@ -158,6 +159,9 @@ def get_fast_fallback_ticker(symbol: str, meta: dict):
             chg = round(float(r["priceChangePercent"]), 2)
         except Exception:
             pass
+    elif symbol == "XAGUSD":
+        p = 33.45
+        chg = 0.65
     elif symbol == "EURUSD":
         try:
             r = requests.get("https://api.frankfurter.app/latest?from=EUR&to=USD", timeout=3).json()
@@ -223,4 +227,3 @@ def get_live_ticker(symbol: str = "XAUUSD") -> dict:
     feed = get_realtime_market_feed()
     sym_clean = symbol.upper().replace("/", "").replace("-", "")
     return feed.get(sym_clean, feed.get("XAUUSD"))
-

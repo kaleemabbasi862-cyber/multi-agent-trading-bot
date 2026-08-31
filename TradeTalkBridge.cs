@@ -60,7 +60,7 @@ namespace cAlgo.Robots
         {
             try
             {
-                // 1. Send live telemetry (Balance, Equity, Live Bid/Ask Prices)
+                // 1. Send live telemetry (Balance, Equity, Live Prices, Open Positions)
                 SendTelemetry();
 
                 // 2. Poll & Execute pending approved orders
@@ -83,13 +83,35 @@ namespace cAlgo.Robots
                 string assetName = (Account.Asset != null && !string.IsNullOrEmpty(Account.Asset.Name)) ? Account.Asset.Name : "USD";
                 string broker = Account.BrokerName ?? "IC Markets cTrader Live";
 
-                // Normalize symbol name (e.g. XAUUSDm -> XAUUSD)
                 string symClean = Symbol.Name.Replace("m", "").Replace(".pro", "").ToUpperInvariant();
 
-                // Ensure culture-invariant float format (e.g. 39.61 not 39,61)
+                // Serialize Active Open Positions
+                StringBuilder positionsJson = new StringBuilder("[");
+                int count = 0;
+                foreach (var pos in Positions)
+                {
+                    if (count > 0) positionsJson.Append(",");
+                    positionsJson.Append(string.Format(
+                        CultureInfo.InvariantCulture,
+                        "{{\"id\":{0},\"symbol\":\"{1}\",\"trade_type\":\"{2}\",\"volume\":{3},\"entry_price\":{4},\"net_profit\":{5},\"pips\":{6},\"sl\":{7},\"tp\":{8}}}",
+                        pos.Id,
+                        pos.SymbolName,
+                        pos.TradeType,
+                        pos.VolumeInUnits,
+                        pos.EntryPrice,
+                        pos.NetProfit,
+                        pos.Pips,
+                        pos.StopLoss ?? 0,
+                        pos.TakeProfit ?? 0
+                    ));
+                    count++;
+                }
+                positionsJson.Append("]");
+
+                // Ensure culture-invariant float format
                 string jsonPayload = string.Format(
                     CultureInfo.InvariantCulture,
-                    "{{\"account_id\":\"{0}\",\"accountNumber\":\"{0}\",\"balance\":{1},\"equity\":{2},\"margin\":{3},\"freeMargin\":{4},\"currency\":\"{5}\",\"broker\":\"{6}\",\"symbol\":\"{7}\",\"bid\":{8},\"ask\":{9},\"live_price\":{8}}}",
+                    "{{\"account_id\":\"{0}\",\"accountNumber\":\"{0}\",\"balance\":{1},\"equity\":{2},\"margin\":{3},\"freeMargin\":{4},\"currency\":\"{5}\",\"broker\":\"{6}\",\"symbol\":\"{7}\",\"bid\":{8},\"ask\":{9},\"live_price\":{8},\"open_positions\":{10}}}",
                     Account.Number,
                     Account.Balance,
                     Account.Equity,
@@ -99,19 +121,12 @@ namespace cAlgo.Robots
                     broker,
                     symClean,
                     Symbol.Bid,
-                    Symbol.Ask
+                    Symbol.Ask,
+                    positionsJson.ToString()
                 );
 
                 var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
-                var res = await httpClient.PostAsync(url, content);
-                if (res.IsSuccessStatusCode)
-                {
-                    // Success
-                }
-                else
-                {
-                    Print("[Telemetry Response]: " + (int)res.StatusCode + " " + res.ReasonPhrase);
-                }
+                await httpClient.PostAsync(url, content);
             }
             catch (Exception ex)
             {

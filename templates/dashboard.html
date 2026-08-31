@@ -400,7 +400,71 @@
             </div>
         </div>
 
-        <!-- 4. LIVE SIGNALS & AUTO-EXECUTED ORDERS LEDGER -->
+        <!-- 4. ACTIVE OPEN POSITIONS (DIRECT CTRADER LIVE STREAM) -->
+        <div class="bg-dark-card border border-dark-border rounded-2xl overflow-hidden shadow-2xl space-y-0">
+            <div class="px-6 py-4 border-b border-dark-border flex flex-wrap items-center justify-between gap-3 bg-slate-900/60">
+                <div class="flex items-center space-x-2.5">
+                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 pulse-live shadow-sm shadow-emerald-400/50"></span>
+                    <h2 class="font-bold text-white text-sm">Active Open Positions (Live cTrader Account #1005621)</h2>
+                    <span class="text-xs px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 font-mono font-bold"
+                          x-text="(cbotStatus.open_positions ? cbotStatus.open_positions.length : 0) + ' Open'"></span>
+                </div>
+                <div class="flex items-center space-x-2 text-xs">
+                    <span class="text-slate-400">Total Live PnL:</span>
+                    <span class="font-mono font-black text-xs px-2.5 py-1 rounded-md"
+                          :class="calcTotalPnL() >= 0 ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'"
+                          x-text="(calcTotalPnL() >= 0 ? '+' : '') + '$' + formatMoney(calcTotalPnL()) + ' USD'"></span>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs text-slate-300">
+                    <thead class="bg-slate-900/90 text-slate-400 font-semibold uppercase tracking-wider border-b border-dark-border">
+                        <tr>
+                            <th class="py-3 px-4">Position ID</th>
+                            <th class="py-3 px-4">Symbol</th>
+                            <th class="py-3 px-4">Type</th>
+                            <th class="py-3 px-4">Volume (Units)</th>
+                            <th class="py-3 px-4">Entry Price</th>
+                            <th class="py-3 px-4">Stop Loss</th>
+                            <th class="py-3 px-4">Take Profit</th>
+                            <th class="py-3 px-4 text-right">Net Profit / Loss</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-dark-border">
+                        <template x-for="pos in (cbotStatus.open_positions || [])" :key="pos.id">
+                            <tr class="hover:bg-dark-hover transition">
+                                <td class="py-3 px-4 font-mono text-indigo-300 font-bold whitespace-nowrap" x-text="'#' + pos.id"></td>
+                                <td class="py-3 px-4 font-bold text-white whitespace-nowrap" x-text="pos.symbol"></td>
+                                <td class="py-3 px-4 whitespace-nowrap">
+                                    <span class="px-2.5 py-0.5 rounded-md font-black text-[10px]"
+                                          :class="pos.trade_type === 'Buy' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'"
+                                          x-text="pos.trade_type ? pos.trade_type.toUpperCase() : 'BUY'"></span>
+                                </td>
+                                <td class="py-3 px-4 font-mono text-slate-200" x-text="pos.volume"></td>
+                                <td class="py-3 px-4 font-mono text-slate-200" x-text="'$' + formatNumber(pos.entry_price, pos.symbol)"></td>
+                                <td class="py-3 px-4 font-mono text-rose-400" x-text="pos.sl > 0 ? ('$' + formatNumber(pos.sl, pos.symbol)) : '--'"></td>
+                                <td class="py-3 px-4 font-mono text-emerald-400" x-text="pos.tp > 0 ? ('$' + formatNumber(pos.tp, pos.symbol)) : '--'"></td>
+                                <td class="py-3 px-4 text-right font-mono font-black text-sm">
+                                    <span :class="pos.net_profit >= 0 ? 'text-emerald-400' : 'text-rose-400'"
+                                          x-text="(pos.net_profit >= 0 ? '+' : '') + '$' + formatMoney(pos.net_profit)"></span>
+                                </td>
+                            </tr>
+                        </template>
+                        <template x-if="!cbotStatus.open_positions || cbotStatus.open_positions.length === 0">
+                            <tr>
+                                <td colspan="8" class="text-center py-6 text-slate-500 text-xs">
+                                    <i class="fa-solid fa-folder-open text-xl mb-1.5 block opacity-40"></i>
+                                    No open market positions currently active on cTrader Live Account #1005621.
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 5. LIVE SIGNALS & AUTO-EXECUTED ORDERS LEDGER -->
         <div class="bg-dark-card border border-dark-border rounded-2xl overflow-hidden shadow-2xl">
             <div class="px-6 py-4 border-b border-dark-border flex flex-wrap items-center justify-between gap-3 bg-slate-900/40">
                 <div class="flex items-center space-x-2">
@@ -827,6 +891,11 @@ namespace cAlgo.Robots
                     } catch (err) {
                         console.error('Error fetching cBot status:', err);
                     }
+                },
+
+                calcTotalPnL() {
+                    if (!this.cbotStatus.open_positions || !this.cbotStatus.open_positions.length) return 0.0;
+                    return this.cbotStatus.open_positions.reduce((acc, pos) => acc + (parseFloat(pos.net_profit) || 0), 0);
                 },
 
                 async copyCBotCode() {
