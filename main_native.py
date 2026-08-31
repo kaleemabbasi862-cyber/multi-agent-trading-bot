@@ -143,8 +143,14 @@ async def receive_tradingview_alert(signal: TradingViewSignal):
     
     return {"status": "Trade Rejected by Agents", "analysis": result}
 
+@app.get("/")
+@app.get("/health")
+def health_check():
+    return {"status": "online", "service": "Multi-Agent AI Forex Trading System"}
+
 # -------------------------------------------------------------
 # 5. سرور اسٹارٹ کریں
 # -------------------------------------------------------------
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    port = int(os.getenv("PORT", "10000"))
+    uvicorn.run(app, host="0.0.0.0", port=port)
