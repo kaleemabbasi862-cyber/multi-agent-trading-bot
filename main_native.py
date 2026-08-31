@@ -325,6 +325,7 @@ async def startup_event():
     asyncio.create_task(autonomous_scanner_background_loop())
 
 @app.get("/api/market-prices")
+@app.get("/api/live-prices")
 def get_market_prices():
     return market_feed.get_live_market_data()
 

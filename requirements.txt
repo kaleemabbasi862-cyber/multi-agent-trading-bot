@@ -6,3 +6,6 @@ pydantic
 requests
 python-dotenv
 playwright
+yfinance
+pandas
+numpy
