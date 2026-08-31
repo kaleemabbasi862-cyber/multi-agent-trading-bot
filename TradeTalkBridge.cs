@@ -62,7 +62,6 @@ namespace cAlgo.Robots
             try
             {
                 // 1. Send live telemetry (Balance, Equity, Live Prices, Open Positions)
-                // Also immediately checks stream response for instant pending trade dispatch
                 SendTelemetry();
 
                 // 2. Poll & Execute pending approved orders
@@ -139,13 +138,13 @@ namespace cAlgo.Robots
                 var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
                 var res = await httpClient.PostAsync(url, content);
                 
-                // Zero-Latency Execution: If stream response returned pending approved order, process it directly!
+                // Zero-Latency Execution: If stream response returned pending approved order, dispatch on Main Thread!
                 if (res.IsSuccessStatusCode && EnableAutoExecution)
                 {
                     string replyJson = await res.Content.ReadAsStringAsync();
                     if (!string.IsNullOrEmpty(replyJson) && (replyJson.Contains("\"pending_orders\"") || replyJson.Contains("\"ticket_id\"") || replyJson.Contains("\"signal\"")))
                     {
-                        ProcessOrders(replyJson);
+                        BeginInvokeOnMainThread(() => ProcessOrders(replyJson));
                     }
                 }
             }
@@ -168,11 +167,11 @@ namespace cAlgo.Robots
                     {
                         if (jsonResponse.Contains("\"action\":\"CLOSE\""))
                         {
-                            ProcessCloseCommand(jsonResponse);
+                            BeginInvokeOnMainThread(() => ProcessCloseCommand(jsonResponse));
                         }
                         else if (jsonResponse.Contains("symbol"))
                         {
-                            ProcessOrders(jsonResponse);
+                            BeginInvokeOnMainThread(() => ProcessOrders(jsonResponse));
                         }
                     }
                 }
@@ -231,7 +230,7 @@ namespace cAlgo.Robots
                     return;
                 }
 
-                Print(string.Format("📥 [TradeTalk Signal Received]: {0} {1} (Ticket: {2})", action, symbolStr, signalId));
+                Print(string.Format("📥 [TradeTalk Signal Received on MainThread]: {0} {1} (Ticket: {2})", action, symbolStr, signalId));
 
                 double lotSize = 0.01;
                 double.TryParse(ExtractJsonValue(json, "lots"), NumberStyles.Any, CultureInfo.InvariantCulture, out lotSize);
@@ -264,7 +263,7 @@ namespace cAlgo.Robots
                     volumeInUnits = targetSymbol.NormalizeVolumeInUnits(lotSize * 1000);
                 }
 
-                Print(string.Format("🚀 Executing {0} {1} ({2} Units) on cTrader Live Account #{3}...", action, targetSymbol.Name, volumeInUnits, Account.Number));
+                Print(string.Format("🚀 [MainThread Execution] Sending {0} {1} ({2} Units) to Broker...", action, targetSymbol.Name, volumeInUnits));
 
                 TradeResult result = ExecuteMarketOrder(tradeType, targetSymbol.Name, volumeInUnits, "TradeTalk.AI");
                 if (result.IsSuccessful && result.Position != null)
@@ -290,7 +289,7 @@ namespace cAlgo.Robots
             }
             catch (Exception ex)
             {
-                Print("Execution Exception: " + ex.Message);
+                Print("MainThread Execution Exception: " + ex.Message);
             }
         }
 
