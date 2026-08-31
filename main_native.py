@@ -340,9 +340,43 @@ class CTraderConnectRequest(BaseModel):
     client_secret: str = None
     environment: str = "Live"
 
+from fastapi import Request
+from fastapi.responses import RedirectResponse
+
 @app.get("/api/ctrader/status")
 def get_ctrader_status():
     return ctrader_executor.get_ctrader_status()
+
+@app.get("/api/ctrader/auth-url")
+def get_ctrader_auth_url(request: Request):
+    # Dynamic redirect URI pointing to callback endpoint
+    host = request.headers.get("host", "multi-agent-trading-bot.onrender.com")
+    proto = "https" if "onrender.com" in host or request.headers.get("x-forwarded-proto") == "https" else "http"
+    redirect_uri = f"{proto}://{host}/api/ctrader/callback"
+    auth_url = ctrader_executor.get_oauth_auth_url(redirect_uri)
+    return {
+        "auth_url": auth_url,
+        "redirect_uri": redirect_uri,
+        "client_id": ctrader_executor.CTRADER_CONFIG["client_id"]
+    }
+
+@app.get("/api/ctrader/callback")
+def handle_ctrader_oauth_callback(code: str = None, error: str = None, request: Request = None):
+    if error:
+        return HTMLResponse(content=f"<h3>cTrader Authorization Error: {error}</h3><a href='/'>Return to Dashboard</a>")
+    
+    if code:
+        host = request.headers.get("host", "multi-agent-trading-bot.onrender.com")
+        proto = "https" if "onrender.com" in host or request.headers.get("x-forwarded-proto") == "https" else "http"
+        redirect_uri = f"{proto}://{host}/api/ctrader/callback"
+        
+        result = ctrader_executor.exchange_oauth_code(code=code, redirect_uri=redirect_uri)
+        if result.get("status") == "SUCCESS":
+            return RedirectResponse(url="/?ctrader_linked=true")
+        else:
+            return HTMLResponse(content=f"<h3>Token Exchange Failed: {result.get('message')}</h3><a href='/'>Return to Dashboard</a>")
+
+    return RedirectResponse(url="/")
 
 @app.post("/api/ctrader/connect")
 def connect_ctrader(req: CTraderConnectRequest):

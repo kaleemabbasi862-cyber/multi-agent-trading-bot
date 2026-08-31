@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TradeTalk AI - Autonomous Live cTrader & MT5 Trading System</title>
+    <title>TradeTalk AI - Autonomous Live cTrader Trading System</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -116,19 +116,19 @@
                     <span class="font-black text-xl tracking-tight text-white">TradeTalk<span class="text-indigo-400">.AI</span></span>
                     <span class="px-2 py-0.5 text-[10px] font-black bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full flex items-center space-x-1">
                         <i class="fa-solid fa-bolt text-[9px]"></i>
-                        <span>cTrader & MT5 LIVE</span>
+                        <span>cTrader Open API Live</span>
                     </span>
                 </div>
-                <p class="text-xs text-slate-400 font-medium">Real-Time Market Scanner & cTrader Open API Execution Engine</p>
+                <p class="text-xs text-slate-400 font-medium">Real-Time Multi-Agent Consensus & cTrader Account #1005621</p>
             </div>
         </div>
 
         <!-- RIGHT CONTROLS -->
         <div class="flex items-center space-x-2.5">
             <!-- cTRADER / BROKER SETTINGS MODAL TRIGGER -->
-            <button @click="showBrokerModal = true" class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition shadow-sm bg-indigo-600/15 border-indigo-500/40 text-indigo-300 hover:bg-indigo-600/25">
-                <i class="fa-solid fa-network-wired text-indigo-400"></i>
-                <span x-text="'cTrader: #' + (ctraderStatus.account_id || '1005621')"></span>
+            <button @click="showBrokerModal = true" class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition shadow-sm bg-emerald-600/15 border-emerald-500/40 text-emerald-300 hover:bg-emerald-600/25">
+                <span class="w-2 h-2 rounded-full bg-emerald-400 pulse-live mr-0.5"></span>
+                <span x-text="'cTrader: #' + (ctraderStatus.account_id || '1005621') + ' (' + (ctraderStatus.environment || 'Live') + ')'"></span>
             </button>
 
             <!-- AUTO TRADE TOGGLE -->
@@ -159,9 +159,9 @@
         <div class="grid grid-cols-2 md:grid-cols-5 gap-3.5">
             <!-- ACCOUNT BALANCE -->
             <div class="bg-dark-card border border-dark-border rounded-2xl p-4 shadow-sm">
-                <p class="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">cTrader Account Balance</p>
+                <p class="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">cTrader Live Balance</p>
                 <h3 class="text-xl font-black text-white mt-1 font-mono" x-text="'$' + formatMoney(ctraderStatus.balance || 10000)">$10,000.00</h3>
-                <span class="text-[10px] text-emerald-400 font-semibold flex items-center mt-0.5" x-text="'🟢 cTrader Open API #' + (ctraderStatus.account_id || '1005621')"></span>
+                <span class="text-[10px] text-emerald-400 font-semibold flex items-center mt-0.5" x-text="'🟢 Account #' + (ctraderStatus.account_id || '1005621') + ' (' + (ctraderStatus.environment || 'Live') + ')'"></span>
             </div>
 
             <!-- TOTAL SIGNALS -->
@@ -462,7 +462,7 @@
             <div class="flex items-center justify-between border-b border-dark-border pb-3">
                 <div class="flex items-center space-x-2">
                     <i class="fa-solid fa-network-wired text-indigo-400"></i>
-                    <h3 class="font-bold text-white text-sm">cTrader Open API Broker Settings</h3>
+                    <h3 class="font-bold text-white text-sm">cTrader Open API Configuration</h3>
                 </div>
                 <button @click="showBrokerModal = false" class="text-slate-400 hover:text-white">
                     <i class="fa-solid fa-xmark"></i>
@@ -477,12 +477,12 @@
                           x-text="'🟢 cTrader ' + (ctraderStatus.environment || 'Live') + ' Active'"></span>
                 </div>
                 <div class="flex items-center justify-between">
-                    <span class="text-slate-400">cTrader Account ID:</span>
-                    <span class="font-bold text-white font-mono" x-text="ctraderStatus.account_id || '1005621'"></span>
+                    <span class="text-slate-400">Account ID:</span>
+                    <span class="font-bold text-white font-mono" x-text="'#' + (ctraderStatus.account_id || '1005621')"></span>
                 </div>
                 <div class="flex items-center justify-between">
-                    <span class="text-slate-400">Protocol / Engine:</span>
-                    <span class="font-bold text-slate-200">Spotware Open API (REST / ProtoOA)</span>
+                    <span class="text-slate-400">Registered Client ID:</span>
+                    <span class="font-mono text-slate-300 text-[11px] truncate max-w-[200px]" x-text="ctraderStatus.client_id || '38205_uwQq76F...'"></span>
                 </div>
                 <div class="flex items-center justify-between">
                     <span class="text-slate-400">Balance:</span>
@@ -490,15 +490,24 @@
                 </div>
             </div>
 
+            <!-- SPOTWARE 1-CLICK OAUTH BUTTON -->
+            <div class="bg-indigo-600/10 border border-indigo-500/20 rounded-xl p-3 text-center space-y-2">
+                <p class="text-[11px] text-slate-300">Authorize TradeTalk directly with your Spotware cTrader ID:</p>
+                <button type="button" @click="launchOAuth()" class="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold py-2 px-3 rounded-lg text-xs transition flex items-center justify-center space-x-2 shadow-md">
+                    <i class="fa-solid fa-key"></i>
+                    <span>Log in with Spotware cTrader ID (OAuth)</span>
+                </button>
+            </div>
+
             <!-- cTRADER CONFIG FORM -->
-            <form @submit.prevent="connectCTraderAccount()" class="space-y-3 text-xs">
+            <form @submit.prevent="connectCTraderAccount()" class="space-y-3 text-xs pt-1 border-t border-dark-border">
                 <div>
-                    <label class="block text-slate-400 font-semibold mb-1">cTrader Account ID</label>
+                    <label class="block text-slate-400 font-semibold mb-1">Target Account ID</label>
                     <input type="text" x-model="ctraderForm.account_id" required class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 font-mono font-bold">
                 </div>
                 <div>
-                    <label class="block text-slate-400 font-semibold mb-1">cTrader Access Token (from openapi.ctrader.com)</label>
-                    <input type="password" x-model="ctraderForm.access_token" placeholder="Optional: Spotware OAuth Access Token" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 font-mono">
+                    <label class="block text-slate-400 font-semibold mb-1">Custom Access Token (Optional)</label>
+                    <input type="password" x-model="ctraderForm.access_token" placeholder="Paste token if generated externally" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 font-mono">
                 </div>
                 <div>
                     <label class="block text-slate-400 font-semibold mb-1">Environment</label>
@@ -510,11 +519,11 @@
 
                 <div class="pt-2 flex justify-end space-x-2">
                     <button type="button" @click="showBrokerModal = false" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold">
-                        Cancel
+                        Close
                     </button>
                     <button type="submit" :disabled="ctraderConnecting" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition disabled:opacity-50 flex items-center space-x-1.5">
-                        <i class="fa-solid fa-link" :class="ctraderConnecting ? 'fa-spin' : ''"></i>
-                        <span x-text="ctraderConnecting ? 'Linking...' : 'Save & Link Account'"></span>
+                        <i class="fa-solid fa-save" :class="ctraderConnecting ? 'fa-spin' : ''"></i>
+                        <span x-text="ctraderConnecting ? 'Saving...' : 'Save Settings'"></span>
                     </button>
                 </div>
             </form>
@@ -564,7 +573,7 @@
 
     <!-- FOOTER -->
     <footer class="border-t border-dark-border py-4 px-8 text-center text-xs text-slate-500">
-        TradeTalk AI &copy; 2026 ・ Autonomous Multi-Agent Forex Trading System ・ cTrader Open API Engine
+        TradeTalk AI &copy; 2026 ・ Autonomous Multi-Agent Forex Trading System ・ Spotware cTrader Open API
     </footer>
 
     <!-- APP JAVASCRIPT LOGIC -->
@@ -584,7 +593,7 @@
                 signals: [],
                 marketPrices: {},
                 priceFlashes: {},
-                ctraderStatus: { mode: 'LIVE_OPEN_API', is_connected: true, balance: 10000.0, account_id: '1005621', environment: 'Live' },
+                ctraderStatus: { mode: 'LIVE_OPEN_API', is_connected: true, balance: 10000.0, account_id: '1005621', environment: 'Live', client_id: '38205_uwQq76F...' },
                 systemState: { auto_trade_enabled: true, paper_balance: 10000.0, total_scans: 0 },
                 stats: { total: 0, approved: 0, rejected: 0, approval_rate: 0 },
                 ctraderForm: {
@@ -606,6 +615,13 @@
                     this.fetchLivePrices();
                     this.fetchSignals();
                     this.fetchCTraderStatus();
+
+                    // Check for OAuth link success in URL
+                    const urlParams = new URLSearchParams(window.location.search);
+                    if (urlParams.get('ctrader_linked') === 'true') {
+                        alert('cTrader Account #1005621 successfully linked via Spotware OAuth!');
+                        window.history.replaceState({}, document.title, window.location.pathname);
+                    }
 
                     // Real-Time Live Prices polling every 3 seconds
                     setInterval(() => {
@@ -671,9 +687,24 @@
                         if (res.ok) {
                             this.ctraderStatus = await res.json();
                             this.ctraderForm.account_id = this.ctraderStatus.account_id || '1005621';
+                            this.ctraderForm.environment = this.ctraderStatus.environment || 'Live';
                         }
                     } catch (err) {
                         console.error('Error fetching cTrader status:', err);
+                    }
+                },
+
+                async launchOAuth() {
+                    try {
+                        const res = await fetch('/api/ctrader/auth-url');
+                        if (res.ok) {
+                            const data = await res.json();
+                            if (data.auth_url) {
+                                window.location.href = data.auth_url;
+                            }
+                        }
+                    } catch (err) {
+                        alert('OAuth error: ' + err);
                     }
                 },
 
@@ -692,11 +723,11 @@
                         });
                         if (res.ok) {
                             this.ctraderStatus = await res.json();
-                            alert(`cTrader Account Linked: #${this.ctraderStatus.account_id} (${this.ctraderStatus.environment})`);
+                            alert(`cTrader Settings Saved for Account #${this.ctraderStatus.account_id} (${this.ctraderStatus.environment})`);
                             this.showBrokerModal = false;
                         }
                     } catch (err) {
-                        alert('Connection error: ' + err);
+                        alert('Save error: ' + err);
                     } finally {
                         this.ctraderConnecting = false;
                     }

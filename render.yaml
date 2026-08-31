@@ -10,3 +10,11 @@ services:
         sync: false
       - key: GROQ_API_KEY
         sync: false
+      - key: CTRADER_CLIENT_ID
+        value: "38205_uwQq76FzYirpd9qMjjrPqcO7VcT1CqFHkDx8GXwzMBxratuPNT"
+      - key: CTRADER_CLIENT_SECRET
+        value: "al5kdBjwDuPX6CCgrJ0o3AholHFhCGAPuN2lj75UUV3NxEHFTm"
+      - key: CTRADER_ACCOUNT_ID
+        value: "1005621"
+      - key: CTRADER_ENVIRONMENT
+        value: "live"
