@@ -14,6 +14,7 @@ from langchain_core.prompts import ChatPromptTemplate
 import uvicorn
 import market_feed
 import mt5_executor
+import ctrader_executor
 
 if sys.platform == "win32":
     try:
@@ -100,10 +101,11 @@ class TradingViewSignal(BaseModel):
     strategy_name: str       # e.g., "Trend_Crossover_v1"
 
 # -------------------------------------------------------------
-# 4. ایگزیکیوشن انجن (MetaTrader 5 & Paper Execution Engine)
+# 4. ایگزیکیوشن انجن (cTrader Open API & MT5 Execution Engine)
 # -------------------------------------------------------------
 def execute_order(symbol: str, action: str, lot_size: float, sl: float, tp: float, fill_price: float):
-    res = mt5_executor.execute_trade(
+    # Primary: cTrader Open API Live Order Execution (Account #1005621)
+    res = ctrader_executor.execute_ctrader_trade(
         symbol=symbol,
         action=action,
         lot_size=lot_size,
@@ -330,6 +332,28 @@ class MT5ConnectRequest(BaseModel):
     password: str
     server: str
     path: str = None
+
+class CTraderConnectRequest(BaseModel):
+    account_id: str = "1005621"
+    access_token: str = None
+    client_id: str = None
+    client_secret: str = None
+    environment: str = "Live"
+
+@app.get("/api/ctrader/status")
+def get_ctrader_status():
+    return ctrader_executor.get_ctrader_status()
+
+@app.post("/api/ctrader/connect")
+def connect_ctrader(req: CTraderConnectRequest):
+    res = ctrader_executor.init_ctrader_connection(
+        account_id=req.account_id,
+        access_token=req.access_token,
+        client_id=req.client_id,
+        client_secret=req.client_secret,
+        environment=req.environment
+    )
+    return res
 
 @app.get("/api/mt5/status")
 def get_mt5_status():
