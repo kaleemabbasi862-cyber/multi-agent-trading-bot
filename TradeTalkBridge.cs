@@ -23,14 +23,7 @@ namespace cAlgo.Robots
         [Parameter("Enable Auto Execution", DefaultValue = true)]
         public bool EnableAutoExecution { get; set; }
 
-        [Parameter("Enable AI Break-Even Protection", DefaultValue = false)]
-        public bool EnableBreakEven { get; set; }
-
-        [Parameter("Enable Smart Trailing Stop", DefaultValue = false)]
-        public bool EnableTrailingStop { get; set; }
-
         private static readonly HttpClient httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
-        private readonly HashSet<long> _ignoredPositions = new HashSet<long>();
 
         protected override void OnStart()
         {
@@ -70,7 +63,7 @@ namespace cAlgo.Robots
                 // 1. Send live telemetry (Balance, Equity, Live Prices, Open Positions)
                 SendTelemetry();
 
-                // 2. Poll & Execute pending approved orders / AI management commands
+                // 2. Poll & Execute pending approved orders
                 if (EnableAutoExecution)
                 {
                     PollOrders();
@@ -163,10 +156,9 @@ namespace cAlgo.Robots
                     {
                         if (jsonResponse.Contains("\"action\":\"CLOSE\""))
                         {
-                            // Process manual close command from dashboard
                             ProcessCloseCommand(jsonResponse);
                         }
-                        else if (jsonResponse.Contains("symbol"))
+                        else if (jsonResponse.Contains("symbol") && jsonResponse.Contains("action"))
                         {
                             ProcessOrders(jsonResponse);
                         }
@@ -208,9 +200,9 @@ namespace cAlgo.Robots
         {
             try
             {
-                Print("[TradeTalk Signal Received]: " + json);
+                Print("[TradeTalk Signal Received from Cloud]: " + json);
 
-                string symbol = ExtractJsonValue(json, "symbol");
+                string symbolStr = ExtractJsonValue(json, "symbol");
                 string action = ExtractJsonValue(json, "action").ToUpperInvariant();
                 string signalId = ExtractJsonValue(json, "id");
 
@@ -224,9 +216,16 @@ namespace cAlgo.Robots
                 double tp = 0;
                 double.TryParse(ExtractJsonValue(json, "tp"), NumberStyles.Any, CultureInfo.InvariantCulture, out tp);
 
-                Symbol targetSymbol = Symbols.GetSymbol(symbol) ?? Symbols.GetSymbol(symbol + "m") ?? Symbol;
+                Symbol targetSymbol = ResolveBrokerSymbol(symbolStr);
+                if (targetSymbol == null)
+                {
+                    Print("❌ Error: Could not find broker symbol for " + symbolStr);
+                    return;
+                }
+
                 TradeType tradeType = (action == "BUY") ? TradeType.Buy : TradeType.Sell;
 
+                // Normalize volume in units according to asset type
                 double volumeInUnits = targetSymbol.NormalizeVolumeInUnits(lotSize * 100000);
                 if (targetSymbol.Name.Contains("XAU") || targetSymbol.Name.Contains("GOLD"))
                 {
@@ -237,11 +236,13 @@ namespace cAlgo.Robots
                     volumeInUnits = targetSymbol.NormalizeVolumeInUnits(lotSize * 1000);
                 }
 
+                Print(string.Format("🚀 Executing {0} {1} ({2} Units) on cTrader Account #{3}...", action, targetSymbol.Name, volumeInUnits, Account.Number));
+
                 TradeResult result = ExecuteMarketOrder(tradeType, targetSymbol.Name, volumeInUnits, "TradeTalk.AI");
                 if (result.IsSuccessful && result.Position != null)
                 {
                     Position pos = result.Position;
-                    Print("🟢 cTrader Order Executed! Position ID: " + pos.Id + " @ " + pos.EntryPrice);
+                    Print(string.Format("🟢 cTrader Order FILLED! Position ID: {0} | Entry: {1}", pos.Id, pos.EntryPrice));
 
                     if (sl > 0 || tp > 0)
                     {
@@ -252,11 +253,29 @@ namespace cAlgo.Robots
 
                     ReportOrderFilled(signalId, pos.Id, pos.EntryPrice, targetSymbol.Name, action);
                 }
+                else
+                {
+                    Print("🔴 cTrader Execution Failed: " + result.Error);
+                }
             }
             catch (Exception ex)
             {
                 Print("Execution Error: " + ex.Message);
             }
+        }
+
+        private Symbol ResolveBrokerSymbol(string symbolStr)
+        {
+            if (string.IsNullOrEmpty(symbolStr)) return Symbol;
+            string clean = symbolStr.Replace("m", "").Replace(".pro", "").Replace("_i", "").Replace("/", "").ToUpperInvariant();
+
+            return Symbols.GetSymbol(symbolStr)
+                ?? Symbols.GetSymbol(clean)
+                ?? Symbols.GetSymbol(clean + "m")
+                ?? Symbols.GetSymbol(clean + ".pro")
+                ?? Symbols.GetSymbol(clean + "_i")
+                ?? Symbols.GetSymbol(clean + "micro")
+                ?? Symbol;
         }
 
         private async void ReportOrderFilled(string signalId, long positionId, double fillPrice, string symbol, string action)
