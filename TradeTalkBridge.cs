@@ -75,13 +75,13 @@ namespace cAlgo.Robots
         {
             try
             {
-                string endpoint = ServerUrl.TrimEnd('/') + "/api/cbot/heartbeat";
+                string endpoint = ServerUrl.TrimEnd('/') + "/api/cbot/stream";
                 string currencyName = Account.Asset != null ? Account.Asset.Name : (Account.CurrencyName ?? "USD");
                 string broker = Account.BrokerName ?? "cTrader Live";
 
                 string jsonPayload = string.Format(
                     CultureInfo.InvariantCulture,
-                    "{{\"account_id\":\"{0}\",\"balance\":{1},\"equity\":{2},\"margin\":{3},\"free_margin\":{4},\"currency\":\"{5}\",\"broker\":\"{6}\"}}",
+                    "{{\"account_id\":\"{0}\",\"accountNumber\":\"{0}\",\"balance\":{1},\"equity\":{2},\"margin\":{3},\"free_margin\":{4},\"currency\":\"{5}\",\"broker\":\"{6}\"}}",
                     Account.Number,
                     Account.Balance,
                     Account.Equity,

@@ -761,15 +761,19 @@ namespace cAlgo.Robots
                     this.fetchSignals();
                     this.fetchCBotStatus();
 
-                    // Real-Time Live Prices polling every 3 seconds
+                    // Real-Time Live Prices polling every 2.5 seconds
                     setInterval(() => {
                         this.fetchLivePrices();
-                    }, 3000);
+                    }, 2500);
+
+                    // cBot Telemetry and Account Status fast polling every 1.5 seconds
+                    setInterval(() => {
+                        this.fetchCBotStatus();
+                    }, 1500);
 
                     // Signals & State polling every 3 seconds
                     setInterval(() => {
                         this.fetchSignals(true);
-                        this.fetchCBotStatus();
                     }, 3000);
                 },
 
@@ -822,9 +826,10 @@ namespace cAlgo.Robots
 
                 async fetchCBotStatus() {
                     try {
-                        const res = await fetch('/api/cbot/status');
+                        const res = await fetch('/api/account/status');
                         if (res.ok) {
-                            this.cbotStatus = await res.json();
+                            const data = await res.json();
+                            this.cbotStatus = data;
                         }
                     } catch (err) {
                         console.error('Error fetching cBot status:', err);

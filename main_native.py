@@ -54,6 +54,16 @@ def get_llm():
 
 app = FastAPI(title="TradeTalk AI - Autonomous Multi-Agent Trading System")
 
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # -------------------------------------------------------------
 # 2. سسٹم اسٹیٹ اور سگنل ہسٹری (State & History Store)
 # -------------------------------------------------------------
@@ -402,19 +412,20 @@ def connect_ctrader(req: CTraderConnectRequest):
 # -------------------------------------------------------------
 # cTrader cBot Webhook Bridge Endpoints (Instant Setup, No KYC)
 # -------------------------------------------------------------
-class CBotHeartbeatRequest(BaseModel):
-    account_id: str
-    balance: float
-    equity: float
-    margin: float = 0.0
-    free_margin: float = 0.0
-    currency: str = "USD"
-    broker: str = "cTrader Live"
-    open_positions: list = []
-
 @app.post("/api/cbot/heartbeat")
-def cbot_heartbeat(data: CBotHeartbeatRequest):
-    return cbot_bridge.update_heartbeat(data.dict())
+@app.post("/api/cbot/stream")
+async def cbot_heartbeat_stream(request: Request):
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+    return cbot_bridge.update_heartbeat(data)
+
+@app.get("/api/cbot/stream")
+@app.get("/api/account/status")
+@app.get("/api/cbot/status")
+def get_cbot_account_status():
+    return cbot_bridge.get_cbot_status()
 
 @app.get("/api/cbot/orders")
 def get_cbot_orders():
@@ -423,10 +434,6 @@ def get_cbot_orders():
 @app.post("/api/cbot/order-filled")
 def cbot_order_filled(receipt: dict):
     return cbot_bridge.record_cbot_execution(receipt)
-
-@app.get("/api/cbot/status")
-def get_cbot_status():
-    return cbot_bridge.get_cbot_status()
 
 @app.get("/api/cbot/download")
 def download_cbot_file():
