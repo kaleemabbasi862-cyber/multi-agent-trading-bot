@@ -80,6 +80,21 @@ async def run_forex_agents(signal: TradingViewSignal) -> str:
         ("human", "سگنل کی جانچ کریں: Pair: {symbol}, Action: {action}, Entry: {entry}, SL: {sl}, TP: {tp}, TF: {tf}, Strategy: {strategy}")
     ])
     tech_chain = tech_prompt | llm
+
+    # ایجنٹ 2: فنڈامنٹل اور نیوز اینالسٹ
+    news_prompt = ChatPromptTemplate.from_messages([
+        ("system", "آپ فاریکس فنڈامنٹل اینالسٹ ہیں۔ آپ مائیکرو فنڈامنٹل صورتحال اور نیوز رسک اسٹیٹس (LOW / MEDIUM / HIGH) کی جانچ کرتے ہیں۔"),
+        ("human", "کرنسی پیئر {symbol} کے لیے نیوز رسک کا جائزہ لیں اور کلیئرنس رپورٹ دیں۔")
+    ])
+    news_chain = news_prompt | llm
+
+    # ایجنٹ 3: رسک مینیجر
+    risk_prompt = ChatPromptTemplate.from_messages([
+        ("system", "آپ فاریکس رسک اینڈ منی مینیجر ہیں۔ اکاؤنٹ بیلنس $10,000 فرض کرتے ہوئے 1 فیصد رسک پر لاٹ سائز اور Risk-to-Reward تناسب کا تعین کریں۔"),
+        ("human", "Entry: {entry}, SL: {sl}, Pair: {symbol} کے لیے لاٹ سائز اور R:R نکالیں۔")
+    ])
+    risk_chain = risk_prompt | llm
+
     # 1, 2 اور 3 ایجنٹس کو متوازی (Parallel) چلائیں تاکہ رسپانس تیز ترین ہو
     async def get_tech():
         raw = (await tech_chain.ainvoke({
