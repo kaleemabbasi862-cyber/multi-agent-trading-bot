@@ -44,16 +44,13 @@ namespace cAlgo.Robots
             }
 
             Print("=================================================");
-            Print("TradeTalk.AI Autonomous cBot Execution Engine Started");
+            Print("TradeTalk.AI Autonomous Protected Bridge Started");
             Print("Account Number: " + Account.Number);
             Print("Live Balance: " + Account.Balance + " " + assetName);
             Print("Target Server: " + ServerUrl);
             Print("=================================================");
 
-            // Send initial registration & telemetry
             SendTelemetry();
-
-            // Continuous background timer
             Timer.Start(SyncInterval);
         }
 
@@ -61,10 +58,7 @@ namespace cAlgo.Robots
         {
             try
             {
-                // 1. Send live telemetry (Balance, Equity, Live Prices, Open Positions)
                 SendTelemetry();
-
-                // 2. Poll & Execute pending approved orders
                 if (EnableAutoExecution)
                 {
                     PollOrders();
@@ -118,7 +112,6 @@ namespace cAlgo.Robots
                 }
                 positionsJson.Append("]");
 
-                // Ensure culture-invariant float format
                 string jsonPayload = string.Format(
                     CultureInfo.InvariantCulture,
                     "{{\"account_id\":\"{0}\",\"accountNumber\":\"{0}\",\"balance\":{1},\"equity\":{2},\"margin\":{3},\"freeMargin\":{4},\"currency\":\"{5}\",\"broker\":\"{6}\",\"symbol\":\"{7}\",\"bid\":{8},\"ask\":{9},\"live_price\":{8},\"open_positions\":{10}}}",
@@ -138,7 +131,6 @@ namespace cAlgo.Robots
                 var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
                 var res = await httpClient.PostAsync(url, content);
                 
-                // Zero-Latency Execution: If stream response returned pending approved order, dispatch on Main Thread!
                 if (res.IsSuccessStatusCode && EnableAutoExecution)
                 {
                     string replyJson = await res.Content.ReadAsStringAsync();
@@ -224,13 +216,10 @@ namespace cAlgo.Robots
                     return;
                 }
 
-                // Prevent duplicate fills of the same ticket
                 if (!string.IsNullOrEmpty(signalId) && _executedTickets.Contains(signalId))
                 {
                     return;
                 }
-
-                Print(string.Format("📥 [TradeTalk Signal Received on MainThread]: {0} {1} (Ticket: {2})", action, symbolStr, signalId));
 
                 double lotSize = 0.01;
                 double.TryParse(ExtractJsonValue(json, "lots"), NumberStyles.Any, CultureInfo.InvariantCulture, out lotSize);
@@ -252,7 +241,6 @@ namespace cAlgo.Robots
 
                 TradeType tradeType = (action == "BUY") ? TradeType.Buy : TradeType.Sell;
 
-                // Normalize volume in units according to asset type
                 double volumeInUnits = targetSymbol.NormalizeVolumeInUnits(lotSize * 100000);
                 if (targetSymbol.Name.Contains("XAU") || targetSymbol.Name.Contains("GOLD"))
                 {
@@ -263,21 +251,40 @@ namespace cAlgo.Robots
                     volumeInUnits = targetSymbol.NormalizeVolumeInUnits(lotSize * 1000);
                 }
 
-                Print(string.Format("🚀 [MainThread Execution] Sending {0} {1} ({2} Units) to Broker...", action, targetSymbol.Name, volumeInUnits));
+                // Calculate exact Stop Loss and Take Profit in Pips to embed in initial execution
+                double? slPips = null;
+                double? tpPips = null;
 
-                TradeResult result = ExecuteMarketOrder(tradeType, targetSymbol.Name, volumeInUnits, "TradeTalk.AI");
+                double currentRefPrice = (tradeType == TradeType.Buy) ? targetSymbol.Ask : targetSymbol.Bid;
+                if (sl > 0 && targetSymbol.PipSize > 0)
+                {
+                    double diff = Math.Abs(currentRefPrice - sl);
+                    double calculatedPips = diff / targetSymbol.PipSize;
+                    if (calculatedPips >= 5) slPips = Math.Round(calculatedPips, 1);
+                }
+
+                if (tp > 0 && targetSymbol.PipSize > 0)
+                {
+                    double diff = Math.Abs(tp - currentRefPrice);
+                    double calculatedPips = diff / targetSymbol.PipSize;
+                    if (calculatedPips >= 10) tpPips = Math.Round(calculatedPips, 1);
+                }
+
+                Print(string.Format("🚀 [Protected Order Execution] Sending {0} {1} ({2} Units | SL_Pips: {3} | TP_Pips: {4})...", action, targetSymbol.Name, volumeInUnits, slPips, tpPips));
+
+                // Execute with embedded SL and TP in the initial order request
+                TradeResult result = ExecuteMarketOrder(tradeType, targetSymbol.Name, volumeInUnits, "TradeTalk.AI", slPips, tpPips);
                 if (result.IsSuccessful && result.Position != null)
                 {
                     Position pos = result.Position;
                     if (!string.IsNullOrEmpty(signalId)) _executedTickets.Add(signalId);
 
-                    Print(string.Format("🟢 cTrader Order FILLED! Position ID: #{0} | Entry: {1}", pos.Id, pos.EntryPrice));
+                    Print(string.Format("🟢 cTrader Order FILLED! Position ID: #{0} | Entry: {1} | SL: {2} | TP: {3}", pos.Id, pos.EntryPrice, pos.StopLoss, pos.TakeProfit));
 
-                    if (sl > 0 || tp > 0)
+                    // Backup secondary modify if needed
+                    if (pos.StopLoss == null && sl > 0)
                     {
-                        double? slPrice = sl > 0 ? (double?)sl : null;
-                        double? tpPrice = tp > 0 ? (double?)tp : null;
-                        ModifyPosition(pos, slPrice, tpPrice, ProtectionType.Absolute);
+                        try { ModifyPosition(pos, sl, tp, ProtectionType.Absolute); } catch { }
                     }
 
                     ReportOrderFilled(signalId, pos.Id, pos.EntryPrice, targetSymbol.Name, action);
