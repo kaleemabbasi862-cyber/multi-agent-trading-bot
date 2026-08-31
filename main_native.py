@@ -135,28 +135,38 @@ async def run_forex_agents(signal: TradingViewSignal) -> str:
 # -------------------------------------------------------------
 # 4. ویب ہک اینڈ پوائنٹ
 # -------------------------------------------------------------
+import traceback
+
 @app.post("/webhook/tradingview")
 async def receive_tradingview_alert(signal: TradingViewSignal):
     print(f"\n--- TradingView سے نیا سگنل موصول ہوا: {signal.symbol} ({signal.action}) ---")
-    
-    result = await run_forex_agents(signal)
-    
-    # ہیومن الرٹ
-    summary_message = f"🚨 **نئی فاریکس ٹریڈ سمری:**\n\n{result}"
-    send_telegram_alert(summary_message)
+    try:
+        result = await run_forex_agents(signal)
+        
+        # ہیومن الرٹ
+        summary_message = f"🚨 **نئی فاریکس ٹریڈ سمری:**\n\n{result}"
+        send_telegram_alert(summary_message)
 
-    # اگر مینیجر نے منظوری دی ہو تو cTrader پر ٹریڈ بھیجیں
-    if "APPROVED" in str(result):
-        c_trade_result = execute_ctrader_order(
-            symbol=signal.symbol,
-            action=signal.action,
-            lot_size=0.10,
-            sl=signal.stop_loss,
-            tp=signal.take_profit
-        )
-        return {"status": "Trade Executed", "analysis": result, "ctrader": c_trade_result}
-    
-    return {"status": "Trade Rejected by Agents", "analysis": result}
+        # اگر مینیجر نے منظوری دی ہو تو cTrader پر ٹریڈ بھیجیں
+        if "APPROVED" in str(result):
+            c_trade_result = execute_ctrader_order(
+                symbol=signal.symbol,
+                action=signal.action,
+                lot_size=0.10,
+                sl=signal.stop_loss,
+                tp=signal.take_profit
+            )
+            return {"status": "Trade Executed", "analysis": result, "ctrader": c_trade_result}
+        
+        return {"status": "Trade Rejected by Agents", "analysis": result}
+    except Exception as e:
+        tb = traceback.format_exc()
+        print("ERROR processing alert:\n", tb)
+        return {
+            "status": "Error",
+            "error_message": str(e),
+            "traceback": tb
+        }
 
 @app.get("/")
 @app.get("/health")
