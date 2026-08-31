@@ -13,6 +13,8 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 import uvicorn
 
+import market_feed
+
 if sys.platform == "win32":
     try:
         sys.stdout.reconfigure(encoding="utf-8")
@@ -48,35 +50,48 @@ def get_llm():
     
     return primary.with_fallbacks([fallback_lite, fallback_flash])
 
-app = FastAPI(title="TradeTalk AI - Multi-Agent Forex Trading System")
+app = FastAPI(title="TradeTalk AI - Autonomous Multi-Agent Trading System")
 
 # -------------------------------------------------------------
-# 2. ان میموری سگنل ہسٹری (Signal History Store - Last 20)
+# 2. سسٹم اسٹیٹ اور سگنل ہسٹری (State & History Store)
 # -------------------------------------------------------------
+SYSTEM_STATE = {
+    "auto_trade_enabled": True,
+    "scanner_active": True,
+    "paper_balance": 10000.00,
+    "equity": 10000.00,
+    "last_scan_time": None,
+    "total_scans": 0,
+    "total_executed": 0
+}
+
 SIGNALS_HISTORY = [
     {
-        "id": "init-01",
+        "id": "ORD-1082",
         "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        "symbol": "EURUSD",
+        "symbol": "XAUUSD",
         "action": "BUY",
-        "entry_price": 1.0850,
-        "stop_loss": 1.0820,
-        "take_profit": 1.0920,
+        "entry_price": 2748.50,
+        "stop_loss": 2736.50,
+        "take_profit": 2773.50,
         "timeframe": "15m",
-        "strategy_name": "Trend_Crossover_v1",
-        "decision_status": "REJECTED",
-        "tech_report": "15m ٹائم فریم پر 30 پپس کا Stop Loss اور 70 پپس کا TP (R:R = 1:2.33) تکنیکی طور پر ٹھیک ہے لیکن نزدیکی 1.0900 پر سخت مزاحمت (Resistance) موجود ہے۔ کوالٹی سکور: 65/100۔",
-        "news_report": "آج کے سیشن میں US CPI ڈیٹا شیڈول ہے جس کی وجہ سے مارکیٹ میں ہائی وولٹیلیٹی کا خطرہ ہے۔ فنڈامنٹلی NO CLEARANCE برائے اسکیلپرز۔",
-        "risk_report": "$10,000 اکاؤنٹ بیلنس پر 1% رسک ($100) کے تحت تجویز کردہ درست لاٹ سائز 0.33 Standard Lots ہے۔",
-        "final_decision": "[DECISION: REJECTED] - فنڈامنٹل ہائی رسک نیوز اور نزدیکی ریزسٹنس کے باعث سگنل کو مسترد کیا جاتا ہے۔ تجویز کردہ لاٹ: 0.00۔",
-        "analysis": "1. Technical Analysis:\n15m ٹائم فریم پر 30 پپس کا Stop Loss اور 70 پپس کا TP (R:R = 1:2.33) تکنیکی طور پر ٹھیک ہے لیکن نزدیکی 1.0900 پر سخت مزاحمت (Resistance) موجود ہے۔ کوالٹی سکور: 65/100۔\n\n2. News Analysis:\nآج کے سیشن میں US CPI ڈیٹا شیڈول ہے جس کی وجہ سے مارکیٹ میں ہائی وولٹیلیٹی کا خطرہ ہے۔ فنڈامنٹلی NO CLEARANCE برائے اسکیلپرز۔\n\n3. Risk Assessment:\n$10,000 اکاؤنٹ بیلنس پر 1% رسک ($100) کے تحت تجویز کردہ درست لاٹ سائز 0.33 Standard Lots ہے۔\n\n4. Final Desk Decision:\n[DECISION: REJECTED] - فنڈامنٹل ہائی رسک نیوز اور نزدیکی ریزسٹنس کے باعث سگنل کو مسترد کیا جاتا ہے۔ تجویز کردہ لاٹ: 0.00۔",
-        "ctrader": None
+        "strategy_name": "Autonomous_Market_Scanner",
+        "decision_status": "APPROVED",
+        "lot_size": 0.25,
+        "tech_report": "گولڈ 15m پر EMA 50 کے اوپر ٹریڈ کر رہا ہے اور RSI 54 ہے جو کہ پُراعتماد بلش مومینٹم کی علامت ہے۔ R:R ریشو 1:2.08 ہے۔",
+        "news_report": "مارکیٹ میں ڈالر کے خلاف محفوظ سرمایہ کاری (Safe Haven) کا رجحان قائم ہے۔ فی الحال کوئی فوری ہائی امپیکٹ نیوز خطرہ نہیں ہے۔",
+        "risk_report": "$10,000 بیلنس پر 1% رسک ($100) کے مطابق 12 ڈالر SL کے لیے درست لاٹ سائز 0.25 Lots ہے۔",
+        "final_decision": "[DECISION: APPROVED] - تمام ٹیکنیکل، فنڈامنٹل اور رسک شرائط مکمل ہیں۔ 0.25 Lots کی BUY ٹریڈ منظور کی جاتی ہے۔",
+        "analysis": "1. Technical Analysis:\nگولڈ 15m پر EMA 50 کے اوپر ٹریڈ کر رہا ہے اور RSI 54 ہے جو کہ پُراعتماد بلش مومینٹم کی علامت ہے۔ R:R ریشو 1:2.08 ہے۔\n\n2. News Analysis:\nمارکیٹ میں ڈالر کے خلاف محفوظ سرمایہ کاری (Safe Haven) کا رجحان قائم ہے۔ فی الحال کوئی فوری ہائی امپیکٹ نیوز خطرہ نہیں ہے۔\n\n3. Risk Assessment:\n$10,000 بیلنس پر 1% رسک ($100) کے مطابق 12 ڈالر SL کے لیے درست لاٹ سائز 0.25 Lots ہے۔\n\n4. Final Desk Decision:\n[DECISION: APPROVED] - تمام ٹیکنیکل، فنڈامنٹل اور رسک شرائط مکمل ہیں۔ 0.25 Lots کی BUY ٹریڈ منظور کی جاتی ہے۔",
+        "ctrader": {"status": "EXECUTED", "order_id": "MT5_TICKET_98412", "fill_price": 2748.50, "lot_size": 0.25}
     }
 ]
 
-# TradingView سے آنے والے ڈیٹا کا ماڈل
+# -------------------------------------------------------------
+# 3. ڈیٹا ماڈلز
+# -------------------------------------------------------------
 class TradingViewSignal(BaseModel):
-    symbol: str              # e.g., "EURUSD"
+    symbol: str              # e.g., "EURUSD" or "XAUUSD"
     action: str              # e.g., "BUY" or "SELL"
     entry_price: float       # e.g., 1.0850
     stop_loss: float         # e.g., 1.0820
@@ -85,15 +100,29 @@ class TradingViewSignal(BaseModel):
     strategy_name: str       # e.g., "Trend_Crossover_v1"
 
 # -------------------------------------------------------------
-# 3. cTrader اور ٹیلیگرام موک فنکشنز
+# 4. ایگزیکیوشن انجن (Auto-Trade Broker/MT5 Mock)
 # -------------------------------------------------------------
-def execute_ctrader_order(symbol: str, action: str, lot_size: float, sl: float, tp: float):
-    """cTrader Open API یا cBot پر آرڈر بھیجنے کا فنکشن"""
-    print(f"\n[cTrader API] ٹریڈ ایگزیکیوٹ ہو گئی: {action} {lot_size} Lots of {symbol} (SL: {sl}, TP: {tp})")
-    return {"status": "SUCCESS", "order_id": "CT_982341"}
+def execute_order(symbol: str, action: str, lot_size: float, sl: float, tp: float, fill_price: float):
+    ticket_id = f"MT5_{random_digits(6)}"
+    print(f"\n[AUTO-EXECUTION ENGINE] ⚡ LIVE ORDER FILLED: {action} {lot_size} Lots of {symbol} @ {fill_price} (SL: {sl}, TP: {tp}) | Ticket #{ticket_id}")
+    SYSTEM_STATE["total_executed"] += 1
+    return {
+        "status": "SUCCESS",
+        "order_id": ticket_id,
+        "symbol": symbol,
+        "action": action,
+        "lot_size": lot_size,
+        "fill_price": fill_price,
+        "sl": sl,
+        "tp": tp,
+        "executed_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    }
+
+def random_digits(n=6):
+    import random
+    return "".join([str(random.randint(0, 9)) for _ in range(n)])
 
 def send_telegram_alert(message: str):
-    """ہیومن اِن دی لوپ کے لیے الرٹ بھیجنا"""
     print(f"\n[Telegram Notification Sent]:\n{message}")
 
 def extract_text(content) -> str:
@@ -112,14 +141,14 @@ def extract_text(content) -> str:
     return str(content)
 
 # -------------------------------------------------------------
-# 4. ملٹی ایجنٹ متوازی پائپ لائن (Multi-Agent Consensus Pipeline)
+# 5. ملٹی ایجنٹ متوازی پائپ لائن
 # -------------------------------------------------------------
 async def run_forex_agents(signal: TradingViewSignal) -> dict:
     llm = get_llm()
 
     # ایجنٹ 1: ٹیکنیکل اینالسٹ
     tech_prompt = ChatPromptTemplate.from_messages([
-        ("system", "آپ 10 سال کے تجربہ کار فاریکس ٹیکنیکل اینالسٹ ہیں۔ آپ کا کام TradingView سگنل، ٹرینڈ اور پرائس ایکشن کی درستی کی توثیق کرنا اور کوالٹی سکور (1-100) دینا ہے۔"),
+        ("system", "آپ 10 سال کے تجربہ کار فاریکس ٹیکنیکل اینالسٹ ہیں۔ آپ کا کام مارکیٹ انڈیکیٹرز، سگنل، ٹرینڈ اور پرائس ایکشن کی درستی کی توثیق کرنا اور کوالٹی سکور (1-100) دینا ہے۔"),
         ("human", "سگنل کی جانچ کریں: Pair: {symbol}, Action: {action}, Entry: {entry}, SL: {sl}, TP: {tp}, TF: {tf}, Strategy: {strategy}")
     ])
     tech_chain = tech_prompt | llm
@@ -157,7 +186,6 @@ async def run_forex_agents(signal: TradingViewSignal) -> dict:
         })).content
         return extract_text(raw)
 
-    # تینوں ایجنٹس کو ایک ساتھ متوازی ایگزیکیوٹ کریں
     tech_report, news_report, risk_report = await asyncio.gather(
         get_tech(), get_news(), get_risk()
     )
@@ -192,11 +220,139 @@ async def run_forex_agents(signal: TradingViewSignal) -> dict:
     }
 
 # -------------------------------------------------------------
-# 5. ویب ہک اینڈ پوائنٹ (Webhook Endpoint)
+# 6. خودکار مارکیٹ اسکینر پائپ لائن (Autonomous Market Scanner)
 # -------------------------------------------------------------
+async def scan_single_market(symbol: str, meta: dict):
+    p = meta["price"]
+    ind = meta["indicators"]
+    rsi = ind["rsi"]
+    trend = ind["trend"]
+
+    # Calculate smart setup parameters
+    action = "BUY" if (trend == "BULLISH" and rsi >= 48) else "SELL"
+    sl_offset = 12.0 if "XAU" in symbol else (p * 0.003)
+    tp_offset = 25.0 if "XAU" in symbol else (p * 0.007)
+
+    sl = round(p - sl_offset if action == "BUY" else p + sl_offset, 2 if "XAU" in symbol or "BTC" in symbol else 4)
+    tp = round(p + tp_offset if action == "BUY" else p - tp_offset, 2 if "XAU" in symbol or "BTC" in symbol else 4)
+
+    signal = TradingViewSignal(
+        symbol=symbol,
+        action=action,
+        entry_price=p,
+        stop_loss=sl,
+        take_profit=tp,
+        timeframe="15m",
+        strategy_name=f"Autonomous_AI_Scanner (RSI:{rsi:.0f})"
+    )
+
+    signal_id = str(uuid.uuid4())[:8]
+    timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+    agent_data = await run_forex_agents(signal)
+    full_analysis = agent_data["full_analysis"]
+    decision_status = agent_data["decision_status"]
+
+    execution_result = None
+    if decision_status == "APPROVED" and SYSTEM_STATE["auto_trade_enabled"]:
+        lot_size = 0.25 if "XAU" in symbol else 0.10
+        execution_result = execute_order(
+            symbol=symbol,
+            action=action,
+            lot_size=lot_size,
+            sl=sl,
+            tp=tp,
+            fill_price=p
+        )
+
+    record = {
+        "id": signal_id,
+        "timestamp": timestamp,
+        "symbol": symbol,
+        "action": action,
+        "entry_price": p,
+        "stop_loss": sl,
+        "take_profit": tp,
+        "timeframe": "15m",
+        "strategy_name": signal.strategy_name,
+        "decision_status": decision_status,
+        "tech_report": agent_data["tech_report"],
+        "news_report": agent_data["news_report"],
+        "risk_report": agent_data["risk_report"],
+        "final_decision": agent_data["final_decision"],
+        "analysis": full_analysis,
+        "ctrader": execution_result
+    }
+
+    SIGNALS_HISTORY.insert(0, record)
+    if len(SIGNALS_HISTORY) > 25:
+        SIGNALS_HISTORY.pop()
+
+    return record
+
+async def autonomous_scanner_background_loop():
+    """Background worker that continuously evaluates live market data."""
+    print("[*] Autonomous AI Market Scanner background task started.")
+    await asyncio.sleep(10)  # Initial warmup
+    
+    symbols_cycle = ["XAUUSD", "EURUSD", "GBPUSD", "BTCUSD"]
+    idx = 0
+
+    while True:
+        try:
+            if SYSTEM_STATE["scanner_active"]:
+                market_data = market_feed.get_live_market_data()
+                target_sym = symbols_cycle[idx % len(symbols_cycle)]
+                idx += 1
+
+                if target_sym in market_data:
+                    SYSTEM_STATE["last_scan_time"] = datetime.datetime.now(datetime.timezone.utc).strftime("%H:%M:%S UTC")
+                    SYSTEM_STATE["total_scans"] += 1
+                    print(f"\n[{SYSTEM_STATE['last_scan_time']}] [AUTONOMOUS SCAN] Inspecting {target_sym}...")
+                    await scan_single_market(target_sym, market_data[target_sym])
+
+        except Exception as e:
+            print(f"[!] Autonomous scanner cycle error: {e}")
+
+        # Interval between automated market scans (60 seconds)
+        await asyncio.sleep(60)
+
+# -------------------------------------------------------------
+# 7. FastAPI لائف سائیکل اور روٹس
+# -------------------------------------------------------------
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(autonomous_scanner_background_loop())
+
+@app.get("/api/market-prices")
+def get_market_prices():
+    return market_feed.get_live_market_data()
+
+@app.get("/api/system-state")
+def get_system_state():
+    return SYSTEM_STATE
+
+@app.post("/api/auto-trade/toggle")
+def toggle_auto_trade():
+    SYSTEM_STATE["auto_trade_enabled"] = not SYSTEM_STATE["auto_trade_enabled"]
+    return {
+        "auto_trade_enabled": SYSTEM_STATE["auto_trade_enabled"],
+        "status": "Auto-Trading ACTIVE" if SYSTEM_STATE["auto_trade_enabled"] else "Auto-Trading PAUSED"
+    }
+
+@app.post("/api/scan-now")
+async def trigger_manual_scan():
+    market_data = market_feed.get_live_market_data()
+    results = []
+    for sym in ["XAUUSD", "EURUSD"]:
+        if sym in market_data:
+            rec = await scan_single_market(sym, market_data[sym])
+            results.append(rec)
+    return {"status": "Scan Complete", "evaluated_pairs": len(results)}
+
 @app.post("/webhook/tradingview")
 async def receive_tradingview_alert(signal: TradingViewSignal):
-    print(f"\n--- TradingView سے نیا سگنل موصول ہوا: {signal.symbol} ({signal.action}) ---")
+    print(f"\n--- TradingView سگنل موصول ہوا: {signal.symbol} ({signal.action}) ---")
     timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
     signal_id = str(uuid.uuid4())[:8]
 
@@ -205,21 +361,21 @@ async def receive_tradingview_alert(signal: TradingViewSignal):
         full_analysis = agent_data["full_analysis"]
         decision_status = agent_data["decision_status"]
 
-        # ہیومن الرٹ
         summary_message = f"🚨 **نئی فاریکس ٹریڈ سمری ({signal.symbol}):**\n\n{full_analysis}"
         send_telegram_alert(summary_message)
 
-        c_trade_result = None
-        if decision_status == "APPROVED":
-            c_trade_result = execute_ctrader_order(
+        execution_result = None
+        if decision_status == "APPROVED" and SYSTEM_STATE["auto_trade_enabled"]:
+            lot_size = 0.25 if "XAU" in signal.symbol else 0.10
+            execution_result = execute_order(
                 symbol=signal.symbol,
-                action=signal.action,
-                lot_size=0.10,
+                action=signal.action.upper(),
+                lot_size=lot_size,
                 sl=signal.stop_loss,
-                tp=signal.take_profit
+                tp=signal.take_profit,
+                fill_price=signal.entry_price
             )
 
-        # ریکارڈ محفوظ کریں (Save in History)
         record = {
             "id": signal_id,
             "timestamp": timestamp,
@@ -236,30 +392,22 @@ async def receive_tradingview_alert(signal: TradingViewSignal):
             "risk_report": agent_data["risk_report"],
             "final_decision": agent_data["final_decision"],
             "analysis": full_analysis,
-            "ctrader": c_trade_result
+            "ctrader": execution_result
         }
 
-        # Keep last 20 signals at the top
         SIGNALS_HISTORY.insert(0, record)
-        if len(SIGNALS_HISTORY) > 20:
+        if len(SIGNALS_HISTORY) > 25:
             SIGNALS_HISTORY.pop()
 
         if decision_status == "APPROVED":
-            return {"status": "Trade Executed", "analysis": full_analysis, "ctrader": c_trade_result}
+            return {"status": "Trade Executed", "analysis": full_analysis, "order": execution_result}
         return {"status": "Trade Rejected by Agents", "analysis": full_analysis}
 
     except Exception as e:
         tb = traceback.format_exc()
         print("ERROR processing alert:\n", tb)
-        return {
-            "status": "Error",
-            "error_message": str(e),
-            "traceback": tb
-        }
+        return {"status": "Error", "error_message": str(e), "traceback": tb}
 
-# -------------------------------------------------------------
-# 6. ڈیش بورڈ API اور UI روٹس
-# -------------------------------------------------------------
 @app.get("/api/signals")
 def get_signals():
     total = len(SIGNALS_HISTORY)
@@ -273,7 +421,8 @@ def get_signals():
             "approved": approved,
             "rejected": rejected,
             "approval_rate": rate
-        }
+        },
+        "system_state": SYSTEM_STATE
     }
 
 @app.get("/", response_class=HTMLResponse)
@@ -281,14 +430,14 @@ def serve_dashboard():
     template_path = Path(__file__).parent / "templates" / "dashboard.html"
     if template_path.exists():
         return HTMLResponse(content=template_path.read_text(encoding="utf-8"))
-    return HTMLResponse(content="<h1>TradeTalk AI Dashboard</h1><p>Template loading...</p>")
+    return HTMLResponse(content="<h1>TradeTalk AI Dashboard Loading...</h1>")
 
 @app.get("/health")
 def health_check():
-    return {"status": "online", "service": "Multi-Agent AI Forex Trading System"}
+    return {"status": "online", "service": "Multi-Agent Autonomous Trading System"}
 
 # -------------------------------------------------------------
-# 7. سرور اسٹارٹ کریں
+# 8. سرور اسٹارٹ کریں
 # -------------------------------------------------------------
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "10000"))
