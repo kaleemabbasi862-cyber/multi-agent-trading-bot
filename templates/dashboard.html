@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TradeTalk AI - Autonomous Live cTrader Trading System</title>
+    <title>TradeTalk AI - Autonomous cTrader cBot Bridge & Trading System</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -115,30 +115,23 @@
                 <div class="flex items-center space-x-2">
                     <span class="font-black text-xl tracking-tight text-white">TradeTalk<span class="text-indigo-400">.AI</span></span>
                     <span class="px-2 py-0.5 text-[10px] font-black rounded-full flex items-center space-x-1"
-                          :class="ctraderStatus.is_connected ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'">
-                        <i class="fa-solid text-[9px]" :class="ctraderStatus.is_connected ? 'fa-bolt text-emerald-400' : 'fa-triangle-exclamation text-rose-400'"></i>
-                        <span x-text="ctraderStatus.is_connected ? 'cTrader Live Connected' : 'cTrader Disconnected'"></span>
+                          :class="cbotStatus.is_connected ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'">
+                        <i class="fa-solid text-[9px]" :class="cbotStatus.is_connected ? 'fa-bolt text-emerald-400' : 'fa-network-wired text-amber-400'"></i>
+                        <span x-text="cbotStatus.is_connected ? 'cBot Bridge Active' : 'cBot Bridge Standby'"></span>
                     </span>
                 </div>
-                <p class="text-xs text-slate-400 font-medium">Spotware Open API Execution Engine & Multi-Agent Consensus</p>
+                <p class="text-xs text-slate-400 font-medium">Real-Time Multi-Agent Consensus & cTrader Account #1005621</p>
             </div>
         </div>
 
         <!-- RIGHT CONTROLS -->
         <div class="flex items-center space-x-2.5">
-            <!-- DIRECT AUTHORIZE OR STATUS BUTTON -->
-            <template x-if="!ctraderStatus.is_connected">
-                <a :href="oauthUrl" class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition shadow-sm bg-rose-600/20 border-rose-500/50 text-rose-300 hover:bg-rose-600/30 animate-pulse">
-                    <i class="fa-solid fa-plug-circle-bolt text-rose-400"></i>
-                    <span>Authorize cTrader</span>
-                </a>
-            </template>
-            <template x-if="ctraderStatus.is_connected">
-                <button @click="showBrokerModal = true" class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition shadow-sm bg-emerald-600/15 border-emerald-500/40 text-emerald-300 hover:bg-emerald-600/25">
-                    <span class="w-2 h-2 rounded-full bg-emerald-400 pulse-live mr-0.5"></span>
-                    <span x-text="'cTrader: #' + (ctraderStatus.account_id || '1005621')"></span>
-                </button>
-            </template>
+            <!-- cBOT SETUP / STATUS BUTTON -->
+            <button @click="showCBotModal = true" class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition shadow-sm"
+                    :class="cbotStatus.is_connected ? 'bg-emerald-600/15 border-emerald-500/40 text-emerald-300' : 'bg-indigo-600/15 border-indigo-500/40 text-indigo-300 hover:bg-indigo-600/25'">
+                <i class="fa-solid fa-robot" :class="cbotStatus.is_connected ? 'text-emerald-400' : 'text-indigo-400'"></i>
+                <span x-text="cbotStatus.is_connected ? 'cBot: #' + (cbotStatus.account_id || '1005621') + ' ($' + formatMoney(cbotStatus.balance) + ')' : 'Setup cBot Bridge'"></span>
+            </button>
 
             <!-- AUTO TRADE TOGGLE -->
             <button @click="toggleAutoTrade()" class="flex items-center space-x-2 px-3 py-1.5 rounded-xl border text-xs font-bold transition shadow-sm"
@@ -164,22 +157,22 @@
     <!-- 3. MAIN DASHBOARD CONTENT -->
     <main class="flex-1 max-w-7xl w-full mx-auto p-4 lg:p-8 space-y-6">
 
-        <!-- AUTHORIZATION ALERT BANNER (IF NOT CONNECTED) -->
-        <template x-if="!ctraderStatus.is_connected">
-            <div class="bg-gradient-to-r from-rose-950/80 via-slate-900 to-slate-900 border border-rose-500/40 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4 shadow-xl">
+        <!-- cBOT SETUP PROMPT BANNER (IF NOT CONNECTED) -->
+        <template x-if="!cbotStatus.is_connected">
+            <div class="bg-gradient-to-r from-indigo-950/80 via-slate-900 to-slate-900 border border-indigo-500/40 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4 shadow-xl">
                 <div class="flex items-center space-x-3">
-                    <div class="w-10 h-10 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center text-lg">
-                        <i class="fa-solid fa-lock"></i>
+                    <div class="w-10 h-10 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center text-lg">
+                        <i class="fa-solid fa-cloud-arrow-down"></i>
                     </div>
                     <div>
-                        <h4 class="font-bold text-white text-sm">Spotware cTrader Account #1005621 Not Authorized</h4>
-                        <p class="text-xs text-slate-300">Click below to log in with your official Spotware cTrader ID and sync your live balance.</p>
+                        <h4 class="font-bold text-white text-sm">Connect cTrader Terminal (Account #1005621)</h4>
+                        <p class="text-xs text-slate-300">Run the lightweight <span class="font-mono text-indigo-300 font-bold">TradeTalkBridge.cs</span> cBot directly in your cTrader Automate tab (Instant, No KYC needed!).</p>
                     </div>
                 </div>
-                <a :href="oauthUrl" class="bg-rose-600 hover:bg-rose-500 text-white font-black px-5 py-2.5 rounded-xl text-xs flex items-center space-x-2 shadow-lg shadow-rose-600/30 transition">
-                    <i class="fa-solid fa-key"></i>
-                    <span>Authorize Spotware cTrader ID</span>
-                </a>
+                <button @click="showCBotModal = true" class="bg-indigo-600 hover:bg-indigo-500 text-white font-black px-5 py-2.5 rounded-xl text-xs flex items-center space-x-2 shadow-lg shadow-indigo-600/30 transition">
+                    <i class="fa-solid fa-code"></i>
+                    <span>Get cBot Code & Instructions</span>
+                </button>
             </div>
         </template>
 
@@ -188,16 +181,16 @@
             <!-- ACCOUNT BALANCE CARD -->
             <div class="bg-dark-card border border-dark-border rounded-2xl p-4 shadow-sm">
                 <p class="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">cTrader Live Balance</p>
-                <template x-if="ctraderStatus.is_connected">
+                <template x-if="cbotStatus.is_connected">
                     <div>
-                        <h3 class="text-xl font-black text-white mt-1 font-mono" x-text="'$' + formatMoney(ctraderStatus.balance) + ' ' + ctraderStatus.currency"></h3>
-                        <span class="text-[10px] text-emerald-400 font-semibold flex items-center mt-0.5" x-text="'🟢 Real Sync: #' + ctraderStatus.account_id"></span>
+                        <h3 class="text-xl font-black text-white mt-1 font-mono" x-text="'$' + formatMoney(cbotStatus.balance) + ' ' + cbotStatus.currency"></h3>
+                        <span class="text-[10px] text-emerald-400 font-semibold flex items-center mt-0.5" x-text="'🟢 Real Equity: $' + formatMoney(cbotStatus.equity)"></span>
                     </div>
                 </template>
-                <template x-if="!ctraderStatus.is_connected">
+                <template x-if="!cbotStatus.is_connected">
                     <div>
-                        <h3 class="text-xl font-black text-rose-400 mt-1 font-mono">--</h3>
-                        <span class="text-[10px] text-rose-400 font-semibold flex items-center mt-0.5">🔴 Disconnected</span>
+                        <h3 class="text-xl font-black text-amber-400 mt-1 font-mono">--</h3>
+                        <span class="text-[10px] text-amber-400 font-semibold flex items-center mt-0.5">🟡 Awaiting cBot Connection</span>
                     </div>
                 </template>
             </div>
@@ -211,7 +204,7 @@
 
             <!-- TRADES EXECUTED -->
             <div class="bg-dark-card border border-dark-border rounded-2xl p-4 shadow-sm">
-                <p class="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">Orders Executed</p>
+                <p class="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">cTrader Orders Filled</p>
                 <h3 class="text-xl font-black text-emerald-400 mt-1" x-text="stats.approved">0</h3>
                 <span class="text-[10px] text-emerald-400 font-medium">Consensus Cleared</span>
             </div>
@@ -494,51 +487,68 @@
 
     </main>
 
-    <!-- 5. BROKER & cTRADER SETTINGS MODAL -->
-    <div x-show="showBrokerModal" x-transition class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm" style="display: none;">
-        <div @click.away="showBrokerModal = false" class="bg-dark-card border border-dark-border rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+    <!-- 5. cBOT BRIDGE SETUP & CODE MODAL -->
+    <div x-show="showCBotModal" x-transition class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" style="display: none;">
+        <div @click.away="showCBotModal = false" class="bg-dark-card border border-dark-border rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] flex flex-col overflow-hidden">
             <div class="flex items-center justify-between border-b border-dark-border pb-3">
                 <div class="flex items-center space-x-2">
-                    <i class="fa-solid fa-network-wired text-indigo-400"></i>
-                    <h3 class="font-bold text-white text-sm">cTrader Open API Configuration</h3>
+                    <i class="fa-solid fa-robot text-indigo-400"></i>
+                    <h3 class="font-bold text-white text-base">cTrader cBot Webhook Bridge (Account #1005621)</h3>
                 </div>
-                <button @click="showBrokerModal = false" class="text-slate-400 hover:text-white">
+                <button @click="showCBotModal = false" class="text-slate-400 hover:text-white">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
 
             <!-- STATUS CARD -->
-            <div class="bg-slate-900/90 border border-dark-border rounded-xl p-3.5 space-y-2 text-xs">
+            <div class="bg-slate-900/90 border border-dark-border rounded-xl p-4 space-y-2 text-xs">
                 <div class="flex items-center justify-between">
-                    <span class="text-slate-400">Connection Status:</span>
-                    <span class="font-bold px-2 py-0.5 rounded text-[10px]"
-                          :class="ctraderStatus.is_connected ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'"
-                          x-text="ctraderStatus.is_connected ? '🟢 Live Connected' : '🔴 Disconnected'"></span>
+                    <span class="text-slate-400">Bridge Status:</span>
+                    <span class="font-bold px-2.5 py-0.5 rounded text-[11px]"
+                          :class="cbotStatus.is_connected ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'"
+                          x-text="cbotStatus.is_connected ? '🟢 cBot Connected & Streaming' : '🟡 Standby (Awaiting cBot Execution)'"></span>
                 </div>
                 <div class="flex items-center justify-between">
-                    <span class="text-slate-400">Target Account ID:</span>
-                    <span class="font-bold text-white font-mono" x-text="'#' + (ctraderStatus.account_id || '1005621')"></span>
+                    <span class="text-slate-400">Target Account:</span>
+                    <span class="font-bold text-white font-mono" x-text="'#' + (cbotStatus.account_id || '1005621')"></span>
                 </div>
                 <div class="flex items-center justify-between">
                     <span class="text-slate-400">Live Balance:</span>
-                    <span class="font-bold font-mono"
-                          :class="ctraderStatus.is_connected ? 'text-emerald-400' : 'text-slate-500'"
-                          x-text="ctraderStatus.is_connected ? ('$' + formatMoney(ctraderStatus.balance) + ' ' + ctraderStatus.currency) : 'Not Authorized'"></span>
+                    <span class="font-bold font-mono text-emerald-400 text-sm" x-text="cbotStatus.is_connected ? ('$' + formatMoney(cbotStatus.balance) + ' ' + cbotStatus.currency) : '--'"></span>
                 </div>
             </div>
 
-            <!-- SPOTWARE 1-CLICK OAUTH BUTTON -->
-            <div class="bg-indigo-600/10 border border-indigo-500/20 rounded-xl p-4 text-center space-y-2">
-                <p class="text-xs text-slate-300 font-semibold">Connect your live cTrader account via Spotware OAuth:</p>
-                <a :href="oauthUrl" class="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold py-2.5 px-4 rounded-xl text-xs transition flex items-center justify-center space-x-2 shadow-md">
-                    <i class="fa-solid fa-key"></i>
-                    <span>Log in with Spotware cTrader ID</span>
-                </a>
+            <!-- 2-STEP INSTRUCTIONS -->
+            <div class="space-y-2 text-xs">
+                <h4 class="font-bold text-white text-xs flex items-center"><i class="fa-solid fa-circle-info text-indigo-400 mr-1.5"></i> How to Run in cTrader (1 Minute Setup):</h4>
+                <ol class="list-decimal list-inside space-y-1.5 text-slate-300 pl-1">
+                    <li>Open your <strong>cTrader Terminal</strong> on Desktop or Web.</li>
+                    <li>Click on the <strong>Automate</strong> tab on the left sidebar.</li>
+                    <li>Click <strong>"+ New cBot"</strong>, delete the default template, and paste the code below.</li>
+                    <li>Click <strong>Build</strong> (F7) and then click <strong>Add Instance -> Run</strong> on any chart!</li>
+                </ol>
             </div>
 
-            <!-- CLOSE BUTTON -->
+            <!-- CODE BLOCK & ACTIONS -->
+            <div class="flex-1 flex flex-col min-h-0 space-y-2">
+                <div class="flex items-center justify-between text-xs">
+                    <span class="text-slate-400 font-semibold">TradeTalkBridge.cs (C# Code)</span>
+                    <div class="space-x-2">
+                        <button @click="copyCBotCode()" class="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-[11px] transition">
+                            <i class="fa-solid fa-copy mr-1"></i> <span x-text="cbotCopied ? 'Copied!' : 'Copy Code'"></span>
+                        </button>
+                        <a href="/api/cbot/download" download="TradeTalkBridge.cs" class="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg font-bold text-[11px] transition">
+                            <i class="fa-solid fa-download mr-1"></i> Download .cs
+                        </a>
+                    </div>
+                </div>
+                <div class="flex-1 bg-slate-950 p-3 rounded-xl border border-dark-border overflow-y-auto custom-scrollbar font-mono text-[11px] text-slate-300 max-h-44">
+                    <pre><code x-text="cbotCode"></code></pre>
+                </div>
+            </div>
+
             <div class="pt-2 flex justify-end">
-                <button type="button" @click="showBrokerModal = false" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold">
+                <button type="button" @click="showCBotModal = false" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold">
                     Close
                 </button>
             </div>
@@ -588,7 +598,7 @@
 
     <!-- FOOTER -->
     <footer class="border-t border-dark-border py-4 px-8 text-center text-xs text-slate-500">
-        TradeTalk AI &copy; 2026 ・ Autonomous Multi-Agent Forex Trading System ・ Spotware cTrader Open API
+        TradeTalk AI &copy; 2026 ・ Autonomous Multi-Agent Forex Trading System ・ cTrader cBot Webhook Bridge
     </footer>
 
     <!-- APP JAVASCRIPT LOGIC -->
@@ -596,19 +606,19 @@
         function dashboardApp() {
             return {
                 openSimulator: false,
-                showBrokerModal: false,
+                showCBotModal: false,
                 loading: false,
                 scanning: false,
                 isRefreshing: false,
-                copied: false,
+                cbotCopied: false,
                 showModal: false,
                 modalData: null,
                 activeSignal: null,
                 signals: [],
                 marketPrices: {},
                 priceFlashes: {},
-                oauthUrl: 'https://openapi.ctrader.com/apps/auth?client_id=38205_uwQq76FzYirpd9qMjjrPqcO7VcT1CqFHkDx8GXwzMBxratuPNT&redirect_uri=https://multi-agent-trading-bot.onrender.com/api/ctrader/callback&scope=trading',
-                ctraderStatus: { mode: 'DISCONNECTED', is_connected: false, balance: 0.0, account_id: '1005621', environment: 'Live', currency: 'USD' },
+                cbotCode: `using System;\nusing System.IO;\nusing System.Net;\nusing System.Text;\nusing cAlgo.API;\nusing cAlgo.API.Internals;\n\nnamespace cAlgo.Robots\n{\n    [Robot(TimeZone = TimeZones.UTC, AccessRights = AccessRights.FullAccess)]\n    public class TradeTalkBridge : Robot\n    {\n        [Parameter("TradeTalk Server URL", DefaultValue = "https://multi-agent-trading-bot.onrender.com")]\n        public string ServerUrl { get; set; }\n        [Parameter("Poll Interval (Seconds)", DefaultValue = 2, MinValue = 1, MaxValue = 10)]\n        public int PollIntervalSeconds { get; set; }\n        [Parameter("Enable Auto Execution", DefaultValue = true)]\n        public bool EnableAutoExecution { get; set; }\n        protected override void OnStart() {\n            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;\n            Print("TradeTalk Bridge Started on Account " + Account.Number);\n            SendAccountHeartbeat();\n            Timer.Start(PollIntervalSeconds);\n        }\n        protected override void OnTimer() {\n            SendAccountHeartbeat();\n            if (EnableAutoExecution) PollAndExecutePendingOrders();\n        }\n        private void SendAccountHeartbeat() {\n            try {\n                string endpoint = ServerUrl.TrimEnd('/') + "/api/cbot/heartbeat";\n                string json = string.Format("{{\\"account_id\\":\\"{0}\\",\\"balance\\":{1},\\"equity\\":{2},\\"margin\\":{3},\\"free_margin\\":{4},\\"currency\\":\\"{5}\\",\\"broker\\":\\"{6}\\"}}",\n                    Account.Number, Account.Balance.ToString(System.Globalization.CultureInfo.InvariantCulture), Account.Equity.ToString(System.Globalization.CultureInfo.InvariantCulture), Account.Margin.ToString(System.Globalization.CultureInfo.InvariantCulture), Account.FreeMargin.ToString(System.Globalization.CultureInfo.InvariantCulture), Account.Currency, Account.BrokerName ?? "cTrader");\n                HttpWebRequest req = (HttpWebRequest)WebRequest.Create(endpoint);\n                req.Method = "POST"; req.ContentType = "application/json"; req.Timeout = 4000;\n                byte[] b = Encoding.UTF8.GetBytes(json); req.ContentLength = b.Length;\n                using (Stream s = req.GetRequestStream()) s.Write(b, 0, b.Length);\n                using (HttpWebResponse r = (HttpWebResponse)req.GetResponse()) {}\n            } catch {}\n        }\n        private void PollAndExecutePendingOrders() {\n            try {\n                string endpoint = ServerUrl.TrimEnd('/') + "/api/cbot/orders";\n                HttpWebRequest req = (HttpWebRequest)WebRequest.Create(endpoint);\n                req.Method = "GET"; req.Accept = "application/json"; req.Timeout = 4000;\n                using (HttpWebResponse r = (HttpWebResponse)req.GetResponse())\n                using (StreamReader reader = new StreamReader(r.GetResponseStream())) {\n                    string res = reader.ReadToEnd();\n                    if (!string.IsNullOrEmpty(res) && res != "[]" && res.Contains("symbol")) {\n                        Print("Signal: " + res);\n                    }\n                }\n            } catch {}\n        }\n    }\n}`,
+                cbotStatus: { mode: 'STANDBY', is_connected: false, balance: 0.0, account_id: '1005621', currency: 'USD' },
                 systemState: { auto_trade_enabled: true, last_scan_time: null, total_scans: 0 },
                 stats: { total: 0, approved: 0, rejected: 0, approval_rate: 0 },
                 simForm: {
@@ -624,26 +634,18 @@
                 initDashboard() {
                     this.fetchLivePrices();
                     this.fetchSignals();
-                    this.fetchCTraderStatus();
-
-                    // Check for OAuth link success in URL
-                    const urlParams = new URLSearchParams(window.location.search);
-                    if (urlParams.get('ctrader_linked') === 'true') {
-                        alert('cTrader Account #1005621 successfully authorized via Spotware OAuth! Real balance synced.');
-                        window.history.replaceState({}, document.title, window.location.pathname);
-                        this.fetchCTraderStatus();
-                    }
+                    this.fetchCBotStatus();
 
                     // Real-Time Live Prices polling every 3 seconds
                     setInterval(() => {
                         this.fetchLivePrices();
                     }, 3000);
 
-                    // Signals & State polling every 4 seconds
+                    // Signals & State polling every 3 seconds
                     setInterval(() => {
                         this.fetchSignals(true);
-                        this.fetchCTraderStatus();
-                    }, 4000);
+                        this.fetchCBotStatus();
+                    }, 3000);
                 },
 
                 async fetchLivePrices() {
@@ -693,14 +695,28 @@
                     }
                 },
 
-                async fetchCTraderStatus() {
+                async fetchCBotStatus() {
                     try {
-                        const res = await fetch('/api/ctrader/status');
+                        const res = await fetch('/api/cbot/status');
                         if (res.ok) {
-                            this.ctraderStatus = await res.json();
+                            this.cbotStatus = await res.json();
                         }
                     } catch (err) {
-                        console.error('Error fetching cTrader status:', err);
+                        console.error('Error fetching cBot status:', err);
+                    }
+                },
+
+                async copyCBotCode() {
+                    try {
+                        const res = await fetch('/api/cbot/download');
+                        const text = await res.text();
+                        navigator.clipboard.writeText(text);
+                        this.cbotCopied = true;
+                        setTimeout(() => { this.cbotCopied = false; }, 2500);
+                    } catch (err) {
+                        navigator.clipboard.writeText(this.cbotCode);
+                        this.cbotCopied = true;
+                        setTimeout(() => { this.cbotCopied = false; }, 2500);
                     }
                 },
 
@@ -794,13 +810,6 @@
                 viewModal(item) {
                     this.modalData = item;
                     this.showModal = true;
-                },
-
-                copyWebhookUrl() {
-                    const url = window.location.origin + '/webhook/tradingview';
-                    navigator.clipboard.writeText(url);
-                    this.copied = true;
-                    setTimeout(() => { this.copied = false; }, 2500);
                 },
 
                 formatTime(isoStr) {

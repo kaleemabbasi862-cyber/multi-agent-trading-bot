@@ -15,6 +15,7 @@ import uvicorn
 import market_feed
 import mt5_executor
 import ctrader_executor
+import cbot_bridge
 
 if sys.platform == "win32":
     try:
@@ -101,10 +102,14 @@ class TradingViewSignal(BaseModel):
     strategy_name: str       # e.g., "Trend_Crossover_v1"
 
 # -------------------------------------------------------------
-# 4. ایگزیکیوشن انجن (cTrader Open API & MT5 Execution Engine)
+# 4. ایگزیکیوشن انجن (cTrader cBot Bridge & Open API Execution Engine)
 # -------------------------------------------------------------
 def execute_order(symbol: str, action: str, lot_size: float, sl: float, tp: float, fill_price: float):
-    # Primary: cTrader Open API Live Order Execution (Account #1005621)
+    # 1. Queue order for direct cBot execution in cTrader
+    sig_id = f"ORD_{random_digits(5)}"
+    cbot_bridge.queue_trade_for_cbot(symbol, action, lot_size, sl, tp, sig_id)
+
+    # 2. Execute via cTrader Open API if active
     res = ctrader_executor.execute_ctrader_trade(
         symbol=symbol,
         action=action,
@@ -113,8 +118,13 @@ def execute_order(symbol: str, action: str, lot_size: float, sl: float, tp: floa
         tp_price=tp,
         comment="TradeTalk.AI Consensus"
     )
+    res["cbot_queued"] = True
     SYSTEM_STATE["total_executed"] += 1
     return res
+
+def random_digits(n=5):
+    import random
+    return "".join([str(random.randint(0, 9)) for _ in range(n)])
 
 def send_telegram_alert(message: str):
     print(f"\n[Telegram Notification Sent]:\n{message}")
@@ -388,6 +398,43 @@ def connect_ctrader(req: CTraderConnectRequest):
         environment=req.environment
     )
     return res
+
+# -------------------------------------------------------------
+# cTrader cBot Webhook Bridge Endpoints (Instant Setup, No KYC)
+# -------------------------------------------------------------
+class CBotHeartbeatRequest(BaseModel):
+    account_id: str
+    balance: float
+    equity: float
+    margin: float = 0.0
+    free_margin: float = 0.0
+    currency: str = "USD"
+    broker: str = "cTrader Live"
+    open_positions: list = []
+
+@app.post("/api/cbot/heartbeat")
+def cbot_heartbeat(data: CBotHeartbeatRequest):
+    return cbot_bridge.update_heartbeat(data.dict())
+
+@app.get("/api/cbot/orders")
+def get_cbot_orders():
+    return cbot_bridge.get_pending_orders_for_cbot()
+
+@app.post("/api/cbot/order-filled")
+def cbot_order_filled(receipt: dict):
+    return cbot_bridge.record_cbot_execution(receipt)
+
+@app.get("/api/cbot/status")
+def get_cbot_status():
+    return cbot_bridge.get_cbot_status()
+
+@app.get("/api/cbot/download")
+def download_cbot_file():
+    path = Path(__file__).parent / "TradeTalkBridge.cs"
+    if path.exists():
+        from fastapi.responses import PlainTextResponse
+        return PlainTextResponse(content=path.read_text(encoding="utf-8"), media_type="text/plain")
+    return PlainTextResponse(content="// TradeTalkBridge.cs not found", status_code=404)
 
 @app.get("/api/mt5/status")
 def get_mt5_status():
