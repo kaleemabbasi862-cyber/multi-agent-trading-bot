@@ -80,7 +80,7 @@ namespace cAlgo.Robots
             {
                 string url = ServerUrl.TrimEnd('/') + "/api/cbot/stream";
                 string assetName = (Account.Asset != null && !string.IsNullOrEmpty(Account.Asset.Name)) ? Account.Asset.Name : "USD";
-                string broker = Account.BrokerName ?? "cTrader Live Broker";
+                string broker = Account.BrokerName ?? "IC Markets cTrader Live";
 
                 // Ensure culture-invariant float format (e.g. 39.61 not 39,61)
                 string jsonPayload = string.Format(
@@ -96,11 +96,19 @@ namespace cAlgo.Robots
                 );
 
                 var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
-                await httpClient.PostAsync(url, content);
+                var res = await httpClient.PostAsync(url, content);
+                if (res.IsSuccessStatusCode)
+                {
+                    Print(string.Format(CultureInfo.InvariantCulture, "[Telemetry Synced] Balance: ${0} {1} -> Server 200 OK", Account.Balance, assetName));
+                }
+                else
+                {
+                    Print("[Telemetry Response]: " + (int)res.StatusCode + " " + res.ReasonPhrase);
+                }
             }
             catch (Exception ex)
             {
-                Print("Telemetry error: " + ex.Message);
+                Print("Telemetry send note: " + ex.Message);
             }
         }
 
