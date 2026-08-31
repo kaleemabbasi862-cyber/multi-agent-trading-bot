@@ -39,7 +39,7 @@ EXECUTED_CBOT_RECEIPTS = {}
 
 def update_heartbeat(data: dict) -> dict:
     """Called when cBot sends real-time account data and live symbol prices via /api/cbot/stream."""
-    global CBOT_STATE, CBOT_LIVE_PRICES
+    global CBOT_STATE, CBOT_LIVE_PRICES, PENDING_CBOT_ORDERS
     now_ts = time.time()
     now_str = datetime.datetime.now(datetime.timezone.utc).strftime("%H:%M:%S UTC")
 
@@ -68,7 +68,6 @@ def update_heartbeat(data: dict) -> dict:
             "ask": ask_val,
             "updated_at": now_ts
         }
-        print(f"[cBot Tick] 🔴 Live Broker Price for {sym_clean}: Bid=${bid_val} | Ask=${ask_val}")
 
     CBOT_STATE["is_connected"] = True
     CBOT_STATE["mode"] = "CBOT_BRIDGE_ACTIVE"
@@ -84,7 +83,22 @@ def update_heartbeat(data: dict) -> dict:
     CBOT_STATE["last_heartbeat_timestamp"] = now_ts
     CBOT_STATE["live_prices"] = CBOT_LIVE_PRICES
 
-    return CBOT_STATE
+    # Return state with immediate pending orders for zero-latency dispatch
+    state_res = dict(CBOT_STATE)
+    if PENDING_CBOT_ORDERS:
+        top_order = PENDING_CBOT_ORDERS[0]
+        state_res["pending_orders"] = list(PENDING_CBOT_ORDERS)
+        state_res["signal"] = top_order.get("action")
+        state_res["action"] = top_order.get("action")
+        state_res["symbol"] = top_order.get("symbol")
+        state_res["lots"] = top_order.get("lot_size", 0.01)
+        state_res["lot_size"] = top_order.get("lot_size", 0.01)
+        state_res["sl"] = top_order.get("sl", 0.0)
+        state_res["tp"] = top_order.get("tp", 0.0)
+        state_res["ticket_id"] = top_order.get("id")
+        state_res["id"] = top_order.get("id")
+
+    return state_res
 
 def get_cbot_live_price(symbol: str) -> dict:
     """Returns live broker price streamed by cBot if fresh (< 30s)."""
@@ -139,6 +153,8 @@ def record_cbot_execution(receipt: dict) -> dict:
     """cBot reports filled order execution receipt."""
     order_id = receipt.get("id") or receipt.get("order_id")
     EXECUTED_CBOT_RECEIPTS[order_id] = receipt
+    # Clear matching from pending queue
+    global PENDING_CBOT_ORDERS
+    PENDING_CBOT_ORDERS = [o for o in PENDING_CBOT_ORDERS if o.get("id") != order_id]
     print(f"[cBot Bridge] [+] 🟢 Authentic cTrader Order Filled: Ticket #{receipt.get('ticket_id')} ({receipt.get('position_id')}) for {receipt.get('symbol')} @ {receipt.get('fill_price')}")
     return receipt
-

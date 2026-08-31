@@ -317,7 +317,7 @@ async def scan_single_market(symbol: str, meta: dict):
         )
 
     record = {
-        "id": signal_id,
+        "id": execution_result["ticket"] if execution_result else signal_id,
         "timestamp": timestamp,
         "symbol": symbol,
         "action": action,
@@ -472,19 +472,39 @@ def get_cbot_orders():
 def cbot_order_filled(receipt: dict):
     rec = cbot_bridge.record_cbot_execution(receipt)
     # Update matched signal in SIGNALS_HISTORY
-    order_id = receipt.get("id")
-    ticket_id = receipt.get("ticket_id") or f"CT_{receipt.get('position_id')}"
+    order_id = str(receipt.get("id", ""))
+    pos_id = receipt.get("position_id")
+    ticket_label = f"Position #{pos_id}" if pos_id else f"CT_{pos_id}"
+
+    matched = False
     for sig in SIGNALS_HISTORY:
-        if sig.get("id") == order_id or (sig.get("ctrader") and sig["ctrader"].get("ticket") == order_id):
+        ct = sig.get("ctrader") or {}
+        if sig.get("id") == order_id or ct.get("ticket") == order_id or order_id in str(ct.get("order_id", "")):
             sig["ctrader"] = {
                 "status": "FILLED",
-                "order_id": ticket_id,
-                "ticket_id": receipt.get("position_id"),
+                "order_id": ticket_label,
+                "ticket_id": pos_id,
                 "fill_price": receipt.get("fill_price"),
                 "symbol": receipt.get("symbol"),
                 "action": receipt.get("action")
             }
+            matched = True
             break
+
+    if not matched and SIGNALS_HISTORY:
+        for sig in SIGNALS_HISTORY:
+            ct = sig.get("ctrader") or {}
+            if "Pending Fill" in str(ct.get("order_id", "")):
+                sig["ctrader"] = {
+                    "status": "FILLED",
+                    "order_id": ticket_label,
+                    "ticket_id": pos_id,
+                    "fill_price": receipt.get("fill_price"),
+                    "symbol": receipt.get("symbol"),
+                    "action": receipt.get("action")
+                }
+                break
+
     return rec
 
 @app.post("/api/cbot/close-position")

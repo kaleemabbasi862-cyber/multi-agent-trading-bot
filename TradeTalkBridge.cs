@@ -24,6 +24,7 @@ namespace cAlgo.Robots
         public bool EnableAutoExecution { get; set; }
 
         private static readonly HttpClient httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+        private readonly HashSet<string> _executedTickets = new HashSet<string>();
 
         protected override void OnStart()
         {
@@ -43,13 +44,13 @@ namespace cAlgo.Robots
             }
 
             Print("=================================================");
-            Print("TradeTalk.AI Autonomous cBot Bridge Started");
+            Print("TradeTalk.AI Autonomous cBot Execution Engine Started");
             Print("Account Number: " + Account.Number);
             Print("Live Balance: " + Account.Balance + " " + assetName);
             Print("Target Server: " + ServerUrl);
             Print("=================================================");
 
-            // Send initial registration packet
+            // Send initial registration & telemetry
             SendTelemetry();
 
             // Continuous background timer
@@ -61,6 +62,7 @@ namespace cAlgo.Robots
             try
             {
                 // 1. Send live telemetry (Balance, Equity, Live Prices, Open Positions)
+                // Also immediately checks stream response for instant pending trade dispatch
                 SendTelemetry();
 
                 // 2. Poll & Execute pending approved orders
@@ -135,7 +137,17 @@ namespace cAlgo.Robots
                 );
 
                 var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
-                await httpClient.PostAsync(url, content);
+                var res = await httpClient.PostAsync(url, content);
+                
+                // Zero-Latency Execution: If stream response returned pending approved order, process it directly!
+                if (res.IsSuccessStatusCode && EnableAutoExecution)
+                {
+                    string replyJson = await res.Content.ReadAsStringAsync();
+                    if (!string.IsNullOrEmpty(replyJson) && (replyJson.Contains("\"pending_orders\"") || replyJson.Contains("\"ticket_id\"") || replyJson.Contains("\"signal\"")))
+                    {
+                        ProcessOrders(replyJson);
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -158,7 +170,7 @@ namespace cAlgo.Robots
                         {
                             ProcessCloseCommand(jsonResponse);
                         }
-                        else if (jsonResponse.Contains("symbol") && jsonResponse.Contains("action"))
+                        else if (jsonResponse.Contains("symbol"))
                         {
                             ProcessOrders(jsonResponse);
                         }
@@ -200,14 +212,30 @@ namespace cAlgo.Robots
         {
             try
             {
-                Print("[TradeTalk Signal Received from Cloud]: " + json);
-
                 string symbolStr = ExtractJsonValue(json, "symbol");
-                string action = ExtractJsonValue(json, "action").ToUpperInvariant();
-                string signalId = ExtractJsonValue(json, "id");
+                string action = ExtractJsonValue(json, "signal");
+                if (string.IsNullOrEmpty(action)) action = ExtractJsonValue(json, "action");
+                action = action.ToUpperInvariant();
+
+                string signalId = ExtractJsonValue(json, "ticket_id");
+                if (string.IsNullOrEmpty(signalId)) signalId = ExtractJsonValue(json, "id");
+
+                if (string.IsNullOrEmpty(symbolStr) || string.IsNullOrEmpty(action) || (action != "BUY" && action != "SELL"))
+                {
+                    return;
+                }
+
+                // Prevent duplicate fills of the same ticket
+                if (!string.IsNullOrEmpty(signalId) && _executedTickets.Contains(signalId))
+                {
+                    return;
+                }
+
+                Print(string.Format("📥 [TradeTalk Signal Received]: {0} {1} (Ticket: {2})", action, symbolStr, signalId));
 
                 double lotSize = 0.01;
-                double.TryParse(ExtractJsonValue(json, "lot_size"), NumberStyles.Any, CultureInfo.InvariantCulture, out lotSize);
+                double.TryParse(ExtractJsonValue(json, "lots"), NumberStyles.Any, CultureInfo.InvariantCulture, out lotSize);
+                if (lotSize <= 0) double.TryParse(ExtractJsonValue(json, "lot_size"), NumberStyles.Any, CultureInfo.InvariantCulture, out lotSize);
                 if (lotSize <= 0) lotSize = 0.01;
 
                 double sl = 0;
@@ -219,7 +247,7 @@ namespace cAlgo.Robots
                 Symbol targetSymbol = ResolveBrokerSymbol(symbolStr);
                 if (targetSymbol == null)
                 {
-                    Print("❌ Error: Could not find broker symbol for " + symbolStr);
+                    Print("❌ Error: Broker symbol not found for " + symbolStr);
                     return;
                 }
 
@@ -236,13 +264,15 @@ namespace cAlgo.Robots
                     volumeInUnits = targetSymbol.NormalizeVolumeInUnits(lotSize * 1000);
                 }
 
-                Print(string.Format("🚀 Executing {0} {1} ({2} Units) on cTrader Account #{3}...", action, targetSymbol.Name, volumeInUnits, Account.Number));
+                Print(string.Format("🚀 Executing {0} {1} ({2} Units) on cTrader Live Account #{3}...", action, targetSymbol.Name, volumeInUnits, Account.Number));
 
                 TradeResult result = ExecuteMarketOrder(tradeType, targetSymbol.Name, volumeInUnits, "TradeTalk.AI");
                 if (result.IsSuccessful && result.Position != null)
                 {
                     Position pos = result.Position;
-                    Print(string.Format("🟢 cTrader Order FILLED! Position ID: {0} | Entry: {1}", pos.Id, pos.EntryPrice));
+                    if (!string.IsNullOrEmpty(signalId)) _executedTickets.Add(signalId);
+
+                    Print(string.Format("🟢 cTrader Order FILLED! Position ID: #{0} | Entry: {1}", pos.Id, pos.EntryPrice));
 
                     if (sl > 0 || tp > 0)
                     {
@@ -260,7 +290,7 @@ namespace cAlgo.Robots
             }
             catch (Exception ex)
             {
-                Print("Execution Error: " + ex.Message);
+                Print("Execution Exception: " + ex.Message);
             }
         }
 
