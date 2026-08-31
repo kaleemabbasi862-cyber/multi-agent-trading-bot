@@ -441,6 +441,12 @@ def close_cbot_position(data: dict):
         return cbot_bridge.queue_close_position(pos_id)
     return {"status": "ERROR", "message": "Missing position_id"}
 
+@app.post("/api/copilot/chat")
+def copilot_chat_endpoint(data: dict):
+    import copilot_agent
+    msg = data.get("message", "")
+    return copilot_agent.execute_copilot_intent(msg, SYSTEM_STATE)
+
 @app.get("/api/cbot/download")
 def download_cbot_file():
     path = Path(__file__).parent / "TradeTalkBridge.cs"

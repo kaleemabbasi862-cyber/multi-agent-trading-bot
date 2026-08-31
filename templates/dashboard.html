@@ -668,6 +668,124 @@
         </div>
     </div>
 
+    <!-- FLOATING AI COPILOT LAUNCHER BUTTON -->
+    <div class="fixed bottom-6 right-6 z-40 flex items-center space-x-3">
+        <button @click="openCopilot = !openCopilot" class="group relative flex items-center space-x-3 px-5 py-3.5 bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-700 hover:from-indigo-500 hover:to-purple-500 text-white rounded-full shadow-2xl shadow-indigo-500/40 border border-indigo-400/40 transition-all duration-300 transform hover:scale-105">
+            <span class="relative flex h-3 w-3">
+                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-400"></span>
+            </span>
+            <i class="fa-solid fa-headset text-base"></i>
+            <span class="font-bold text-xs tracking-wide">AI Copilot</span>
+            <span class="hidden sm:inline-block px-2 py-0.5 rounded-full bg-white/10 text-[10px] font-mono">Voice & Chat</span>
+        </button>
+    </div>
+
+    <!-- COPILOT CHAT & VOICE DRAWER -->
+    <div x-show="openCopilot"
+         x-transition:enter="transition ease-out duration-300"
+         x-transition:enter-start="opacity-0 translate-y-10 scale-95"
+         x-transition:enter-end="opacity-100 translate-y-0 scale-100"
+         x-transition:leave="transition ease-in duration-200"
+         x-transition:leave-start="opacity-100 translate-y-0 scale-100"
+         x-transition:leave-end="opacity-0 translate-y-10 scale-95"
+         class="fixed bottom-24 right-4 sm:right-6 z-50 w-[95vw] sm:w-[440px] max-h-[620px] h-[80vh] flex flex-col bg-slate-950/95 backdrop-blur-xl border border-indigo-500/30 rounded-3xl shadow-2xl shadow-indigo-950/80 overflow-hidden"
+         style="display: none;">
+        
+        <!-- Header -->
+        <div class="px-5 py-4 border-b border-indigo-500/20 bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white shadow-md shadow-indigo-500/30">
+                    <i class="fa-solid fa-robot text-sm"></i>
+                </div>
+                <div>
+                    <div class="flex items-center space-x-2">
+                        <h3 class="font-bold text-white text-sm">TradeTalk Copilot</h3>
+                        <span class="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">LIVE</span>
+                    </div>
+                    <p class="text-[11px] text-slate-400">Urdu & English Voice Command Terminal</p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-2">
+                <button @click="ttsEnabled = !ttsEnabled"
+                        :title="ttsEnabled ? 'Voice Replies Active' : 'Voice Replies Muted'"
+                        class="p-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-xs transition"
+                        :class="ttsEnabled ? 'text-indigo-300' : 'text-slate-500'">
+                    <i class="fa-solid" :class="ttsEnabled ? 'fa-volume-high' : 'fa-volume-xmark'"></i>
+                </button>
+                <button @click="openCopilot = false" class="p-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white text-xs transition">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Messages Container -->
+        <div id="copilotChatBox" class="flex-1 p-4 overflow-y-auto space-y-3 text-xs divide-y-0">
+            <template x-for="(msg, idx) in copilotMessages" :key="idx">
+                <div class="flex flex-col" :class="msg.sender === 'user' ? 'items-end' : 'items-start'">
+                    <div class="max-w-[85%] rounded-2xl px-4 py-2.5 shadow-md"
+                         :class="msg.sender === 'user' ? 'bg-indigo-600 text-white rounded-br-none' : 'bg-slate-900/90 text-slate-200 border border-slate-800 rounded-bl-none'">
+                        <p class="whitespace-pre-line leading-relaxed text-[12px]" x-text="msg.text"></p>
+                        <template x-if="msg.action">
+                            <div class="mt-2 pt-2 border-t border-white/10 flex items-center">
+                                <span class="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30" x-text="'⚡ ' + msg.action"></span>
+                            </div>
+                        </template>
+                    </div>
+                    <span class="text-[9px] text-slate-500 mt-1 px-1" x-text="msg.time"></span>
+                </div>
+            </template>
+
+            <!-- Typing / Processing indicator -->
+            <template x-if="copilotLoading">
+                <div class="flex items-center space-x-2 text-indigo-400 text-xs py-2">
+                    <i class="fa-solid fa-circle-notch fa-spin"></i>
+                    <span class="text-[11px] font-mono">AI analyzing market & dispatching action...</span>
+                </div>
+            </template>
+        </div>
+
+        <!-- Quick Prompts Chips -->
+        <div class="px-4 py-2 bg-slate-950/60 border-t border-slate-900 flex items-center space-x-1.5 overflow-x-auto text-[11px]">
+            <button @click="sendCopilot('گولڈ کا تجزیہ کرو')" class="whitespace-nowrap px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 hover:border-indigo-500/40 transition">
+                📊 گولڈ تجزیہ
+            </button>
+            <button @click="sendCopilot('Check my balance and risk status')" class="whitespace-nowrap px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 hover:border-indigo-500/40 transition">
+                💰 Balance & Risk
+            </button>
+            <button @click="sendCopilot('سلور کا ریٹ اور سپورٹ بتاؤ')" class="whitespace-nowrap px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 hover:border-indigo-500/40 transition">
+                🥈 Silver Setup
+            </button>
+            <button @click="sendCopilot('Pause auto-trading')" class="whitespace-nowrap px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 hover:border-indigo-500/40 transition">
+                ⏸️ Pause Auto
+            </button>
+        </div>
+
+        <!-- Voice / Text Input Box -->
+        <div class="p-3 bg-slate-900/90 border-t border-indigo-500/20">
+            <form @submit.prevent="sendCopilot(copilotInput)" class="flex items-center space-x-2">
+                <button type="button"
+                        @click="toggleVoiceRecognition()"
+                        class="w-10 h-10 rounded-xl flex items-center justify-center transition"
+                        :class="voiceListening ? 'bg-rose-600 text-white animate-pulse shadow-lg shadow-rose-600/50' : 'bg-slate-800 hover:bg-slate-700 text-indigo-400'"
+                        :title="voiceListening ? 'Listening (Click to Stop)' : 'Voice Command (Urdu / English)'">
+                    <i class="fa-solid" :class="voiceListening ? 'fa-microphone-lines' : 'fa-microphone'"></i>
+                </button>
+
+                <input type="text"
+                       x-model="copilotInput"
+                       placeholder="بولیں یا لکھیں (مثلاً 'گولڈ اسکین کرو')..."
+                       class="flex-1 bg-slate-950 border border-slate-800 focus:border-indigo-500 text-white rounded-xl px-3.5 py-2.5 text-xs outline-none transition placeholder-slate-500 font-sans" />
+
+                <button type="submit"
+                        :disabled="!copilotInput.trim() || copilotLoading"
+                        class="w-10 h-10 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white flex items-center justify-center transition shadow-md shadow-indigo-600/30">
+                    <i class="fa-solid fa-paper-plane text-xs"></i>
+                </button>
+            </form>
+        </div>
+    </div>
+
     <!-- FOOTER -->
     <footer class="border-t border-dark-border py-4 px-8 text-center text-xs text-slate-500">
         TradeTalk AI &copy; 2026 ・ Autonomous Multi-Agent Forex Trading System ・ cTrader cBot Webhook Bridge
@@ -677,6 +795,20 @@
     <script>
         function dashboardApp() {
             return {
+                openCopilot: false,
+                copilotInput: '',
+                copilotLoading: false,
+                voiceListening: false,
+                ttsEnabled: true,
+                recognition: null,
+                copilotMessages: [
+                    {
+                        sender: 'assistant',
+                        text: 'السلام علیکم! میں آپ کا ٹریڈ ٹاک AI کوپائلٹ ہوں۔ آپ بول کر یا لکھ کر مجھ سے مارکیٹ تجزیہ ("گولڈ کا تجزیہ کرو")، بیلنس چیک کرنے یا آٹو ٹریڈ کنٹرول کرنے کا کہہ سکتے ہیں۔\n\nHello! I am your TradeTalk AI Copilot. Speak or type commands like "Analyze Gold" or "Pause auto-trading".',
+                        action: 'READY',
+                        time: 'Just now'
+                    }
+                ],
                 openSimulator: false,
                 showCBotModal: false,
                 loading: false,
@@ -924,6 +1056,119 @@ namespace cAlgo.Robots
                         alert('Close command dispatched to cTrader for Position #' + posId);
                     } catch (err) {
                         alert('Error closing position: ' + err);
+                    }
+                },
+
+                async sendCopilot(text) {
+                    if (!text || !text.trim() || this.copilotLoading) return;
+                    const query = text.trim();
+                    this.copilotInput = '';
+                    const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    
+                    this.copilotMessages.push({ sender: 'user', text: query, time: now });
+                    this.copilotLoading = true;
+                    this.scrollCopilotBottom();
+
+                    try {
+                        const res = await fetch('/api/copilot/chat', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ message: query })
+                        });
+                        if (res.ok) {
+                            const data = await res.json();
+                            const reply = data.reply || 'Action completed.';
+                            this.copilotMessages.push({
+                                sender: 'assistant',
+                                text: reply,
+                                action: data.action_taken,
+                                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                            });
+                            if (data.system_state) {
+                                this.systemState.auto_trade_enabled = data.system_state.auto_trade_enabled;
+                            }
+                            if (this.ttsEnabled) {
+                                this.speakText(reply);
+                            }
+                        } else {
+                            this.copilotMessages.push({ sender: 'assistant', text: 'Error executing command. Please try again.', time: now });
+                        }
+                    } catch (err) {
+                        this.copilotMessages.push({ sender: 'assistant', text: 'Connection issue: ' + err.message, time: now });
+                    } finally {
+                        this.copilotLoading = false;
+                        this.scrollCopilotBottom();
+                    }
+                },
+
+                scrollCopilotBottom() {
+                    setTimeout(() => {
+                        const box = document.getElementById('copilotChatBox');
+                        if (box) box.scrollTop = box.scrollHeight;
+                    }, 80);
+                },
+
+                toggleVoiceRecognition() {
+                    if (this.voiceListening) {
+                        if (this.recognition) {
+                            try { this.recognition.stop(); } catch(e) {}
+                        }
+                        this.voiceListening = false;
+                        return;
+                    }
+
+                    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+                    if (!SpeechRec) {
+                        alert('Voice Speech Recognition is not supported in this browser. Please use Google Chrome, Edge, or Brave.');
+                        return;
+                    }
+
+                    try {
+                        this.recognition = new SpeechRec();
+                        this.recognition.lang = 'ur-PK'; // Supports Urdu & English
+                        this.recognition.interimResults = false;
+                        this.recognition.maxAlternatives = 1;
+
+                        this.recognition.onstart = () => {
+                            this.voiceListening = true;
+                        };
+
+                        this.recognition.onresult = (event) => {
+                            const transcript = event.results[0][0].transcript;
+                            if (transcript) {
+                                this.sendCopilot(transcript);
+                            }
+                        };
+
+                        this.recognition.onerror = (event) => {
+                            console.warn('Speech recognition error:', event.error);
+                            this.voiceListening = false;
+                        };
+
+                        this.recognition.onend = () => {
+                            this.voiceListening = false;
+                        };
+
+                        this.recognition.start();
+                    } catch (err) {
+                        console.error('Error starting voice recognition:', err);
+                        this.voiceListening = false;
+                    }
+                },
+
+                speakText(text) {
+                    if (!window.speechSynthesis) return;
+                    try {
+                        window.speechSynthesis.cancel();
+                        const clean = text.replace(/[^\w\s\u0600-\u06FF.,!?'$-]/g, '').trim();
+                        const utterance = new SpeechSynthesisUtterance(clean);
+                        utterance.rate = 1.0;
+                        utterance.pitch = 1.0;
+                        const isUrdu = /[\u0600-\u06FF]/.test(clean);
+                        utterance.lang = isUrdu ? 'ur-PK' : 'en-US';
+                        window.speechSynthesis.speak(utterance);
+                    } catch (e) {
+                        console.warn('TTS error:', e);
                     }
                 },
 
