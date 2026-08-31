@@ -1,5 +1,6 @@
 import os
 import sys
+import asyncio
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -79,34 +80,31 @@ async def run_forex_agents(signal: TradingViewSignal) -> str:
         ("human", "سگنل کی جانچ کریں: Pair: {symbol}, Action: {action}, Entry: {entry}, SL: {sl}, TP: {tp}, TF: {tf}, Strategy: {strategy}")
     ])
     tech_chain = tech_prompt | llm
-    tech_raw = (await tech_chain.ainvoke({
-        "symbol": signal.symbol, "action": signal.action, "entry": signal.entry_price,
-        "sl": signal.stop_loss, "tp": signal.take_profit, "tf": signal.timeframe,
-        "strategy": signal.strategy_name
-    })).content
-    tech_report = extract_text(tech_raw)
+    # 1, 2 اور 3 ایجنٹس کو متوازی (Parallel) چلائیں تاکہ رسپانس تیز ترین ہو
+    async def get_tech():
+        raw = (await tech_chain.ainvoke({
+            "symbol": signal.symbol, "action": signal.action, "entry": signal.entry_price,
+            "sl": signal.stop_loss, "tp": signal.take_profit, "tf": signal.timeframe,
+            "strategy": signal.strategy_name
+        })).content
+        return extract_text(raw)
 
-    # ایجنٹ 2: فاریکس فنڈامنٹل اور نیوز اینالسٹ
-    news_prompt = ChatPromptTemplate.from_messages([
-        ("system", "آپ فاریکس فنڈامنٹل اینالسٹ ہیں۔ آپ مائیکرو فنڈامنٹل صورتحال اور نیوز رسک اسٹیٹس (LOW / MEDIUM / HIGH) کی جانچ کرتے ہیں۔"),
-        ("human", "کرنسی پیئر {symbol} کے لیے نیوز رسک کا جائزہ لیں اور کلیئرنس رپورٹ دیں۔")
-    ])
-    news_chain = news_prompt | llm
-    news_raw = (await news_chain.ainvoke({"symbol": signal.symbol})).content
-    news_report = extract_text(news_raw)
+    async def get_news():
+        raw = (await news_chain.ainvoke({"symbol": signal.symbol})).content
+        return extract_text(raw)
 
-    # ایجنٹ 3: رسک مینیجر
-    risk_prompt = ChatPromptTemplate.from_messages([
-        ("system", "آپ فاریکس رسک اینڈ منی مینیجر ہیں۔ اکاؤنٹ بیلنس $10,000 فرض کرتے ہوئے 1 فیصد رسک پر لاٹ سائز اور Risk-to-Reward تناسب کا تعین کریں۔"),
-        ("human", "Entry: {entry}, SL: {sl}, Pair: {symbol} کے لیے لاٹ سائز اور R:R نکالیں۔")
-    ])
-    risk_chain = risk_prompt | llm
-    risk_raw = (await risk_chain.ainvoke({
-        "symbol": signal.symbol, "entry": signal.entry_price, "sl": signal.stop_loss
-    })).content
-    risk_report = extract_text(risk_raw)
+    async def get_risk():
+        raw = (await risk_chain.ainvoke({
+            "symbol": signal.symbol, "entry": signal.entry_price, "sl": signal.stop_loss
+        })).content
+        return extract_text(raw)
 
-    # ایجنٹ 4: چیف مینیجر (حتمی فیصلہ)
+    # تینوں ایجنٹس کو ایک ساتھ متوازی ایگزیکیوٹ کریں
+    tech_report, news_report, risk_report = await asyncio.gather(
+        get_tech(), get_news(), get_risk()
+    )
+
+    # ایجنٹ 4: چیف مینیجر (تینوں رپورٹس کی بنیاد پر حتمی فیصلہ)
     manager_prompt = ChatPromptTemplate.from_messages([
         ("system", "آپ ٹریڈنگ ڈیسک کے ہیڈ ہیں۔ تمام ایجنٹس کی رپورٹس دیکھ کر حتمی فیصلہ [DECISION: APPROVED] یا [DECISION: REJECTED] دیں اور لاٹ سائز واضح کریں۔"),
         ("human", "ٹیکنیکل رپورٹ:\n{tech}\n\nنیوز رپورٹ:\n{news}\n\nرسک رپورٹ:\n{risk}\n\nحتمی فیصلہ دیں:")
