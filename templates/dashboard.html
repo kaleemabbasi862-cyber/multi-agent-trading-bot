@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TradeTalk AI - Multi-Agent Forex Dashboard</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eef2ff',
+                            500: '#6366f1',
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                            900: '#1e1b4b',
+                        },
+                        dark: {
+                            bg: '#0b0f19',
+                            card: '#111827',
+                            border: '#1f2937',
+                            hover: '#1e293b'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Noto+Nastaliq+Urdu:wght@400;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .urdu-text { font-family: 'Noto Nastaliq Urdu', 'Inter', sans-serif; line-height: 1.9; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #111827; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+        @keyframes pulseGlow {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.6; transform: scale(1.05); }
+        }
+        .pulse-live { animation: pulseGlow 2s infinite ease-in-out; }
+    </style>
+</head>
+<body class="bg-dark-bg text-slate-100 min-h-screen flex flex-col antialiased selection:bg-indigo-500 selection:text-white"
+      x-data="dashboardApp()" x-init="initDashboard()">
+
+    <!-- TOP NAVIGATION BAR -->
+    <nav class="border-b border-dark-border bg-dark-card/80 backdrop-blur sticky top-0 z-40 px-4 lg:px-8 py-3.5 flex items-center justify-between shadow-lg">
+        <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-emerald-400 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+                <i class="fa-solid fa-chart-line text-white text-lg"></i>
+            </div>
+            <div>
+                <div class="flex items-center space-x-2">
+                    <span class="font-black text-xl tracking-tight text-white">TradeTalk<span class="text-indigo-400">.AI</span></span>
+                    <span class="px-2 py-0.5 text-[10px] font-bold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded-full">v2.0 MULTI-AGENT</span>
+                </div>
+                <p class="text-xs text-slate-400 font-medium">Autonomous Forex Multi-Agent Consensus System</p>
+            </div>
+        </div>
+
+        <!-- RIGHT STATUS INDICATORS -->
+        <div class="flex items-center space-x-3">
+            <div class="hidden sm:flex items-center space-x-2 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-lg text-xs">
+                <span class="w-2 h-2 rounded-full bg-emerald-400 pulse-live"></span>
+                <span class="text-slate-300 font-medium">Gemini 3.5 AI Engine</span>
+            </div>
+
+            <!-- COPY WEBHOOK BUTTON -->
+            <button @click="copyWebhookUrl()" class="flex items-center space-x-2 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 hover:border-indigo-500/50 px-3 py-1.5 rounded-lg text-xs font-semibold transition shadow-sm">
+                <i class="fa-solid fa-link text-indigo-400"></i>
+                <span x-text="copied ? 'Copied URL!' : 'Copy Webhook URL'"></span>
+            </button>
+
+            <!-- SIMULATE BUTTON -->
+            <button @click="openSimulator = !openSimulator" class="flex items-center space-x-2 bg-emerald-600 hover:bg-emerald-500 text-white px-3.5 py-1.5 rounded-lg text-xs font-semibold transition shadow-md shadow-emerald-600/20">
+                <i class="fa-solid fa-bolt"></i>
+                <span>Test Signal</span>
+            </button>
+        </div>
+    </nav>
+
+    <!-- MAIN CONTENT CONTAINER -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 lg:p-8 space-y-6">
+
+        <!-- STATS ROW -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div class="bg-dark-card border border-dark-border rounded-xl p-4 shadow-sm flex items-center justify-between">
+                <div>
+                    <p class="text-xs text-slate-400 font-semibold uppercase tracking-wider">Total Signals</p>
+                    <h3 class="text-2xl font-black text-white mt-1" x-text="stats.total">0</h3>
+                </div>
+                <div class="w-11 h-11 rounded-lg bg-indigo-500/10 text-indigo-400 flex items-center justify-center text-lg">
+                    <i class="fa-solid fa-satellite-dish"></i>
+                </div>
+            </div>
+
+            <div class="bg-dark-card border border-dark-border rounded-xl p-4 shadow-sm flex items-center justify-between">
+                <div>
+                    <p class="text-xs text-slate-400 font-semibold uppercase tracking-wider">Approved (Executed)</p>
+                    <h3 class="text-2xl font-black text-emerald-400 mt-1" x-text="stats.approved">0</h3>
+                </div>
+                <div class="w-11 h-11 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center text-lg">
+                    <i class="fa-solid fa-circle-check"></i>
+                </div>
+            </div>
+
+            <div class="bg-dark-card border border-dark-border rounded-xl p-4 shadow-sm flex items-center justify-between">
+                <div>
+                    <p class="text-xs text-slate-400 font-semibold uppercase tracking-wider">Rejected (Protected)</p>
+                    <h3 class="text-2xl font-black text-rose-400 mt-1" x-text="stats.rejected">0</h3>
+                </div>
+                <div class="w-11 h-11 rounded-lg bg-rose-500/10 text-rose-400 flex items-center justify-center text-lg">
+                    <i class="fa-solid fa-shield-halved"></i>
+                </div>
+            </div>
+
+            <div class="bg-dark-card border border-dark-border rounded-xl p-4 shadow-sm flex items-center justify-between">
+                <div>
+                    <p class="text-xs text-slate-400 font-semibold uppercase tracking-wider">Approval Rate</p>
+                    <h3 class="text-2xl font-black text-amber-400 mt-1" x-text="stats.approval_rate + '%'">0%</h3>
+                </div>
+                <div class="w-11 h-11 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center text-lg">
+                    <i class="fa-solid fa-percent"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- SIMULATE / MANUAL SIGNAL DRAWER (Collapsible) -->
+        <div x-show="openSimulator" x-transition class="bg-dark-card border border-indigo-500/30 rounded-2xl p-5 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between border-b border-dark-border pb-3">
+                <div class="flex items-center space-x-2.5">
+                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+                    <h2 class="font-bold text-white text-sm">TradingView Webhook Simulator</h2>
+                    <span class="text-xs text-slate-400">(Simulate alerts locally or from cloud)</span>
+                </div>
+                <!-- PRESET BUTTONS -->
+                <div class="flex items-center space-x-2 text-xs">
+                    <span class="text-slate-400 hidden sm:inline">Quick Presets:</span>
+                    <button @click="setPreset('EURUSD', 'BUY', 1.0850, 1.0820, 1.0920, '15m')" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded text-slate-300 transition">EUR/USD BUY</button>
+                    <button @click="setPreset('GBPUSD', 'SELL', 1.2950, 1.2985, 1.2850, '1h')" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded text-slate-300 transition">GBP/USD SELL</button>
+                    <button @click="setPreset('XAUUSD', 'BUY', 2745.0, 2732.0, 2775.0, '30m')" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded text-slate-300 transition">GOLD (XAU) BUY</button>
+                </div>
+            </div>
+
+            <form @submit.prevent="submitTestSignal()" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3 text-xs">
+                <div>
+                    <label class="block text-slate-400 font-semibold mb-1">Symbol / Pair</label>
+                    <input type="text" x-model="simForm.symbol" required class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500">
+                </div>
+                <div>
+                    <label class="block text-slate-400 font-semibold mb-1">Action</label>
+                    <select x-model="simForm.action" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 font-bold"
+                            :class="simForm.action === 'BUY' ? 'text-emerald-400' : 'text-rose-400'">
+                        <option value="BUY">BUY</option>
+                        <option value="SELL">SELL</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-slate-400 font-semibold mb-1">Entry Price</label>
+                    <input type="number" step="any" x-model="simForm.entry_price" required class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500">
+                </div>
+                <div>
+                    <label class="block text-slate-400 font-semibold mb-1">Stop Loss (SL)</label>
+                    <input type="number" step="any" x-model="simForm.stop_loss" required class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500">
+                </div>
+                <div>
+                    <label class="block text-slate-400 font-semibold mb-1">Take Profit (TP)</label>
+                    <input type="number" step="any" x-model="simForm.take_profit" required class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500">
+                </div>
+                <div>
+                    <label class="block text-slate-400 font-semibold mb-1">Timeframe</label>
+                    <input type="text" x-model="simForm.timeframe" required class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500">
+                </div>
+                <div class="flex items-end">
+                    <button type="submit" :disabled="loading" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center space-x-2 transition disabled:opacity-50">
+                        <template x-if="!loading">
+                            <span><i class="fa-solid fa-play mr-1"></i> Run Agents</span>
+                        </template>
+                        <template x-if="loading">
+                            <span class="flex items-center"><i class="fa-solid fa-circle-notch fa-spin mr-1.5"></i> Analyzing...</span>
+                        </template>
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- 4 AGENT ACTIVE CONSENSUS GRID -->
+        <div>
+            <div class="flex items-center justify-between mb-3">
+                <div class="flex items-center space-x-2">
+                    <i class="fa-solid fa-users-gear text-indigo-400"></i>
+                    <h2 class="font-bold text-white text-base">Active Multi-Agent Trading Desk</h2>
+                    <span class="text-xs text-slate-400">・ 4 AI Agents Collaborating in Real-Time</span>
+                </div>
+                <template x-if="activeSignal">
+                    <div class="text-xs text-slate-400">
+                        Inspecting Signal: <span class="font-bold text-white" x-text="activeSignal.symbol + ' (' + activeSignal.action + ')'"></span>
+                    </div>
+                </template>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <!-- AGENT 1: TECHNICAL ANALYST -->
+                <div class="bg-dark-card border border-dark-border hover:border-indigo-500/40 transition rounded-xl p-4 flex flex-col justify-between shadow-md">
+                    <div>
+                        <div class="flex items-center justify-between mb-2.5">
+                            <div class="flex items-center space-x-2">
+                                <div class="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center text-sm">
+                                    <i class="fa-solid fa-chart-candlestick"></i>
+                                </div>
+                                <div>
+                                    <h3 class="font-bold text-xs text-white">Technical Agent</h3>
+                                    <p class="text-[10px] text-slate-400">Price Action & Indicators</p>
+                                </div>
+                            </div>
+                            <span class="px-2 py-0.5 text-[9px] font-bold rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">AGENT 1</span>
+                        </div>
+                        <div class="bg-slate-900/60 rounded-lg p-2.5 text-xs text-slate-300 urdu-text max-h-40 overflow-y-auto custom-scrollbar">
+                            <p x-text="activeSignal ? (activeSignal.tech_report || 'No data') : 'Waiting for incoming TradingView signals to validate price action, trend alignment, and setup quality...'"></p>
+                        </div>
+                    </div>
+                    <div class="mt-3 pt-2.5 border-t border-dark-border flex items-center justify-between text-[11px] text-slate-400">
+                        <span>Role: Trend Validator</span>
+                        <span class="text-blue-400 font-semibold">Ready</span>
+                    </div>
+                </div>
+
+                <!-- AGENT 2: NEWS & FUNDAMENTAL ANALYST -->
+                <div class="bg-dark-card border border-dark-border hover:border-amber-500/40 transition rounded-xl p-4 flex flex-col justify-between shadow-md">
+                    <div>
+                        <div class="flex items-center justify-between mb-2.5">
+                            <div class="flex items-center space-x-2">
+                                <div class="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center text-sm">
+                                    <i class="fa-solid fa-newspaper"></i>
+                                </div>
+                                <div>
+                                    <h3 class="font-bold text-xs text-white">Fundamental Agent</h3>
+                                    <p class="text-[10px] text-slate-400">News & Market Sentiment</p>
+                                </div>
+                            </div>
+                            <span class="px-2 py-0.5 text-[9px] font-bold rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">AGENT 2</span>
+                        </div>
+                        <div class="bg-slate-900/60 rounded-lg p-2.5 text-xs text-slate-300 urdu-text max-h-40 overflow-y-auto custom-scrollbar">
+                            <p x-text="activeSignal ? (activeSignal.news_report || 'No data') : 'Scanning economic releases (CPI, NFP, Fed interest rates) and macro sentiment...'"></p>
+                        </div>
+                    </div>
+                    <div class="mt-3 pt-2.5 border-t border-dark-border flex items-center justify-between text-[11px] text-slate-400">
+                        <span>Role: News Risk Guard</span>
+                        <span class="text-amber-400 font-semibold">Ready</span>
+                    </div>
+                </div>
+
+                <!-- AGENT 3: RISK MANAGER -->
+                <div class="bg-dark-card border border-dark-border hover:border-purple-500/40 transition rounded-xl p-4 flex flex-col justify-between shadow-md">
+                    <div>
+                        <div class="flex items-center justify-between mb-2.5">
+                            <div class="flex items-center space-x-2">
+                                <div class="w-8 h-8 rounded-lg bg-purple-500/10 text-purple-400 flex items-center justify-center text-sm">
+                                    <i class="fa-solid fa-scale-balanced"></i>
+                                </div>
+                                <div>
+                                    <h3 class="font-bold text-xs text-white">Risk Manager</h3>
+                                    <p class="text-[10px] text-slate-400">Position Sizing & R:R</p>
+                                </div>
+                            </div>
+                            <span class="px-2 py-0.5 text-[9px] font-bold rounded-full bg-purple-500/10 text-purple-400 border border-purple-500/20">AGENT 3</span>
+                        </div>
+                        <div class="bg-slate-900/60 rounded-lg p-2.5 text-xs text-slate-300 urdu-text max-h-40 overflow-y-auto custom-scrollbar">
+                            <p x-text="activeSignal ? (activeSignal.risk_report || 'No data') : 'Enforcing strict 1% account risk rule ($10,000 balance) and calculating exact standard lots...'"></p>
+                        </div>
+                    </div>
+                    <div class="mt-3 pt-2.5 border-t border-dark-border flex items-center justify-between text-[11px] text-slate-400">
+                        <span>Rule: Max 1% Risk</span>
+                        <span class="text-purple-400 font-semibold">Active</span>
+                    </div>
+                </div>
+
+                <!-- AGENT 4: DESK HEAD MANAGER (FINAL DECISION) -->
+                <div class="bg-dark-card border border-dark-border hover:border-emerald-500/40 transition rounded-xl p-4 flex flex-col justify-between shadow-md relative overflow-hidden">
+                    <div class="absolute -right-4 -top-4 w-20 h-20 bg-indigo-500/10 rounded-full blur-xl pointer-events-none"></div>
+                    <div>
+                        <div class="flex items-center justify-between mb-2.5">
+                            <div class="flex items-center space-x-2">
+                                <div class="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center text-sm">
+                                    <i class="fa-solid fa-gavel"></i>
+                                </div>
+                                <div>
+                                    <h3 class="font-bold text-xs text-white">Head Desk Manager</h3>
+                                    <p class="text-[10px] text-slate-400">Consensus & Final Verdict</p>
+                                </div>
+                            </div>
+                            <span class="px-2 py-0.5 text-[9px] font-bold rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">AGENT 4</span>
+                        </div>
+                        <div class="bg-slate-900/60 rounded-lg p-2.5 text-xs text-slate-300 urdu-text max-h-40 overflow-y-auto custom-scrollbar">
+                            <p x-text="activeSignal ? (activeSignal.final_decision || 'No data') : 'Synthesizing all 3 agent reports to issue authoritative [APPROVED] or [REJECTED] decision...'"></p>
+                        </div>
+                    </div>
+                    <div class="mt-3 pt-2.5 border-t border-dark-border flex items-center justify-between text-[11px]">
+                        <template x-if="activeSignal">
+                            <span class="font-black px-2 py-0.5 rounded text-[10px]"
+                                  :class="activeSignal.decision_status === 'APPROVED' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'"
+                                  x-text="'DECISION: ' + activeSignal.decision_status"></span>
+                        </template>
+                        <template x-if="!activeSignal">
+                            <span class="text-slate-400">Awaiting Signal</span>
+                        </template>
+                        <span class="text-emerald-400 font-semibold text-[10px]">Head of Desk</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- LIVE SIGNALS FEED TABLE -->
+        <div class="bg-dark-card border border-dark-border rounded-2xl overflow-hidden shadow-xl">
+            <div class="px-5 py-4 border-b border-dark-border flex flex-wrap items-center justify-between gap-3">
+                <div class="flex items-center space-x-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-indigo-500 pulse-live"></span>
+                    <h2 class="font-bold text-white text-sm">Live TradingView Signals & Consensus History</h2>
+                    <span class="text-xs text-slate-400 font-normal hidden sm:inline">(Auto-refreshes every 4s)</span>
+                </div>
+                <div class="flex items-center space-x-2 text-xs">
+                    <button @click="fetchSignals()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition flex items-center space-x-1.5">
+                        <i class="fa-solid fa-arrows-rotate" :class="isRefreshing ? 'fa-spin' : ''"></i>
+                        <span>Refresh</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs text-slate-300">
+                    <thead class="bg-slate-900/80 text-slate-400 font-semibold uppercase tracking-wider border-b border-dark-border">
+                        <tr>
+                            <th class="py-3 px-4">Time</th>
+                            <th class="py-3 px-4">Pair</th>
+                            <th class="py-3 px-4">Action</th>
+                            <th class="py-3 px-4">Entry</th>
+                            <th class="py-3 px-4">SL / TP</th>
+                            <th class="py-3 px-4">Strategy</th>
+                            <th class="py-3 px-4">AI Consensus</th>
+                            <th class="py-3 px-4 text-right">Details</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-dark-border">
+                        <template x-for="item in signals" :key="item.id">
+                            <tr class="hover:bg-dark-hover transition cursor-pointer" @click="activeSignal = item">
+                                <td class="py-3 px-4 text-slate-400 whitespace-nowrap" x-text="formatTime(item.timestamp)"></td>
+                                <td class="py-3 px-4 font-bold text-white whitespace-nowrap" x-text="item.symbol"></td>
+                                <td class="py-3 px-4 whitespace-nowrap">
+                                    <span class="px-2.5 py-0.5 rounded-md font-bold text-[10px]"
+                                          :class="item.action === 'BUY' ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/15 text-rose-400 border border-rose-500/30'"
+                                          x-text="item.action"></span>
+                                </td>
+                                <td class="py-3 px-4 font-mono text-slate-200" x-text="item.entry_price"></td>
+                                <td class="py-3 px-4 font-mono text-slate-400 text-[11px]">
+                                    <span class="text-rose-400 font-semibold" x-text="item.stop_loss"></span> / 
+                                    <span class="text-emerald-400 font-semibold" x-text="item.take_profit"></span>
+                                </td>
+                                <td class="py-3 px-4 text-slate-300 text-[11px]" x-text="item.strategy_name"></td>
+                                <td class="py-3 px-4 whitespace-nowrap">
+                                    <span class="px-2.5 py-1 rounded-md font-bold text-[10px] inline-flex items-center space-x-1"
+                                          :class="item.decision_status === 'APPROVED' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'">
+                                        <i class="fa-solid" :class="item.decision_status === 'APPROVED' ? 'fa-check' : 'fa-xmark'"></i>
+                                        <span x-text="item.decision_status"></span>
+                                    </span>
+                                </td>
+                                <td class="py-3 px-4 text-right whitespace-nowrap">
+                                    <button @click.stop="viewModal(item)" class="px-2.5 py-1 bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-300 rounded font-semibold text-[11px] transition">
+                                        View Report
+                                    </button>
+                                </td>
+                            </tr>
+                        </template>
+
+                        <template x-if="signals.length === 0">
+                            <tr>
+                                <td colspan="8" class="text-center py-10 text-slate-500">
+                                    <i class="fa-solid fa-inbox text-3xl mb-2 block opacity-40"></i>
+                                    No TradingView signals received yet. Click "Test Signal" above or send a webhook alert.
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- REPORT MODAL -->
+    <div x-show="showModal" x-transition class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" style="display: none;">
+        <div @click.away="showModal = false" class="bg-dark-card border border-dark-border rounded-2xl max-w-3xl w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+            <div class="px-6 py-4 border-b border-dark-border flex items-center justify-between bg-slate-900/60">
+                <div class="flex items-center space-x-3">
+                    <span class="px-2.5 py-1 rounded font-bold text-xs"
+                          :class="modalData?.decision_status === 'APPROVED' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'"
+                          x-text="modalData?.decision_status"></span>
+                    <h3 class="font-bold text-white text-base">
+                        <span x-text="modalData?.symbol"></span>
+                        <span class="text-slate-400 text-xs font-normal" x-text="'(' + modalData?.action + ' @ ' + modalData?.entry_price + ')'"></span>
+                    </h3>
+                </div>
+                <button @click="showModal = false" class="text-slate-400 hover:text-white text-lg transition">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="p-6 overflow-y-auto space-y-4 custom-scrollbar">
+                <!-- PARAMETERS SUMMARY -->
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-900/80 p-3 rounded-xl border border-dark-border text-xs">
+                    <div><span class="text-slate-400">Stop Loss:</span> <span class="font-bold text-rose-400 font-mono" x-text="modalData?.stop_loss"></span></div>
+                    <div><span class="text-slate-400">Take Profit:</span> <span class="font-bold text-emerald-400 font-mono" x-text="modalData?.take_profit"></span></div>
+                    <div><span class="text-slate-400">Timeframe:</span> <span class="font-bold text-white" x-text="modalData?.timeframe"></span></div>
+                    <div><span class="text-slate-400">Strategy:</span> <span class="font-bold text-indigo-400" x-text="modalData?.strategy_name"></span></div>
+                </div>
+
+                <!-- FULL CONSENSUS TEXT -->
+                <div class="bg-slate-950 p-5 rounded-xl border border-dark-border text-xs text-slate-200 urdu-text whitespace-pre-wrap leading-relaxed">
+                    <p x-text="modalData?.analysis || 'No detailed analysis text available.'"></p>
+                </div>
+            </div>
+
+            <div class="px-6 py-3 border-t border-dark-border flex justify-end bg-slate-900/40">
+                <button @click="showModal = false" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-semibold transition">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- FOOTER -->
+    <footer class="border-t border-dark-border py-4 px-8 text-center text-xs text-slate-500">
+        TradeTalk AI &copy; 2026 ・ Multi-Agent Consensus System for TradingView & cTrader ・ Powered by Google Gemini
+    </footer>
+
+    <!-- APP JAVASCRIPT LOGIC -->
+    <script>
+        function dashboardApp() {
+            return {
+                openSimulator: false,
+                loading: false,
+                isRefreshing: false,
+                copied: false,
+                showModal: false,
+                modalData: null,
+                activeSignal: null,
+                signals: [],
+                stats: { total: 0, approved: 0, rejected: 0, approval_rate: 0 },
+                simForm: {
+                    symbol: 'EURUSD',
+                    action: 'BUY',
+                    entry_price: 1.0850,
+                    stop_loss: 1.0820,
+                    take_profit: 1.0920,
+                    timeframe: '15m',
+                    strategy_name: 'Trend_Crossover_v1'
+                },
+
+                initDashboard() {
+                    this.fetchSignals();
+                    // Auto refresh every 4 seconds
+                    setInterval(() => {
+                        this.fetchSignals(true);
+                    }, 4000);
+                },
+
+                setPreset(symbol, action, entry, sl, tp, tf) {
+                    this.simForm.symbol = symbol;
+                    this.simForm.action = action;
+                    this.simForm.entry_price = entry;
+                    this.simForm.stop_loss = sl;
+                    this.simForm.take_profit = tp;
+                    this.simForm.timeframe = tf;
+                },
+
+                async fetchSignals(silent = false) {
+                    if (!silent) this.isRefreshing = true;
+                    try {
+                        const res = await fetch('/api/signals');
+                        if (res.ok) {
+                            const data = await res.json();
+                            this.signals = data.signals || [];
+                            this.stats = data.stats || { total: 0, approved: 0, rejected: 0, approval_rate: 0 };
+                            if (!this.activeSignal && this.signals.length > 0) {
+                                this.activeSignal = this.signals[0];
+                            }
+                        }
+                    } catch (err) {
+                        console.error('Error fetching signals:', err);
+                    } finally {
+                        if (!silent) this.isRefreshing = false;
+                    }
+                },
+
+                async submitTestSignal() {
+                    this.loading = true;
+                    try {
+                        const payload = {
+                            symbol: this.simForm.symbol,
+                            action: this.simForm.action,
+                            entry_price: parseFloat(this.simForm.entry_price),
+                            stop_loss: parseFloat(this.simForm.stop_loss),
+                            take_profit: parseFloat(this.simForm.take_profit),
+                            timeframe: this.simForm.timeframe,
+                            strategy_name: this.simForm.strategy_name
+                        };
+                        const res = await fetch('/webhook/tradingview', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+                        const data = await res.json();
+                        await this.fetchSignals();
+                        if (this.signals.length > 0) {
+                            this.activeSignal = this.signals[0];
+                        }
+                    } catch (err) {
+                        alert('Error executing signal: ' + err);
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+
+                viewModal(item) {
+                    this.modalData = item;
+                    this.showModal = true;
+                },
+
+                copyWebhookUrl() {
+                    const url = window.location.origin + '/webhook/tradingview';
+                    navigator.clipboard.writeText(url);
+                    this.copied = true;
+                    setTimeout(() => { this.copied = false; }, 2500);
+                },
+
+                formatTime(isoStr) {
+                    if (!isoStr) return '--:--';
+                    const d = new Date(isoStr);
+                    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                }
+            };
+        }
+    </script>
+</body>
+</html>

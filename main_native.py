@@ -1,8 +1,13 @@
 import os
 import sys
 import asyncio
+import uuid
+import datetime
+import traceback
+from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
@@ -43,7 +48,31 @@ def get_llm():
     
     return primary.with_fallbacks([fallback_lite, fallback_flash])
 
-app = FastAPI(title="Forex Multi-Agent Trading System (Native LangChain)")
+app = FastAPI(title="TradeTalk AI - Multi-Agent Forex Trading System")
+
+# -------------------------------------------------------------
+# 2. ان میموری سگنل ہسٹری (Signal History Store - Last 20)
+# -------------------------------------------------------------
+SIGNALS_HISTORY = [
+    {
+        "id": "init-01",
+        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "symbol": "EURUSD",
+        "action": "BUY",
+        "entry_price": 1.0850,
+        "stop_loss": 1.0820,
+        "take_profit": 1.0920,
+        "timeframe": "15m",
+        "strategy_name": "Trend_Crossover_v1",
+        "decision_status": "REJECTED",
+        "tech_report": "15m ٹائم فریم پر 30 پپس کا Stop Loss اور 70 پپس کا TP (R:R = 1:2.33) تکنیکی طور پر ٹھیک ہے لیکن نزدیکی 1.0900 پر سخت مزاحمت (Resistance) موجود ہے۔ کوالٹی سکور: 65/100۔",
+        "news_report": "آج کے سیشن میں US CPI ڈیٹا شیڈول ہے جس کی وجہ سے مارکیٹ میں ہائی وولٹیلیٹی کا خطرہ ہے۔ فنڈامنٹلی NO CLEARANCE برائے اسکیلپرز۔",
+        "risk_report": "$10,000 اکاؤنٹ بیلنس پر 1% رسک ($100) کے تحت تجویز کردہ درست لاٹ سائز 0.33 Standard Lots ہے۔",
+        "final_decision": "[DECISION: REJECTED] - فنڈامنٹل ہائی رسک نیوز اور نزدیکی ریزسٹنس کے باعث سگنل کو مسترد کیا جاتا ہے۔ تجویز کردہ لاٹ: 0.00۔",
+        "analysis": "1. Technical Analysis:\n15m ٹائم فریم پر 30 پپس کا Stop Loss اور 70 پپس کا TP (R:R = 1:2.33) تکنیکی طور پر ٹھیک ہے لیکن نزدیکی 1.0900 پر سخت مزاحمت (Resistance) موجود ہے۔ کوالٹی سکور: 65/100۔\n\n2. News Analysis:\nآج کے سیشن میں US CPI ڈیٹا شیڈول ہے جس کی وجہ سے مارکیٹ میں ہائی وولٹیلیٹی کا خطرہ ہے۔ فنڈامنٹلی NO CLEARANCE برائے اسکیلپرز۔\n\n3. Risk Assessment:\n$10,000 اکاؤنٹ بیلنس پر 1% رسک ($100) کے تحت تجویز کردہ درست لاٹ سائز 0.33 Standard Lots ہے۔\n\n4. Final Desk Decision:\n[DECISION: REJECTED] - فنڈامنٹل ہائی رسک نیوز اور نزدیکی ریزسٹنس کے باعث سگنل کو مسترد کیا جاتا ہے۔ تجویز کردہ لاٹ: 0.00۔",
+        "ctrader": None
+    }
+]
 
 # TradingView سے آنے والے ڈیٹا کا ماڈل
 class TradingViewSignal(BaseModel):
@@ -53,10 +82,10 @@ class TradingViewSignal(BaseModel):
     stop_loss: float         # e.g., 1.0820
     take_profit: float       # e.g., 1.0920
     timeframe: str           # e.g., "15m"
-    strategy_name: str       # e.g., "EMA_Crossover_RSI"
+    strategy_name: str       # e.g., "Trend_Crossover_v1"
 
 # -------------------------------------------------------------
-# 2. cTrader اور ٹیلیگرام موک فنکشنز (Execution Logic)
+# 3. cTrader اور ٹیلیگرام موک فنکشنز
 # -------------------------------------------------------------
 def execute_ctrader_order(symbol: str, action: str, lot_size: float, sl: float, tp: float):
     """cTrader Open API یا cBot پر آرڈر بھیجنے کا فنکشن"""
@@ -83,10 +112,11 @@ def extract_text(content) -> str:
     return str(content)
 
 # -------------------------------------------------------------
-# 3. ملٹی ایجنٹ پائپ لائن (Native Chain Execution)
+# 4. ملٹی ایجنٹ متوازی پائپ لائن (Multi-Agent Consensus Pipeline)
 # -------------------------------------------------------------
-async def run_forex_agents(signal: TradingViewSignal) -> str:
+async def run_forex_agents(signal: TradingViewSignal) -> dict:
     llm = get_llm()
+
     # ایجنٹ 1: ٹیکنیکل اینالسٹ
     tech_prompt = ChatPromptTemplate.from_messages([
         ("system", "آپ 10 سال کے تجربہ کار فاریکس ٹیکنیکل اینالسٹ ہیں۔ آپ کا کام TradingView سگنل، ٹرینڈ اور پرائس ایکشن کی درستی کی توثیق کرنا اور کوالٹی سکور (1-100) دینا ہے۔"),
@@ -143,25 +173,44 @@ async def run_forex_agents(signal: TradingViewSignal) -> str:
     })).content
     final_decision = extract_text(manager_raw)
 
-    return f"**1. Technical Analysis:**\n{tech_report}\n\n**2. News Analysis:**\n{news_report}\n\n**3. Risk Assessment:**\n{risk_report}\n\n**4. Final Desk Decision:**\n{final_decision}"
+    decision_status = "APPROVED" if "APPROVED" in final_decision.upper() else "REJECTED"
+
+    full_analysis = (
+        f"**1. Technical Analysis:**\n{tech_report}\n\n"
+        f"**2. News Analysis:**\n{news_report}\n\n"
+        f"**3. Risk Assessment:**\n{risk_report}\n\n"
+        f"**4. Final Desk Decision:**\n{final_decision}"
+    )
+
+    return {
+        "tech_report": tech_report,
+        "news_report": news_report,
+        "risk_report": risk_report,
+        "final_decision": final_decision,
+        "decision_status": decision_status,
+        "full_analysis": full_analysis
+    }
 
 # -------------------------------------------------------------
-# 4. ویب ہک اینڈ پوائنٹ
+# 5. ویب ہک اینڈ پوائنٹ (Webhook Endpoint)
 # -------------------------------------------------------------
-import traceback
-
 @app.post("/webhook/tradingview")
 async def receive_tradingview_alert(signal: TradingViewSignal):
     print(f"\n--- TradingView سے نیا سگنل موصول ہوا: {signal.symbol} ({signal.action}) ---")
+    timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    signal_id = str(uuid.uuid4())[:8]
+
     try:
-        result = await run_forex_agents(signal)
-        
+        agent_data = await run_forex_agents(signal)
+        full_analysis = agent_data["full_analysis"]
+        decision_status = agent_data["decision_status"]
+
         # ہیومن الرٹ
-        summary_message = f"🚨 **نئی فاریکس ٹریڈ سمری:**\n\n{result}"
+        summary_message = f"🚨 **نئی فاریکس ٹریڈ سمری ({signal.symbol}):**\n\n{full_analysis}"
         send_telegram_alert(summary_message)
 
-        # اگر مینیجر نے منظوری دی ہو تو cTrader پر ٹریڈ بھیجیں
-        if "APPROVED" in str(result):
+        c_trade_result = None
+        if decision_status == "APPROVED":
             c_trade_result = execute_ctrader_order(
                 symbol=signal.symbol,
                 action=signal.action,
@@ -169,9 +218,36 @@ async def receive_tradingview_alert(signal: TradingViewSignal):
                 sl=signal.stop_loss,
                 tp=signal.take_profit
             )
-            return {"status": "Trade Executed", "analysis": result, "ctrader": c_trade_result}
-        
-        return {"status": "Trade Rejected by Agents", "analysis": result}
+
+        # ریکارڈ محفوظ کریں (Save in History)
+        record = {
+            "id": signal_id,
+            "timestamp": timestamp,
+            "symbol": signal.symbol,
+            "action": signal.action.upper(),
+            "entry_price": signal.entry_price,
+            "stop_loss": signal.stop_loss,
+            "take_profit": signal.take_profit,
+            "timeframe": signal.timeframe,
+            "strategy_name": signal.strategy_name,
+            "decision_status": decision_status,
+            "tech_report": agent_data["tech_report"],
+            "news_report": agent_data["news_report"],
+            "risk_report": agent_data["risk_report"],
+            "final_decision": agent_data["final_decision"],
+            "analysis": full_analysis,
+            "ctrader": c_trade_result
+        }
+
+        # Keep last 20 signals at the top
+        SIGNALS_HISTORY.insert(0, record)
+        if len(SIGNALS_HISTORY) > 20:
+            SIGNALS_HISTORY.pop()
+
+        if decision_status == "APPROVED":
+            return {"status": "Trade Executed", "analysis": full_analysis, "ctrader": c_trade_result}
+        return {"status": "Trade Rejected by Agents", "analysis": full_analysis}
+
     except Exception as e:
         tb = traceback.format_exc()
         print("ERROR processing alert:\n", tb)
@@ -181,13 +257,38 @@ async def receive_tradingview_alert(signal: TradingViewSignal):
             "traceback": tb
         }
 
-@app.get("/")
+# -------------------------------------------------------------
+# 6. ڈیش بورڈ API اور UI روٹس
+# -------------------------------------------------------------
+@app.get("/api/signals")
+def get_signals():
+    total = len(SIGNALS_HISTORY)
+    approved = sum(1 for s in SIGNALS_HISTORY if s.get("decision_status") == "APPROVED")
+    rejected = sum(1 for s in SIGNALS_HISTORY if s.get("decision_status") == "REJECTED")
+    rate = round((approved / total * 100), 1) if total > 0 else 0
+    return {
+        "signals": SIGNALS_HISTORY,
+        "stats": {
+            "total": total,
+            "approved": approved,
+            "rejected": rejected,
+            "approval_rate": rate
+        }
+    }
+
+@app.get("/", response_class=HTMLResponse)
+def serve_dashboard():
+    template_path = Path(__file__).parent / "templates" / "dashboard.html"
+    if template_path.exists():
+        return HTMLResponse(content=template_path.read_text(encoding="utf-8"))
+    return HTMLResponse(content="<h1>TradeTalk AI Dashboard</h1><p>Template loading...</p>")
+
 @app.get("/health")
 def health_check():
     return {"status": "online", "service": "Multi-Agent AI Forex Trading System"}
 
 # -------------------------------------------------------------
-# 5. سرور اسٹارٹ کریں
+# 7. سرور اسٹارٹ کریں
 # -------------------------------------------------------------
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "10000"))
