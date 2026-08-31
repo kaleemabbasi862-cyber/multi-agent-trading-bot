@@ -23,20 +23,14 @@ namespace cAlgo.Robots
         [Parameter("Enable Auto Execution", DefaultValue = true)]
         public bool EnableAutoExecution { get; set; }
 
-        [Parameter("Enable AI Break-Even Protection", DefaultValue = true)]
+        [Parameter("Enable AI Break-Even Protection", DefaultValue = false)]
         public bool EnableBreakEven { get; set; }
 
-        [Parameter("Break-Even Trigger (Pips)", DefaultValue = 15, MinValue = 5, MaxValue = 100)]
-        public double BreakEvenTriggerPips { get; set; }
-
-        [Parameter("Enable Smart Trailing Stop", DefaultValue = true)]
+        [Parameter("Enable Smart Trailing Stop", DefaultValue = false)]
         public bool EnableTrailingStop { get; set; }
 
-        [Parameter("Trailing Stop Distance (Pips)", DefaultValue = 25, MinValue = 10, MaxValue = 200)]
-        public double TrailingDistancePips { get; set; }
-
         private static readonly HttpClient httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
-        private readonly Dictionary<long, DateTime> _lastModifiedMap = new Dictionary<long, DateTime>();
+        private readonly HashSet<long> _ignoredPositions = new HashSet<long>();
 
         protected override void OnStart()
         {
@@ -56,11 +50,9 @@ namespace cAlgo.Robots
             }
 
             Print("=================================================");
-            Print("TradeTalk.AI Autonomous Trade Manager Started");
+            Print("TradeTalk.AI Autonomous cBot Bridge Started");
             Print("Account Number: " + Account.Number);
             Print("Live Balance: " + Account.Balance + " " + assetName);
-            Print("AI Break-Even: " + (EnableBreakEven ? "ENABLED" : "DISABLED"));
-            Print("AI Trailing Stop: " + (EnableTrailingStop ? "ENABLED" : "DISABLED"));
             Print("Target Server: " + ServerUrl);
             Print("=================================================");
 
@@ -75,13 +67,10 @@ namespace cAlgo.Robots
         {
             try
             {
-                // 1. Autonomous Position Management with strict Broker Range Validation
-                ManageOpenPositionsAutonomously();
-
-                // 2. Send live telemetry (Balance, Equity, Live Prices, Open Positions)
+                // 1. Send live telemetry (Balance, Equity, Live Prices, Open Positions)
                 SendTelemetry();
 
-                // 3. Poll & Execute pending approved orders / AI management commands
+                // 2. Poll & Execute pending approved orders / AI management commands
                 if (EnableAutoExecution)
                 {
                     PollOrders();
@@ -90,144 +79,6 @@ namespace cAlgo.Robots
             catch (Exception ex)
             {
                 Print("Timer exception: " + ex.Message);
-            }
-        }
-
-        private void ManageOpenPositionsAutonomously()
-        {
-            try
-            {
-                DateTime now = DateTime.UtcNow;
-
-                foreach (var pos in Positions)
-                {
-                    // Rate limit: modify each position at most once every 10 seconds
-                    if (_lastModifiedMap.TryGetValue(pos.Id, out DateTime lastMod))
-                    {
-                        if ((now - lastMod).TotalSeconds < 10)
-                        {
-                            continue;
-                        }
-                    }
-
-                    Symbol symbol = Symbols.GetSymbol(pos.SymbolName);
-                    if (symbol == null) continue;
-
-                    double pipSize = symbol.PipSize;
-                    double currentProfitPips = pos.Pips;
-
-                    // Calculate broker safe distance (at least 10 pips away from current price)
-                    double safeBuffer = Math.Max(pipSize * 10, symbol.TickSize * 20);
-
-                    double? targetSl = null;
-
-                    if (pos.TradeType == TradeType.Buy)
-                    {
-                        double currentBid = symbol.Bid;
-
-                        // 1. Check Break-Even trigger
-                        if (EnableBreakEven && currentProfitPips >= BreakEvenTriggerPips)
-                        {
-                            double bePrice = pos.EntryPrice + (pipSize * 2);
-                            // Valid range check: must be below current Bid with safe buffer
-                            if (bePrice < (currentBid - safeBuffer))
-                            {
-                                if (pos.StopLoss == null || pos.StopLoss < bePrice)
-                                {
-                                    targetSl = bePrice;
-                                }
-                            }
-                        }
-
-                        // 2. Check Trailing Stop
-                        if (EnableTrailingStop && currentProfitPips >= TrailingDistancePips)
-                        {
-                            double trailPrice = currentBid - (TrailingDistancePips * pipSize);
-                            // Valid range check: must be below current Bid and higher than entry
-                            if (trailPrice < (currentBid - safeBuffer) && trailPrice > pos.EntryPrice)
-                            {
-                                if (pos.StopLoss == null || trailPrice > (pos.StopLoss.Value + (pipSize * 3)))
-                                {
-                                    targetSl = trailPrice;
-                                }
-                            }
-                        }
-
-                        // Apply modification if valid and meaningfully different
-                        if (targetSl.HasValue)
-                        {
-                            double newSlRounded = Math.Round(targetSl.Value, symbol.Digits);
-                            if (pos.StopLoss == null || Math.Abs(pos.StopLoss.Value - newSlRounded) >= (pipSize * 2))
-                            {
-                                if (newSlRounded < (currentBid - safeBuffer))
-                                {
-                                    Print(string.Format(CultureInfo.InvariantCulture, "🛡️ [TradeTalk AI Guard] Modifying SL for #{0} ({1}) to {2:F2} | Current Bid: {3:F2}", pos.Id, pos.SymbolName, newSlRounded, currentBid));
-                                    var res = ModifyPosition(pos, newSlRounded, pos.TakeProfit, ProtectionType.Absolute);
-                                    _lastModifiedMap[pos.Id] = now;
-                                    if (!res.IsSuccessful)
-                                    {
-                                        Print("[Protection Warning]: " + res.Error);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    else if (pos.TradeType == TradeType.Sell)
-                    {
-                        double currentAsk = symbol.Ask;
-
-                        // 1. Check Break-Even trigger
-                        if (EnableBreakEven && currentProfitPips >= BreakEvenTriggerPips)
-                        {
-                            double bePrice = pos.EntryPrice - (pipSize * 2);
-                            // Valid range check: must be above current Ask with safe buffer
-                            if (bePrice > (currentAsk + safeBuffer))
-                            {
-                                if (pos.StopLoss == null || pos.StopLoss > bePrice)
-                                {
-                                    targetSl = bePrice;
-                                }
-                            }
-                        }
-
-                        // 2. Check Trailing Stop
-                        if (EnableTrailingStop && currentProfitPips >= TrailingDistancePips)
-                        {
-                            double trailPrice = currentAsk + (TrailingDistancePips * pipSize);
-                            // Valid range check: must be above current Ask and lower than entry
-                            if (trailPrice > (currentAsk + safeBuffer) && trailPrice < pos.EntryPrice)
-                            {
-                                if (pos.StopLoss == null || trailPrice < (pos.StopLoss.Value - (pipSize * 3)))
-                                {
-                                    targetSl = trailPrice;
-                                }
-                            }
-                        }
-
-                        // Apply modification if valid and meaningfully different
-                        if (targetSl.HasValue)
-                        {
-                            double newSlRounded = Math.Round(targetSl.Value, symbol.Digits);
-                            if (pos.StopLoss == null || Math.Abs(pos.StopLoss.Value - newSlRounded) >= (pipSize * 2))
-                            {
-                                if (newSlRounded > (currentAsk + safeBuffer))
-                                {
-                                    Print(string.Format(CultureInfo.InvariantCulture, "🛡️ [TradeTalk AI Guard] Modifying SL for #{0} ({1}) to {2:F2} | Current Ask: {3:F2}", pos.Id, pos.SymbolName, newSlRounded, currentAsk));
-                                    var res = ModifyPosition(pos, newSlRounded, pos.TakeProfit, ProtectionType.Absolute);
-                                    _lastModifiedMap[pos.Id] = now;
-                                    if (!res.IsSuccessful)
-                                    {
-                                        Print("[Protection Warning]: " + res.Error);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Print("Position Management note: " + ex.Message);
             }
         }
 
@@ -241,7 +92,7 @@ namespace cAlgo.Robots
 
                 string symClean = Symbol.Name.Replace("m", "").Replace(".pro", "").ToUpperInvariant();
 
-                // Serialize Active Open Positions with AI Guard metadata
+                // Serialize Active Open Positions
                 StringBuilder positionsJson = new StringBuilder("[");
                 int count = 0;
                 foreach (var pos in Positions)
