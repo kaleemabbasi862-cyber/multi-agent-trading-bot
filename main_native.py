@@ -18,15 +18,16 @@ if sys.platform == "win32":
 # 1. API اور سسٹم کنفیگریشن
 # -------------------------------------------------------------
 load_dotenv()
-GEMINI_API_KEY = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY") or ""
-os.environ["GEMINI_API_KEY"] = GEMINI_API_KEY
-os.environ["GOOGLE_API_KEY"] = GEMINI_API_KEY
 
-llm = ChatGoogleGenerativeAI(
-    model="gemini-3.6-flash",
-    google_api_key=GEMINI_API_KEY,
-    temperature=0.2
-)
+def get_llm():
+    api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY") or ""
+    if not api_key:
+        api_key = "placeholder"
+    return ChatGoogleGenerativeAI(
+        model="gemini-3.6-flash",
+        google_api_key=api_key,
+        temperature=0.2
+    )
 
 app = FastAPI(title="Forex Multi-Agent Trading System (Native LangChain)")
 
@@ -71,6 +72,7 @@ def extract_text(content) -> str:
 # 3. ملٹی ایجنٹ پائپ لائن (Native Chain Execution)
 # -------------------------------------------------------------
 async def run_forex_agents(signal: TradingViewSignal) -> str:
+    llm = get_llm()
     # ایجنٹ 1: ٹیکنیکل اینالسٹ
     tech_prompt = ChatPromptTemplate.from_messages([
         ("system", "آپ 10 سال کے تجربہ کار فاریکس ٹیکنیکل اینالسٹ ہیں۔ آپ کا کام TradingView سگنل، ٹرینڈ اور پرائس ایکشن کی درستی کی توثیق کرنا اور کوالٹی سکور (1-100) دینا ہے۔"),
