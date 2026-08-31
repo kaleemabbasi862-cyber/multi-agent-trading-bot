@@ -12,8 +12,8 @@ from pydantic import BaseModel
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 import uvicorn
-
 import market_feed
+import mt5_executor
 
 if sys.platform == "win32":
     try:
@@ -100,27 +100,19 @@ class TradingViewSignal(BaseModel):
     strategy_name: str       # e.g., "Trend_Crossover_v1"
 
 # -------------------------------------------------------------
-# 4. ایگزیکیوشن انجن (Auto-Trade Broker/MT5 Mock)
+# 4. ایگزیکیوشن انجن (MetaTrader 5 & Paper Execution Engine)
 # -------------------------------------------------------------
 def execute_order(symbol: str, action: str, lot_size: float, sl: float, tp: float, fill_price: float):
-    ticket_id = f"MT5_{random_digits(6)}"
-    print(f"\n[AUTO-EXECUTION ENGINE] ⚡ LIVE ORDER FILLED: {action} {lot_size} Lots of {symbol} @ {fill_price} (SL: {sl}, TP: {tp}) | Ticket #{ticket_id}")
+    res = mt5_executor.execute_trade(
+        symbol=symbol,
+        action=action,
+        lot_size=lot_size,
+        sl_price=sl,
+        tp_price=tp,
+        comment="TradeTalk.AI Consensus"
+    )
     SYSTEM_STATE["total_executed"] += 1
-    return {
-        "status": "SUCCESS",
-        "order_id": ticket_id,
-        "symbol": symbol,
-        "action": action,
-        "lot_size": lot_size,
-        "fill_price": fill_price,
-        "sl": sl,
-        "tp": tp,
-        "executed_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-    }
-
-def random_digits(n=6):
-    import random
-    return "".join([str(random.randint(0, 9)) for _ in range(n)])
+    return res
 
 def send_telegram_alert(message: str):
     print(f"\n[Telegram Notification Sent]:\n{message}")
@@ -332,6 +324,26 @@ def get_market_prices():
 @app.get("/api/system-state")
 def get_system_state():
     return SYSTEM_STATE
+
+class MT5ConnectRequest(BaseModel):
+    login: int
+    password: str
+    server: str
+    path: str = None
+
+@app.get("/api/mt5/status")
+def get_mt5_status():
+    return mt5_executor.get_mt5_status()
+
+@app.post("/api/mt5/connect")
+def connect_mt5(req: MT5ConnectRequest):
+    res = mt5_executor.init_mt5_connection(
+        login=req.login,
+        password=req.password,
+        server=req.server,
+        path=req.path
+    )
+    return res
 
 @app.post("/api/auto-trade/toggle")
 def toggle_auto_trade():

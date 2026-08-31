@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TradeTalk AI - Autonomous Live Trading System</title>
+    <title>TradeTalk AI - Autonomous Live MT5 Trading System</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -48,7 +48,6 @@
         }
         .pulse-live { animation: pulseGlow 2s infinite ease-in-out; }
         
-        /* Flash animations on price tick */
         .flash-green { animation: flashGreen 1s ease-out; }
         .flash-red { animation: flashRed 1s ease-out; }
         @keyframes flashGreen {
@@ -120,12 +119,19 @@
                         <span>AUTONOMOUS LIVE</span>
                     </span>
                 </div>
-                <p class="text-xs text-slate-400 font-medium">Real-Time Market Scanner & Multi-Agent Consensus Desk</p>
+                <p class="text-xs text-slate-400 font-medium">Real-Time Market Scanner & MetaTrader 5 (MT5) Execution Engine</p>
             </div>
         </div>
 
-        <!-- RIGHT CONTROLS: AUTO-TRADE TOGGLE + SCAN NOW -->
-        <div class="flex items-center space-x-3">
+        <!-- RIGHT CONTROLS -->
+        <div class="flex items-center space-x-2.5">
+            <!-- MT5 ACCOUNT STATUS / MODAL TRIGGER -->
+            <button @click="showMT5Modal = true" class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition shadow-sm"
+                    :class="mt5Status.mode === 'LIVE_MT5' ? 'bg-emerald-600/20 border-emerald-500/40 text-emerald-300' : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-indigo-500/50'">
+                <i class="fa-solid fa-server" :class="mt5Status.mode === 'LIVE_MT5' ? 'text-emerald-400' : 'text-indigo-400'"></i>
+                <span x-text="mt5Status.mode === 'LIVE_MT5' ? 'MT5: LIVE (' + mt5Status.account + ')' : 'MT5 Settings'"></span>
+            </button>
+
             <!-- AUTO TRADE TOGGLE -->
             <button @click="toggleAutoTrade()" class="flex items-center space-x-2 px-3 py-1.5 rounded-xl border text-xs font-bold transition shadow-sm"
                     :class="systemState.auto_trade_enabled ? 'bg-emerald-600/15 border-emerald-500/40 text-emerald-300' : 'bg-slate-900 border-slate-700 text-slate-400'">
@@ -137,12 +143,6 @@
             <button @click="triggerScanNow()" :disabled="scanning" class="flex items-center space-x-1.5 bg-indigo-600 hover:bg-indigo-500 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold transition shadow-md shadow-indigo-600/20 disabled:opacity-50">
                 <i class="fa-solid fa-radar" :class="scanning ? 'fa-spin' : ''"></i>
                 <span x-text="scanning ? 'Scanning...' : 'Scan Markets'"></span>
-            </button>
-
-            <!-- COPY WEBHOOK -->
-            <button @click="copyWebhookUrl()" class="hidden sm:flex items-center space-x-1.5 bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 px-3 py-1.5 rounded-xl text-xs font-medium transition">
-                <i class="fa-solid fa-link text-indigo-400"></i>
-                <span x-text="copied ? 'Copied!' : 'Webhook URL'"></span>
             </button>
 
             <!-- SIMULATOR BUTTON -->
@@ -160,9 +160,9 @@
         <div class="grid grid-cols-2 md:grid-cols-5 gap-3.5">
             <!-- ACCOUNT BALANCE -->
             <div class="bg-dark-card border border-dark-border rounded-2xl p-4 shadow-sm">
-                <p class="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">Account Balance</p>
-                <h3 class="text-xl font-black text-white mt-1 font-mono" x-text="'$' + formatMoney(systemState.paper_balance || 10000)">$10,000.00</h3>
-                <span class="text-[10px] text-emerald-400 font-semibold flex items-center mt-0.5"><i class="fa-solid fa-shield-check mr-1"></i> 1% Strict Risk Rule</span>
+                <p class="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">Broker / Account Balance</p>
+                <h3 class="text-xl font-black text-white mt-1 font-mono" x-text="'$' + formatMoney(mt5Status.balance || systemState.paper_balance || 10000)">$10,000.00</h3>
+                <span class="text-[10px] text-emerald-400 font-semibold flex items-center mt-0.5" x-text="mt5Status.mode === 'LIVE_MT5' ? '🟢 Connected to ' + mt5Status.server : '⚡ High-Fidelity Paper Engine'"></span>
             </div>
 
             <!-- TOTAL SIGNALS -->
@@ -174,7 +174,7 @@
 
             <!-- TRADES EXECUTED -->
             <div class="bg-dark-card border border-dark-border rounded-2xl p-4 shadow-sm">
-                <p class="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">Approved (Executed)</p>
+                <p class="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">MT5 Orders Filled</p>
                 <h3 class="text-xl font-black text-emerald-400 mt-1" x-text="stats.approved">0</h3>
                 <span class="text-[10px] text-emerald-400 font-medium">Consensus Cleared</span>
             </div>
@@ -353,7 +353,7 @@
                                 </div>
                                 <div>
                                     <h3 class="font-bold text-xs text-white">Head Desk Manager</h3>
-                                    <p class="text-[10px] text-slate-400">Final Trade Execution</p>
+                                    <p class="text-[10px] text-slate-400">MT5 Execution Authority</p>
                                 </div>
                             </div>
                             <span class="px-2 py-0.5 text-[9px] font-black rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">AGENT 4</span>
@@ -382,7 +382,7 @@
             <div class="px-6 py-4 border-b border-dark-border flex flex-wrap items-center justify-between gap-3 bg-slate-900/40">
                 <div class="flex items-center space-x-2">
                     <span class="w-2.5 h-2.5 rounded-full bg-indigo-500 pulse-live"></span>
-                    <h2 class="font-bold text-white text-sm">Autonomous Signals & Order Execution Ledger</h2>
+                    <h2 class="font-bold text-white text-sm">Autonomous Signals & MT5 Order Execution Ledger</h2>
                     <span class="text-xs text-slate-400 font-normal hidden sm:inline">(Live real-time feed)</span>
                 </div>
                 <div class="flex items-center space-x-2 text-xs">
@@ -398,12 +398,12 @@
                     <thead class="bg-slate-900/90 text-slate-400 font-semibold uppercase tracking-wider border-b border-dark-border">
                         <tr>
                             <th class="py-3.5 px-4">Time</th>
-                            <th class="py-3.5 px-4">Ticket / ID</th>
+                            <th class="py-3.5 px-4">MT5 Ticket</th>
                             <th class="py-3.5 px-4">Pair</th>
                             <th class="py-3.5 px-4">Action</th>
-                            <th class="py-3.5 px-4">Fill / Entry</th>
+                            <th class="py-3.5 px-4">Fill Price</th>
                             <th class="py-3.5 px-4">SL / TP Target</th>
-                            <th class="py-3.5 px-4">Strategy Source</th>
+                            <th class="py-3.5 px-4">Strategy</th>
                             <th class="py-3.5 px-4">AI Consensus</th>
                             <th class="py-3.5 px-4 text-right">Audit</th>
                         </tr>
@@ -412,7 +412,7 @@
                         <template x-for="item in signals" :key="item.id">
                             <tr class="hover:bg-dark-hover transition cursor-pointer" @click="activeSignal = item">
                                 <td class="py-3 px-4 text-slate-400 whitespace-nowrap" x-text="formatTime(item.timestamp)"></td>
-                                <td class="py-3 px-4 font-mono text-indigo-300 whitespace-nowrap">
+                                <td class="py-3 px-4 font-mono text-indigo-300 font-bold whitespace-nowrap">
                                     <span x-text="item.ctrader ? item.ctrader.order_id : '#' + item.id"></span>
                                 </td>
                                 <td class="py-3 px-4 font-bold text-white whitespace-nowrap" x-text="item.symbol"></td>
@@ -457,7 +457,70 @@
 
     </main>
 
-    <!-- 5. REPORT MODAL -->
+    <!-- 5. MT5 SETTINGS MODAL -->
+    <div x-show="showMT5Modal" x-transition class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm" style="display: none;">
+        <div @click.away="showMT5Modal = false" class="bg-dark-card border border-dark-border rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between border-b border-dark-border pb-3">
+                <div class="flex items-center space-x-2">
+                    <i class="fa-solid fa-server text-indigo-400"></i>
+                    <h3 class="font-bold text-white text-sm">MetaTrader 5 (MT5) Account Settings</h3>
+                </div>
+                <button @click="showMT5Modal = false" class="text-slate-400 hover:text-white">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <!-- STATUS CARD -->
+            <div class="bg-slate-900/90 border border-dark-border rounded-xl p-3.5 space-y-2 text-xs">
+                <div class="flex items-center justify-between">
+                    <span class="text-slate-400">Engine Status:</span>
+                    <span class="font-bold px-2 py-0.5 rounded text-[10px]"
+                          :class="mt5Status.mode === 'LIVE_MT5' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-indigo-500/20 text-indigo-400'"
+                          x-text="mt5Status.mode === 'LIVE_MT5' ? '🟢 MT5 Live Connected' : '⚡ High-Fidelity Paper Engine'"></span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-slate-400">Active Account:</span>
+                    <span class="font-bold text-white font-mono" x-text="mt5Status.account || 'Demo_Account'"></span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-slate-400">Server:</span>
+                    <span class="font-bold text-slate-200" x-text="mt5Status.server || 'Demo-Server'"></span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-slate-400">Balance / Currency:</span>
+                    <span class="font-bold text-emerald-400 font-mono" x-text="'$' + formatMoney(mt5Status.balance || 10000) + ' ' + (mt5Status.currency || 'USD')"></span>
+                </div>
+            </div>
+
+            <!-- LOGIN FORM -->
+            <form @submit.prevent="connectMT5Account()" class="space-y-3 text-xs">
+                <div>
+                    <label class="block text-slate-400 font-semibold mb-1">MT5 Login ID (Account Number)</label>
+                    <input type="number" x-model="mt5Form.login" required class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 font-mono">
+                </div>
+                <div>
+                    <label class="block text-slate-400 font-semibold mb-1">Trader Password</label>
+                    <input type="password" x-model="mt5Form.password" required class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 font-mono">
+                </div>
+                <div>
+                    <label class="block text-slate-400 font-semibold mb-1">Broker Server Name (e.g. MetaQuotes-Demo, Exness-Real)</label>
+                    <input type="text" x-model="mt5Form.server" required class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500">
+                </div>
+
+                <div class="pt-2 flex justify-end space-x-2">
+                    <button type="button" @click="showMT5Modal = false" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold">
+                        Cancel
+                    </button>
+                    <button type="submit" :disabled="mt5Connecting" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition disabled:opacity-50 flex items-center space-x-1.5">
+                        <i class="fa-solid fa-plug" :class="mt5Connecting ? 'fa-spin' : ''"></i>
+                        <span x-text="mt5Connecting ? 'Connecting...' : 'Connect Account'"></span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 6. REPORT AUDIT MODAL -->
     <div x-show="showModal" x-transition class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm" style="display: none;">
         <div @click.away="showModal = false" class="bg-dark-card border border-dark-border rounded-2xl max-w-3xl w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
             <div class="px-6 py-4 border-b border-dark-border flex items-center justify-between bg-slate-900/80">
@@ -481,7 +544,7 @@
                     <div><span class="text-slate-400">Stop Loss:</span> <span class="font-bold text-rose-400 font-mono" x-text="'$' + formatNumber(modalData?.stop_loss, modalData?.symbol)"></span></div>
                     <div><span class="text-slate-400">Take Profit:</span> <span class="font-bold text-emerald-400 font-mono" x-text="'$' + formatNumber(modalData?.take_profit, modalData?.symbol)"></span></div>
                     <div><span class="text-slate-400">Timeframe:</span> <span class="font-bold text-white" x-text="modalData?.timeframe"></span></div>
-                    <div><span class="text-slate-400">Strategy:</span> <span class="font-bold text-indigo-400" x-text="modalData?.strategy_name"></span></div>
+                    <div><span class="text-slate-400">Ticket ID:</span> <span class="font-bold text-indigo-400 font-mono" x-text="modalData?.ctrader ? modalData?.ctrader.order_id : '#' + modalData?.id"></span></div>
                 </div>
 
                 <!-- FULL CONSENSUS TEXT -->
@@ -500,7 +563,7 @@
 
     <!-- FOOTER -->
     <footer class="border-t border-dark-border py-4 px-8 text-center text-xs text-slate-500">
-        TradeTalk AI &copy; 2026 ・ Autonomous Multi-Agent Forex Trading System ・ Live Real-Time Feeds
+        TradeTalk AI &copy; 2026 ・ Autonomous Multi-Agent Forex Trading System ・ MetaTrader 5 Engine
     </footer>
 
     <!-- APP JAVASCRIPT LOGIC -->
@@ -508,8 +571,10 @@
         function dashboardApp() {
             return {
                 openSimulator: false,
+                showMT5Modal: false,
                 loading: false,
                 scanning: false,
+                mt5Connecting: false,
                 isRefreshing: false,
                 copied: false,
                 showModal: false,
@@ -518,8 +583,14 @@
                 signals: [],
                 marketPrices: {},
                 priceFlashes: {},
+                mt5Status: { mode: 'PAPER_SIMULATION', is_connected: true, balance: 10000.0, account: 'Demo_Account', server: 'Demo-Server' },
                 systemState: { auto_trade_enabled: true, paper_balance: 10000.0, total_scans: 0 },
                 stats: { total: 0, approved: 0, rejected: 0, approval_rate: 0 },
+                mt5Form: {
+                    login: '',
+                    password: '',
+                    server: 'MetaQuotes-Demo'
+                },
                 simForm: {
                     symbol: 'XAUUSD',
                     action: 'BUY',
@@ -533,6 +604,7 @@
                 initDashboard() {
                     this.fetchLivePrices();
                     this.fetchSignals();
+                    this.fetchMT5Status();
 
                     // Real-Time Live Prices polling every 3 seconds
                     setInterval(() => {
@@ -550,8 +622,6 @@
                         const res = await fetch('/api/live-prices');
                         if (res.ok) {
                             const newPrices = await res.json();
-                            
-                            // Check for price changes and trigger green/red tick flash
                             for (const sym in newPrices) {
                                 if (this.marketPrices[sym]) {
                                     const oldP = this.marketPrices[sym].price;
@@ -591,6 +661,42 @@
                         console.error('Error fetching signals:', err);
                     } finally {
                         if (!silent) this.isRefreshing = false;
+                    }
+                },
+
+                async fetchMT5Status() {
+                    try {
+                        const res = await fetch('/api/mt5/status');
+                        if (res.ok) {
+                            this.mt5Status = await res.json();
+                        }
+                    } catch (err) {
+                        console.error('Error fetching MT5 status:', err);
+                    }
+                },
+
+                async connectMT5Account() {
+                    this.mt5Connecting = true;
+                    try {
+                        const payload = {
+                            login: parseInt(this.mt5Form.login),
+                            password: this.mt5Form.password,
+                            server: this.mt5Form.server
+                        };
+                        const res = await fetch('/api/mt5/connect', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+                        if (res.ok) {
+                            this.mt5Status = await res.json();
+                            alert(`MT5 Account Status: ${this.mt5Status.mode} (Balance: $${this.mt5Status.balance})`);
+                            this.showMT5Modal = false;
+                        }
+                    } catch (err) {
+                        alert('Connection error: ' + err);
+                    } finally {
+                        this.mt5Connecting = false;
                     }
                 },
 
