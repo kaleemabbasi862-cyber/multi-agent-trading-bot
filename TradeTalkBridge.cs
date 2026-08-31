@@ -1,8 +1,10 @@
 using System;
 using System.IO;
 using System.Net;
+using System.Net.Http;
 using System.Text;
-using System.Threading;
+using System.Threading.Tasks;
+using System.Globalization;
 using cAlgo.API;
 using cAlgo.API.Internals;
 
@@ -20,22 +22,33 @@ namespace cAlgo.Robots
         [Parameter("Enable Auto Execution", DefaultValue = true)]
         public bool EnableAutoExecution { get; set; }
 
+        private static readonly HttpClient httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+
         protected override void OnStart()
         {
-            // Set SecurityProtocol for HTTPS
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12 | SecurityProtocolType.Tls11 | SecurityProtocolType.Tls;
+
+            string currencyName = "USD";
+            try
+            {
+                currencyName = Account.Asset != null ? Account.Asset.Name : Account.CurrencyName;
+            }
+            catch
+            {
+                currencyName = "USD";
+            }
 
             Print("=================================================");
             Print("TradeTalk.AI Autonomous cBot Bridge Started");
             Print("Account ID: " + Account.Number);
-            Print("Real Balance: " + Account.Balance + " " + Account.Currency);
-            Print("Target API: " + ServerUrl);
+            Print("Live Balance: " + Account.Balance + " " + currencyName);
+            Print("Server: " + ServerUrl);
             Print("=================================================");
 
             // Send initial registration heartbeat
             SendAccountHeartbeat();
 
-            // Start timer for periodic heartbeat & order polling
+            // Start timer for continuous telemetry & order polling
             Timer.Start(PollIntervalSeconds);
         }
 
@@ -54,68 +67,49 @@ namespace cAlgo.Robots
             }
             catch (Exception ex)
             {
-                Print("TradeTalk Bridge Timer Exception: " + ex.Message);
+                Print("Timer Error: " + ex.Message);
             }
         }
 
-        private void SendAccountHeartbeat()
+        private async void SendAccountHeartbeat()
         {
             try
             {
                 string endpoint = ServerUrl.TrimEnd('/') + "/api/cbot/heartbeat";
-                
-                // Build JSON payload
+                string currencyName = Account.Asset != null ? Account.Asset.Name : (Account.CurrencyName ?? "USD");
+                string broker = Account.BrokerName ?? "cTrader Live";
+
                 string jsonPayload = string.Format(
+                    CultureInfo.InvariantCulture,
                     "{{\"account_id\":\"{0}\",\"balance\":{1},\"equity\":{2},\"margin\":{3},\"free_margin\":{4},\"currency\":\"{5}\",\"broker\":\"{6}\"}}",
                     Account.Number,
-                    Account.Balance.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                    Account.Equity.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                    Account.Margin.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                    Account.FreeMargin.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                    Account.Currency,
-                    Account.BrokerName ?? "cTrader Live"
+                    Account.Balance,
+                    Account.Equity,
+                    Account.Margin,
+                    Account.FreeMargin,
+                    currencyName,
+                    broker
                 );
 
-                HttpWebRequest request = (HttpWebRequest)WebRequest.Create(endpoint);
-                request.Method = "POST";
-                request.ContentType = "application/json";
-                request.Timeout = 4000;
-
-                byte[] byteArray = Encoding.UTF8.GetBytes(jsonPayload);
-                request.ContentLength = byteArray.Length;
-
-                using (Stream dataStream = request.GetRequestStream())
-                {
-                    dataStream.Write(byteArray, 0, byteArray.Length);
-                }
-
-                using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
-                {
-                    // Success
-                }
+                var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
+                await httpClient.PostAsync(endpoint, content);
             }
             catch (Exception ex)
             {
-                // Non-blocking log
-                Print("Heartbeat dispatch: " + ex.Message);
+                // Non-blocking telemetry log
             }
         }
 
-        private void PollAndExecutePendingOrders()
+        private async void PollAndExecutePendingOrders()
         {
             try
             {
                 string endpoint = ServerUrl.TrimEnd('/') + "/api/cbot/orders";
-                HttpWebRequest request = (HttpWebRequest)WebRequest.Create(endpoint);
-                request.Method = "GET";
-                request.Accept = "application/json";
-                request.Timeout = 4000;
-
-                using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
-                using (Stream stream = response.GetResponseStream())
-                using (StreamReader reader = new StreamReader(stream))
+                var response = await httpClient.GetAsync(endpoint);
+                
+                if (response.IsSuccessStatusCode)
                 {
-                    string jsonResponse = reader.ReadToEnd();
+                    string jsonResponse = await response.Content.ReadAsStringAsync();
                     if (!string.IsNullOrEmpty(jsonResponse) && jsonResponse != "[]" && jsonResponse.Contains("symbol"))
                     {
                         ProcessOrdersJson(jsonResponse);
@@ -124,7 +118,7 @@ namespace cAlgo.Robots
             }
             catch (Exception ex)
             {
-                Print("Order Poll note: " + ex.Message);
+                // Non-blocking poll log
             }
         }
 
@@ -134,24 +128,23 @@ namespace cAlgo.Robots
             {
                 Print("[TradeTalk Signal Received]: " + json);
 
-                // Simple JSON parser for cBot execution
                 string symbol = ExtractJsonValue(json, "symbol");
-                string action = ExtractJsonValue(json, "action").ToUpper();
-                string id = ExtractJsonValue(json, "id");
-                
+                string action = ExtractJsonValue(json, "action").ToUpperInvariant();
+                string signalId = ExtractJsonValue(json, "id");
+
                 double lotSize = 0.01;
-                double.TryParse(ExtractJsonValue(json, "lot_size"), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out lotSize);
+                double.TryParse(ExtractJsonValue(json, "lot_size"), NumberStyles.Any, CultureInfo.InvariantCulture, out lotSize);
                 if (lotSize <= 0) lotSize = 0.01;
 
                 double sl = 0;
-                double.TryParse(ExtractJsonValue(json, "sl"), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out sl);
+                double.TryParse(ExtractJsonValue(json, "sl"), NumberStyles.Any, CultureInfo.InvariantCulture, out sl);
 
                 double tp = 0;
-                double.TryParse(ExtractJsonValue(json, "tp"), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out tp);
+                double.TryParse(ExtractJsonValue(json, "tp"), NumberStyles.Any, CultureInfo.InvariantCulture, out tp);
 
-                // Resolve Symbol on cTrader
-                Symbol targetSymbol = Symbols.GetSymbol(symbol) ?? Symbols.GetSymbol(symbol + "m") ?? Symbol;
-                TradeType tradeType = action == "BUY" ? TradeType.Buy : TradeType.Sell;
+                // Resolve Symbol in cTrader
+                Symbol targetSymbol = Symbols.GetSymbol(symbol) ?? Symbols.GetSymbol(symbol + "m") ?? Symbols.GetSymbol(symbol + ".pro") ?? Symbol;
+                TradeType tradeType = (action == "BUY") ? TradeType.Buy : TradeType.Sell;
 
                 // Normalize Volume to cTrader Symbol Units
                 double volumeInUnits = targetSymbol.NormalizeVolumeInUnits(lotSize * 100000);
@@ -160,59 +153,55 @@ namespace cAlgo.Robots
                     volumeInUnits = targetSymbol.NormalizeVolumeInUnits(lotSize * 100);
                 }
 
-                Print(string.Format("Executing {0} {1} Units of {2} | SL: {3}, TP: {4}", tradeType, volumeInUnits, targetSymbol.Name, sl, tp));
+                Print(string.Format(CultureInfo.InvariantCulture, "Executing {0} {1} Units of {2} | Target SL: {3}, TP: {4}", tradeType, volumeInUnits, targetSymbol.Name, sl, tp));
 
-                var result = ExecuteMarketOrder(tradeType, targetSymbol.Name, volumeInUnits, "TradeTalk.AI", null, null);
+                // Execute Market Order using clean unambiguous signature
+                TradeResult result = ExecuteMarketOrder(tradeType, targetSymbol.Name, volumeInUnits, "TradeTalk.AI");
+
                 if (result.IsSuccessful && result.Position != null)
                 {
-                    Print("🟢 Trade Executed! Position ID: " + result.Position.Id + " @ " + result.Position.EntryPrice);
-                    
-                    // Modify SL and TP on the live position
+                    Position pos = result.Position;
+                    Print("🟢 Trade Filled! Ticket: " + pos.Id + " @ " + pos.EntryPrice);
+
+                    // Set exact StopLoss and TakeProfit prices on the live position
                     if (sl > 0 || tp > 0)
                     {
-                        ModifyPosition(result.Position, sl > 0 ? (double?)sl : null, tp > 0 ? (double?)tp : null);
+                        double? slPrice = sl > 0 ? (double?)sl : null;
+                        double? tpPrice = tp > 0 ? (double?)tp : null;
+                        ModifyPosition(pos, slPrice, tpPrice);
                     }
 
-                    // Report confirmation back to TradeTalk API
-                    ReportExecutionConfirmation(id, result.Position.Id, result.Position.EntryPrice, targetSymbol.Name, action);
+                    // Report execution confirmation back to TradeTalk API
+                    ReportExecutionConfirmation(signalId, pos.Id, pos.EntryPrice, targetSymbol.Name, action);
                 }
                 else
                 {
-                    Print("❌ Order execution failed: " + result.Error);
+                    Print("❌ Order failed: " + result.Error);
                 }
             }
             catch (Exception ex)
             {
-                Print("Error processing order: " + ex.Message);
+                Print("Error executing order: " + ex.Message);
             }
         }
 
-        private void ReportExecutionConfirmation(string signalId, long positionId, double fillPrice, string symbol, string action)
+        private async void ReportExecutionConfirmation(string signalId, long positionId, double fillPrice, string symbol, string action)
         {
             try
             {
                 string endpoint = ServerUrl.TrimEnd('/') + "/api/cbot/order-filled";
                 string jsonPayload = string.Format(
+                    CultureInfo.InvariantCulture,
                     "{{\"id\":\"{0}\",\"ticket_id\":\"CT_{1}\",\"position_id\":\"{1}\",\"fill_price\":{2},\"symbol\":\"{3}\",\"action\":\"{4}\",\"status\":\"FILLED\"}}",
-                    signalId, positionId, fillPrice.ToString(System.Globalization.CultureInfo.InvariantCulture), symbol, action
+                    signalId, positionId, fillPrice, symbol, action
                 );
 
-                HttpWebRequest request = (HttpWebRequest)WebRequest.Create(endpoint);
-                request.Method = "POST";
-                request.ContentType = "application/json";
-                byte[] byteArray = Encoding.UTF8.GetBytes(jsonPayload);
-                request.ContentLength = byteArray.Length;
-
-                using (Stream dataStream = request.GetRequestStream())
-                {
-                    dataStream.Write(byteArray, 0, byteArray.Length);
-                }
-
-                using (HttpWebResponse response = (HttpWebResponse)request.GetResponse()) { }
+                var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
+                await httpClient.PostAsync(endpoint, content);
             }
             catch (Exception ex)
             {
-                Print("Report confirmation note: " + ex.Message);
+                // Non-blocking report log
             }
         }
 

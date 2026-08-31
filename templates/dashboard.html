@@ -617,7 +617,132 @@
                 signals: [],
                 marketPrices: {},
                 priceFlashes: {},
-                cbotCode: `using System;\nusing System.IO;\nusing System.Net;\nusing System.Text;\nusing cAlgo.API;\nusing cAlgo.API.Internals;\n\nnamespace cAlgo.Robots\n{\n    [Robot(TimeZone = TimeZones.UTC, AccessRights = AccessRights.FullAccess)]\n    public class TradeTalkBridge : Robot\n    {\n        [Parameter("TradeTalk Server URL", DefaultValue = "https://multi-agent-trading-bot.onrender.com")]\n        public string ServerUrl { get; set; }\n        [Parameter("Poll Interval (Seconds)", DefaultValue = 2, MinValue = 1, MaxValue = 10)]\n        public int PollIntervalSeconds { get; set; }\n        [Parameter("Enable Auto Execution", DefaultValue = true)]\n        public bool EnableAutoExecution { get; set; }\n        protected override void OnStart() {\n            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;\n            Print("TradeTalk Bridge Started on Account " + Account.Number);\n            SendAccountHeartbeat();\n            Timer.Start(PollIntervalSeconds);\n        }\n        protected override void OnTimer() {\n            SendAccountHeartbeat();\n            if (EnableAutoExecution) PollAndExecutePendingOrders();\n        }\n        private void SendAccountHeartbeat() {\n            try {\n                string endpoint = ServerUrl.TrimEnd('/') + "/api/cbot/heartbeat";\n                string json = string.Format("{{\\"account_id\\":\\"{0}\\",\\"balance\\":{1},\\"equity\\":{2},\\"margin\\":{3},\\"free_margin\\":{4},\\"currency\\":\\"{5}\\",\\"broker\\":\\"{6}\\"}}",\n                    Account.Number, Account.Balance.ToString(System.Globalization.CultureInfo.InvariantCulture), Account.Equity.ToString(System.Globalization.CultureInfo.InvariantCulture), Account.Margin.ToString(System.Globalization.CultureInfo.InvariantCulture), Account.FreeMargin.ToString(System.Globalization.CultureInfo.InvariantCulture), Account.Currency, Account.BrokerName ?? "cTrader");\n                HttpWebRequest req = (HttpWebRequest)WebRequest.Create(endpoint);\n                req.Method = "POST"; req.ContentType = "application/json"; req.Timeout = 4000;\n                byte[] b = Encoding.UTF8.GetBytes(json); req.ContentLength = b.Length;\n                using (Stream s = req.GetRequestStream()) s.Write(b, 0, b.Length);\n                using (HttpWebResponse r = (HttpWebResponse)req.GetResponse()) {}\n            } catch {}\n        }\n        private void PollAndExecutePendingOrders() {\n            try {\n                string endpoint = ServerUrl.TrimEnd('/') + "/api/cbot/orders";\n                HttpWebRequest req = (HttpWebRequest)WebRequest.Create(endpoint);\n                req.Method = "GET"; req.Accept = "application/json"; req.Timeout = 4000;\n                using (HttpWebResponse r = (HttpWebResponse)req.GetResponse())\n                using (StreamReader reader = new StreamReader(r.GetResponseStream())) {\n                    string res = reader.ReadToEnd();\n                    if (!string.IsNullOrEmpty(res) && res != "[]" && res.Contains("symbol")) {\n                        Print("Signal: " + res);\n                    }\n                }\n            } catch {}\n        }\n    }\n}`,
+                cbotCode: `using System;
+using System.IO;
+using System.Net;
+using System.Net.Http;
+using System.Text;
+using System.Threading.Tasks;
+using System.Globalization;
+using cAlgo.API;
+using cAlgo.API.Internals;
+
+namespace cAlgo.Robots
+{
+    [Robot(TimeZone = TimeZones.UTC, AccessRights = AccessRights.FullAccess)]
+    public class TradeTalkBridge : Robot
+    {
+        [Parameter("TradeTalk Server URL", DefaultValue = "https://multi-agent-trading-bot.onrender.com")]
+        public string ServerUrl { get; set; }
+
+        [Parameter("Poll Interval (Seconds)", DefaultValue = 2, MinValue = 1, MaxValue = 10)]
+        public int PollIntervalSeconds { get; set; }
+
+        [Parameter("Enable Auto Execution", DefaultValue = true)]
+        public bool EnableAutoExecution { get; set; }
+
+        private static readonly HttpClient httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+
+        protected override void OnStart()
+        {
+            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
+            string currency = Account.Asset != null ? Account.Asset.Name : Account.CurrencyName;
+            Print("TradeTalk Bridge Started on Account " + Account.Number + " (" + currency + ")");
+            SendAccountHeartbeat();
+            Timer.Start(PollIntervalSeconds);
+        }
+
+        protected override void OnTimer()
+        {
+            SendAccountHeartbeat();
+            if (EnableAutoExecution) PollAndExecutePendingOrders();
+        }
+
+        private async void SendAccountHeartbeat()
+        {
+            try
+            {
+                string endpoint = ServerUrl.TrimEnd('/') + "/api/cbot/heartbeat";
+                string currency = Account.Asset != null ? Account.Asset.Name : (Account.CurrencyName ?? "USD");
+                string json = string.Format(CultureInfo.InvariantCulture,
+                    "{{\\"account_id\\":\\"{0}\\",\\"balance\\":{1},\\"equity\\":{2},\\"margin\\":{3},\\"free_margin\\":{4},\\"currency\\":\\"{5}\\",\\"broker\\":\\"{6}\\"}}",
+                    Account.Number, Account.Balance, Account.Equity, Account.Margin, Account.FreeMargin, currency, Account.BrokerName ?? "cTrader");
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+                await httpClient.PostAsync(endpoint, content);
+            }
+            catch {}
+        }
+
+        private async void PollAndExecutePendingOrders()
+        {
+            try
+            {
+                string endpoint = ServerUrl.TrimEnd('/') + "/api/cbot/orders";
+                var response = await httpClient.GetAsync(endpoint);
+                if (response.IsSuccessStatusCode)
+                {
+                    string json = await response.Content.ReadAsStringAsync();
+                    if (!string.IsNullOrEmpty(json) && json != "[]" && json.Contains("symbol"))
+                    {
+                        ProcessOrdersJson(json);
+                    }
+                }
+            }
+            catch {}
+        }
+
+        private void ProcessOrdersJson(string json)
+        {
+            try
+            {
+                string symbol = ExtractJsonValue(json, "symbol");
+                string action = ExtractJsonValue(json, "action").ToUpperInvariant();
+                string signalId = ExtractJsonValue(json, "id");
+
+                double lotSize = 0.01;
+                double.TryParse(ExtractJsonValue(json, "lot_size"), NumberStyles.Any, CultureInfo.InvariantCulture, out lotSize);
+                if (lotSize <= 0) lotSize = 0.01;
+
+                double sl = 0;
+                double.TryParse(ExtractJsonValue(json, "sl"), NumberStyles.Any, CultureInfo.InvariantCulture, out sl);
+
+                double tp = 0;
+                double.TryParse(ExtractJsonValue(json, "tp"), NumberStyles.Any, CultureInfo.InvariantCulture, out tp);
+
+                Symbol targetSymbol = Symbols.GetSymbol(symbol) ?? Symbols.GetSymbol(symbol + "m") ?? Symbol;
+                TradeType tradeType = action == "BUY" ? TradeType.Buy : TradeType.Sell;
+
+                double volumeInUnits = targetSymbol.NormalizeVolumeInUnits(lotSize * 100000);
+                if (targetSymbol.Name.Contains("XAU") || targetSymbol.Name.Contains("GOLD"))
+                {
+                    volumeInUnits = targetSymbol.NormalizeVolumeInUnits(lotSize * 100);
+                }
+
+                TradeResult result = ExecuteMarketOrder(tradeType, targetSymbol.Name, volumeInUnits, "TradeTalk.AI");
+                if (result.IsSuccessful && result.Position != null)
+                {
+                    if (sl > 0 || tp > 0)
+                    {
+                        ModifyPosition(result.Position, sl > 0 ? (double?)sl : null, tp > 0 ? (double?)tp : null);
+                    }
+                }
+            }
+            catch {}
+        }
+
+        private string ExtractJsonValue(string json, string key)
+        {
+            string search = "\\"" + key + "\\":";
+            int idx = json.IndexOf(search, StringComparison.OrdinalIgnoreCase);
+            if (idx == -1) return "";
+            int start = idx + search.Length;
+            while (start < json.Length && (json[start] == ' ' || json[start] == '\\"')) start++;
+            int end = start;
+            while (end < json.Length && json[end] != '\\"' && json[end] != ',' && json[end] != '}') end++;
+            return json.Substring(start, end - start).Trim('\\"', ' ');
+        }
+    }
+}`,
                 cbotStatus: { mode: 'STANDBY', is_connected: false, balance: 0.0, account_id: '1005621', currency: 'USD' },
                 systemState: { auto_trade_enabled: true, last_scan_time: null, total_scans: 0 },
                 stats: { total: 0, approved: 0, rejected: 0, approval_rate: 0 },
