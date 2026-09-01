@@ -64,12 +64,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+import settings_manager
+
+# Load saved user preferences
+saved_cfg = settings_manager.load_settings()
+
 # -------------------------------------------------------------
 # 2. سسٹم اسٹیٹ اور سگنل ہسٹری (State & History Store)
 # -------------------------------------------------------------
 SYSTEM_STATE = {
-    "auto_trade_enabled": True,
-    "scanner_active": True,
+    "auto_trade_enabled": saved_cfg.get("auto_trade_enabled", True),
+    "scanner_active": saved_cfg.get("scanner_active", True),
+    "active_pairs": saved_cfg.get("active_pairs", ["XAUUSD", "XAGUSD", "EURUSD", "GBPUSD", "BTCUSD"]),
     "paper_balance": 10000.00,
     "equity": 10000.00,
     "last_scan_time": None,
@@ -274,6 +280,15 @@ async def run_forex_agents(signal: TradingViewSignal) -> dict:
 # 6. خودکار مارکیٹ اسکینر پائپ لائن (Autonomous Market Scanner)
 # -------------------------------------------------------------
 async def scan_single_market(symbol: str, meta: dict):
+    # Strict Pair Whitelist Check: Filter out any pair that is NOT enabled by user
+    if not settings_manager.is_pair_whitelisted(symbol):
+        print(f"[-] [WHITELIST FILTER] Skipping {symbol} (Pair is disabled in user settings)")
+        return {
+            "status": "SKIPPED_NOT_WHITELISTED",
+            "symbol": symbol,
+            "active_pairs": settings_manager.get_active_pairs()
+        }
+
     p = meta["price"]
     ind = meta["indicators"]
     rsi = ind["rsi"]
@@ -342,25 +357,30 @@ async def scan_single_market(symbol: str, meta: dict):
     return record
 
 async def autonomous_scanner_background_loop():
-    """Background worker that continuously evaluates live market data."""
+    """Background worker that continuously evaluates live market data strictly adhering to user pair whitelist."""
     print("[*] Autonomous AI Market Scanner background task started.")
     await asyncio.sleep(5)  # Quick warmup
     
-    symbols_cycle = ["EURUSD", "GBPUSD", "XAGUSD", "XAUUSD"]
     idx = 0
 
     while True:
         try:
             if SYSTEM_STATE["scanner_active"]:
-                market_data = market_feed.get_live_market_data()
-                target_sym = symbols_cycle[idx % len(symbols_cycle)]
-                idx += 1
+                active_symbols = settings_manager.get_active_pairs()
+                SYSTEM_STATE["active_pairs"] = active_symbols
 
-                if target_sym in market_data:
-                    SYSTEM_STATE["last_scan_time"] = datetime.datetime.now(datetime.timezone.utc).strftime("%H:%M:%S UTC")
-                    SYSTEM_STATE["total_scans"] += 1
-                    print(f"\n[{SYSTEM_STATE['last_scan_time']}] [AUTONOMOUS SCAN] Inspecting {target_sym}...")
-                    await scan_single_market(target_sym, market_data[target_sym])
+                if not active_symbols:
+                    print("[!] Whitelist empty: No pairs selected for auto-trading. Waiting for user selection...")
+                else:
+                    market_data = market_feed.get_live_market_data()
+                    target_sym = active_symbols[idx % len(active_symbols)]
+                    idx += 1
+
+                    if target_sym in market_data:
+                        SYSTEM_STATE["last_scan_time"] = datetime.datetime.now(datetime.timezone.utc).strftime("%H:%M:%S UTC")
+                        SYSTEM_STATE["total_scans"] += 1
+                        print(f"\n[{SYSTEM_STATE['last_scan_time']}] [AUTONOMOUS SCAN] Inspecting {target_sym} (Whitelist: {active_symbols})...")
+                        await scan_single_market(target_sym, market_data[target_sym])
 
         except Exception as e:
             print(f"[!] Autonomous scanner cycle error: {e}")
@@ -550,19 +570,65 @@ def toggle_auto_trade():
         "status": "Auto-Trading ACTIVE" if SYSTEM_STATE["auto_trade_enabled"] else "Auto-Trading PAUSED"
     }
 
+@app.get("/api/pairs/settings")
+def get_pair_settings():
+    return {
+        "active_pairs": settings_manager.get_active_pairs(),
+        "all_pairs": settings_manager.ALL_SUPPORTED_PAIRS
+    }
+
+@app.post("/api/pairs/settings")
+def update_pair_settings(data: dict):
+    if "active_pairs" in data and isinstance(data["active_pairs"], list):
+        new_active = settings_manager.set_active_pairs(data["active_pairs"])
+    elif "toggle_pair" in data:
+        new_active = settings_manager.toggle_pair(data["toggle_pair"])
+    elif "pair" in data and "enabled" in data:
+        pair_sym = data["pair"].upper().strip()
+        active = settings_manager.get_active_pairs()
+        if data["enabled"] and pair_sym not in active:
+            active.append(pair_sym)
+        elif not data["enabled"] and pair_sym in active:
+            active.remove(pair_sym)
+        new_active = settings_manager.set_active_pairs(active)
+    else:
+        new_active = settings_manager.get_active_pairs()
+
+    SYSTEM_STATE["active_pairs"] = new_active
+    return {
+        "status": "SUCCESS",
+        "active_pairs": new_active,
+        "all_pairs": settings_manager.ALL_SUPPORTED_PAIRS
+    }
+
 @app.post("/api/scan-now")
 async def trigger_manual_scan():
     market_data = market_feed.get_live_market_data()
     results = []
-    for sym in ["XAUUSD", "EURUSD"]:
+    active_symbols = settings_manager.get_active_pairs()
+    for sym in active_symbols:
         if sym in market_data:
             rec = await scan_single_market(sym, market_data[sym])
             results.append(rec)
-    return {"status": "Scan Complete", "evaluated_pairs": len(results)}
+    return {
+        "status": "Scan Complete",
+        "active_pairs": active_symbols,
+        "evaluated_pairs": len(results)
+    }
 
 @app.post("/webhook/tradingview")
 async def receive_tradingview_alert(signal: TradingViewSignal):
     print(f"\n--- TradingView سگنل موصول ہوا: {signal.symbol} ({signal.action}) ---")
+    
+    # Whitelist Filter for incoming webhooks
+    if not settings_manager.is_pair_whitelisted(signal.symbol):
+        print(f"[-] [WEBHOOK IGNORED] {signal.symbol} is not active in user pair whitelist.")
+        return {
+            "status": "REJECTED_NOT_WHITELISTED",
+            "message": f"Pair {signal.symbol} is disabled in active pair settings.",
+            "active_pairs": settings_manager.get_active_pairs()
+        }
+
     timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
     signal_id = str(uuid.uuid4())[:8]
 
@@ -576,7 +642,7 @@ async def receive_tradingview_alert(signal: TradingViewSignal):
 
         execution_result = None
         if decision_status == "APPROVED" and SYSTEM_STATE["auto_trade_enabled"]:
-            lot_size = 0.25 if "XAU" in signal.symbol else 0.10
+            lot_size = 0.01  # Safe micro-lot
             execution_result = execute_order(
                 symbol=signal.symbol,
                 action=signal.action.upper(),

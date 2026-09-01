@@ -1,0 +1,12 @@
+{
+  "active_pairs": [
+    "XAUUSD",
+    "XAGUSD",
+    "EURUSD",
+    "GBPUSD",
+    "BTCUSD"
+  ],
+  "auto_trade_enabled": true,
+  "scanner_active": true,
+  "max_risk_percent": 1.0
+}
