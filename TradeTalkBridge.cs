@@ -23,6 +23,9 @@ namespace cAlgo.Robots
         [Parameter("Enable Auto Execution", DefaultValue = true)]
         public bool EnableAutoExecution { get; set; }
 
+        [Parameter("Auto Break-Even Pips", DefaultValue = 15.0, MinValue = 5.0, MaxValue = 50.0)]
+        public double AutoBreakEvenPips { get; set; }
+
         private static readonly HttpClient httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
         private readonly HashSet<string> _executedTickets = new HashSet<string>();
 
@@ -44,10 +47,11 @@ namespace cAlgo.Robots
             }
 
             Print("=================================================");
-            Print("TradeTalk.AI Autonomous Protected Bridge Started");
+            Print("TradeTalk.AI Ultra-High Accuracy / Sniper Bridge Started");
             Print("Account Number: " + Account.Number);
             Print("Live Balance: " + Account.Balance + " " + assetName);
             Print("Target Server: " + ServerUrl);
+            Print("Sniper Auto Break-Even Guard: +" + AutoBreakEvenPips + " Pips");
             Print("=================================================");
 
             SendTelemetry();
@@ -58,7 +62,13 @@ namespace cAlgo.Robots
         {
             try
             {
+                // 1. Dynamic Auto-Protection: Lock in profit to Break-Even at +15 Pips
+                ApplyAutoBreakEvenProtection();
+
+                // 2. Send live telemetry (Balance, Equity, Live Prices, Open Positions)
                 SendTelemetry();
+
+                // 3. Poll & Execute pending approved orders
                 if (EnableAutoExecution)
                 {
                     PollOrders();
@@ -67,6 +77,44 @@ namespace cAlgo.Robots
             catch (Exception ex)
             {
                 Print("Timer exception: " + ex.Message);
+            }
+        }
+
+        private void ApplyAutoBreakEvenProtection()
+        {
+            try
+            {
+                foreach (var pos in Positions)
+                {
+                    if (pos.Pips >= AutoBreakEvenPips)
+                    {
+                        Symbol posSym = Symbols.GetSymbol(pos.SymbolName) ?? Symbol;
+                        double pipSize = posSym.PipSize;
+
+                        if (pos.TradeType == TradeType.Buy)
+                        {
+                            double targetBe = pos.EntryPrice + (1.0 * pipSize);
+                            if (pos.StopLoss == null || pos.StopLoss < pos.EntryPrice)
+                            {
+                                Print(string.Format("🛡️ [Sniper Auto-BE] Locking Profit for #{0} ({1} +{2:F1} Pips)! Moving SL to Break-Even @ {3:F5}", pos.Id, pos.SymbolName, pos.Pips, targetBe));
+                                ModifyPosition(pos, targetBe, pos.TakeProfit, ProtectionType.Absolute);
+                            }
+                        }
+                        else if (pos.TradeType == TradeType.Sell)
+                        {
+                            double targetBe = pos.EntryPrice - (1.0 * pipSize);
+                            if (pos.StopLoss == null || pos.StopLoss > pos.EntryPrice)
+                            {
+                                Print(string.Format("🛡️ [Sniper Auto-BE] Locking Profit for #{0} ({1} +{2:F1} Pips)! Moving SL to Break-Even @ {3:F5}", pos.Id, pos.SymbolName, pos.Pips, targetBe));
+                                ModifyPosition(pos, targetBe, pos.TakeProfit, ProtectionType.Absolute);
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Print("Auto-BE note: " + ex.Message);
             }
         }
 
@@ -270,10 +318,10 @@ namespace cAlgo.Robots
                     if (calculatedPips >= 10) tpPips = Math.Round(calculatedPips, 1);
                 }
 
-                Print(string.Format("🚀 [Protected Order Execution] Sending {0} {1} ({2} Units | SL_Pips: {3} | TP_Pips: {4})...", action, targetSymbol.Name, volumeInUnits, slPips, tpPips));
+                Print(string.Format("🎯 [Sniper Order Execution] Sending {0} {1} ({2} Units | SL_Pips: {3} | TP_Pips: {4})...", action, targetSymbol.Name, volumeInUnits, slPips, tpPips));
 
                 // Execute with embedded SL and TP in the initial order request
-                TradeResult result = ExecuteMarketOrder(tradeType, targetSymbol.Name, volumeInUnits, "TradeTalk.AI", slPips, tpPips);
+                TradeResult result = ExecuteMarketOrder(tradeType, targetSymbol.Name, volumeInUnits, "TradeTalk.Sniper", slPips, tpPips);
                 if (result.IsSuccessful && result.Position != null)
                 {
                     Position pos = result.Position;
