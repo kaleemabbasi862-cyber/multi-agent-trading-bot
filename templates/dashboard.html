@@ -635,8 +635,8 @@
                                 <td class="py-3 px-4 text-slate-300 text-[11px]" x-text="item.timeframe || '15m'"></td>
                                 <td class="py-3 px-4 whitespace-nowrap">
                                     <span class="px-2.5 py-1 rounded-md font-bold text-[10px] inline-flex items-center space-x-1"
-                                          :class="item.status === 'APPROVED' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'">
-                                        <i class="fa-solid" :class="item.status === 'APPROVED' ? 'fa-check' : 'fa-xmark'"></i>
+                                          :class="item.status === 'APPROVED' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : (item.status && item.status.includes('<85%') ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30')">
+                                        <i class="fa-solid" :class="item.status === 'APPROVED' ? 'fa-check' : (item.status && item.status.includes('<85%') ? 'fa-shield-halved text-amber-400' : 'fa-xmark')"></i>
                                         <span x-text="item.status"></span>
                                     </span>
                                 </td>

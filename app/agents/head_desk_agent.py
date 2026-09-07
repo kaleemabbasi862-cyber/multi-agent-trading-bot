@@ -80,9 +80,9 @@ class HeadDeskManagerAgent:
                 f"• 0.01 Lots on XAUUSD approved for immediate zero-delay execution."
             )
         elif 75.0 <= final_score < 85.0:
-            decision_status = "WATCHLIST"
+            decision_status = "BLOCKED (<85% Conviction)"
             final_explanation = (
-                f"[DECISION: WATCHLIST / WAIT] ⏳ Moderate conviction.\n"
+                f"[DECISION: BLOCKED — CONVICTION < 85%] 🚫 [EXECUTION HALTED]\n"
                 f"• Decision Confidence Score: {final_score}% (Requires >= 85.0% for automatic execution)\n"
                 f"• Capital preserved. Trade rejected until >= 85% consensus conviction is reached."
             )

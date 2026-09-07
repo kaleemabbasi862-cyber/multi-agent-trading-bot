@@ -34,10 +34,19 @@ namespace cAlgo.Robots
         private static readonly HttpClient httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
         private readonly HashSet<string> _executedTickets = new HashSet<string>();
         private readonly Dictionary<long, double> _failedModifications = new Dictionary<long, double>();
+        private Symbol _goldSymbol;
 
         protected override void OnStart()
         {
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12 | SecurityProtocolType.Tls11 | SecurityProtocolType.Tls;
+
+            // Resolve Gold symbol regardless of what chart bot is attached to
+            _goldSymbol = Symbols.GetSymbol("XAUUSD") 
+                       ?? Symbols.GetSymbol("GOLD") 
+                       ?? Symbols.GetSymbol("XAUUSDm") 
+                       ?? Symbols.GetSymbol("XAUUSD.pro") 
+                       ?? Symbols.GetSymbol("XAUUSD_i") 
+                       ?? Symbol;
 
             string assetName = "USD";
             try
@@ -59,11 +68,17 @@ namespace cAlgo.Robots
             Print("Environment: " + envName);
             Print("Account Number: " + Account.Number);
             Print(string.Format(CultureInfo.InvariantCulture, "Balance: ${0:F2} {1} | Equity: ${2:F2}", Account.Balance, assetName, Account.Equity));
-            Print("Target Instrument: XAUUSD (Gold) ONLY");
+            Print("Target Instrument: " + _goldSymbol.Name + " (Gold Only)");
             Print("Position Sizing: EXACTLY 0.01 Lots Fixed");
             Print("Max Open Positions: " + MAX_CONCURRENT_POSITIONS);
             Print("Dynamic Auto Break-Even Guard: +" + AutoBreakEvenPips + " Pips");
             Print("Target Server: " + ServerUrl);
+
+            if (!Symbol.Name.ToUpperInvariant().Contains("XAU") && !Symbol.Name.ToUpperInvariant().Contains("GOLD"))
+            {
+                Print(string.Format("⚠️ [CHART NOTICE] Bot instance is attached to '{0}' chart. All execution will automatically route to '{1}'.", Symbol.Name, _goldSymbol.Name));
+            }
+
             Print("=================================================");
 
             EnsureAllPositionsProtected();
