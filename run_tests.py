@@ -13,6 +13,7 @@ from tests.test_7_agents import test_all_7_agents_evaluate_valid_setup
 from tests.test_guardian import test_guardian_blocks_high_spread, test_guardian_blocks_upcoming_news
 from tests.test_webhook_security import test_webhook_security_valid_token, test_webhook_security_invalid_token
 from tests.test_backtester import test_strategy_lab_backtest_execution
+from tests.test_ctrader_cloud import test_ctrader_cloud_order_execution
 
 def main():
     tests = [
@@ -21,6 +22,7 @@ def main():
         ("Risk Agent: Vetoes Circuit Breaker", test_risk_agent_vetoes_circuit_breaker),
         ("Pair & Lot: Dynamic Selector & Lot Stepper", test_dynamic_pair_settings_and_lot_controls),
         ("7 Agents: Complete Consensus Pipeline", test_all_7_agents_evaluate_valid_setup),
+        ("cTrader Cloud: Server-Side Open API Execution", test_ctrader_cloud_order_execution),
         ("No-Trade Guardian: High Spread Blocker", test_guardian_blocks_high_spread),
         ("No-Trade Guardian: High Impact News Blocker", test_guardian_blocks_upcoming_news),
         ("Webhook Security: Valid Token Authorization", test_webhook_security_valid_token),

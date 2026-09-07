@@ -31,6 +31,7 @@ from app.services.market_feed_v2 import get_market_snapshot, get_gold_market_sna
 from app.services.economic_calendar import economic_calendar
 from app.services.webhook_security import webhook_security
 import cbot_bridge
+import ctrader_cloud_gateway
 import settings_manager
 import copilot_agent
 
@@ -47,6 +48,47 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# -------------------------------------------------------------
+# Background Autonomous Cloud Gateway Worker
+# -------------------------------------------------------------
+async def cloud_gateway_background_sync():
+    """Continuously streams live prices and evaluates open positions in cloud memory."""
+    await asyncio.sleep(2)
+    while True:
+        try:
+            active_sym = settings_manager.get_active_symbol()
+            pairs_to_sync = list(set([active_sym, "XAUUSD", "EURUSD", "GBPUSD", "USDJPY"]))
+            
+            # Also include any symbol in active open positions
+            status = ctrader_cloud_gateway.get_gateway_status()
+            for pos in status.get("open_positions", []):
+                if pos.get("symbol"):
+                    pairs_to_sync.append(pos.get("symbol"))
+            
+            price_map = {}
+            for sym in set(pairs_to_sync):
+                snap = get_market_snapshot(sym, force_refresh=False)
+                if snap and snap.get("price"):
+                    p = float(snap["price"])
+                    sp = float(snap.get("spread", 0.35))
+                    price_map[sym] = {
+                        "symbol": sym,
+                        "price": p,
+                        "bid": p,
+                        "ask": round(p + sp, 4 if "EUR" in sym or "GBP" in sym else 2),
+                        "updated_at": snap.get("timestamp")
+                    }
+            
+            if price_map:
+                ctrader_cloud_gateway.update_live_market_prices(price_map)
+        except Exception as e:
+            pass
+        await asyncio.sleep(2.5)
+
+@app.on_event("startup")
+async def on_startup():
+    asyncio.create_task(cloud_gateway_background_sync())
 
 # Include Modular V2 Routers
 from app.routers import market, signals, trading, backtest, cbot, system
@@ -263,6 +305,64 @@ async def update_settings(req: SettingsUpdateRequest):
         "auto_trade_enabled": updated.get("auto_trade_enabled", True),
         "message": f"Settings updated: {updated.get('active_symbol')} @ {updated.get('active_lot_size')} Lots | Gate: {updated.get('min_confidence_threshold')}%"
     }
+
+# -------------------------------------------------------------
+# cTrader Cloud Open API Gateway Endpoints
+# -------------------------------------------------------------
+@app.get("/api/ctrader/status")
+async def get_ctrader_status():
+    """Returns real-time server-side cTrader cloud status."""
+    return ctrader_cloud_gateway.get_gateway_status()
+
+class CTraderOrderRequest(BaseModel):
+    symbol: str = "XAUUSD"
+    action: str = "BUY"
+    lot_size: float = 0.01
+    sl_price: float
+    tp_price: float
+    comment: Optional[str] = "Manual Cloud Order"
+
+@app.post("/api/ctrader/execute")
+async def execute_ctrader_cloud_order(req: CTraderOrderRequest):
+    """Executes a market order directly on server without local cBot."""
+    return ctrader_cloud_gateway.execute_market_order(
+        symbol=req.symbol,
+        action=req.action,
+        lot_size=req.lot_size,
+        sl_price=req.sl_price,
+        tp_price=req.tp_price,
+        comment=req.comment or "Manual Cloud Order"
+    )
+
+class ClosePositionRequest(BaseModel):
+    position_id: Any
+
+@app.post("/api/ctrader/positions/close")
+@app.post("/api/cbot/close-position")
+async def close_cloud_position(req: ClosePositionRequest):
+    """Directly closes an active position server-side."""
+    return ctrader_cloud_gateway.close_position(req.position_id)
+
+@app.get("/api/ctrader/auth-url")
+async def get_ctrader_oauth_url():
+    """Returns Spotware cTrader Open API OAuth 2.0 authorization URL."""
+    return {"auth_url": ctrader_cloud_gateway.get_oauth_auth_url()}
+
+@app.get("/api/ctrader/callback")
+async def ctrader_oauth_callback(code: str):
+    """Handles Spotware OAuth callback code exchange."""
+    res = ctrader_cloud_gateway.exchange_oauth_code(code, "https://multi-agent-trading-bot.onrender.com/api/ctrader/callback")
+    if res.get("status") == "SUCCESS":
+        return HTMLResponse(content="""
+        <html>
+            <body style="background:#090d16;color:#10b981;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;">
+                <h2>✓ cTrader Cloud Account Linked Successfully!</h2>
+                <p style="color:#94a3b8;">You can now close this window and return to your TradeTalk AI Dashboard.</p>
+                <a href="/" style="background:#4f46e5;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;margin-top:15px;font-weight:bold;">Return to Dashboard</a>
+            </body>
+        </html>
+        """)
+    return HTMLResponse(content=f"<h3>Authorization Error: {res.get('message')}</h3>", status_code=400)
 
 # -------------------------------------------------------------
 # Frontend Dashboard View & Health

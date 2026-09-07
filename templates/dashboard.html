@@ -132,10 +132,10 @@
                 <span>Strategy Lab</span>
             </button>
 
-            <!-- cBOT SETUP BUTTON -->
+            <!-- cTRADER CLOUD GATEWAY BUTTON -->
             <button @click="showCBotModal = true" class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition shadow-sm bg-emerald-600/15 border-emerald-500/40 text-emerald-300 hover:bg-emerald-600/25">
                 <span class="w-2 h-2 rounded-full bg-emerald-400 pulse-live mr-0.5"></span>
-                <span x-text="'cBot: #' + (cbotStatus.account_id || '1005621') + ' ($' + formatMoney(cbotStatus.balance || 39.05) + ')'"></span>
+                <span x-text="'cTrader: #' + (cbotStatus.account_id || '1005621') + ' ($' + formatMoney(cbotStatus.balance || 39.05) + ')'"></span>
             </button>
 
             <!-- AUTO TRADE TOGGLE -->
@@ -1067,36 +1067,46 @@
     </div>
 
     <!-- 9. cBOT SETUP MODAL -->
+    <!-- cTRADER CLOUD OPEN API GATEWAY MODAL -->
     <div x-show="showCBotModal" x-transition class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" style="display: none;">
         <div @click.away="showCBotModal = false" class="bg-dark-card border border-dark-border rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] flex flex-col overflow-hidden">
             <div class="flex items-center justify-between border-b border-dark-border pb-3">
                 <div class="flex items-center space-x-2">
-                    <i class="fa-solid fa-robot text-indigo-400"></i>
-                    <h3 class="font-bold text-white text-base">cTrader cBot Webhook Bridge (Account #1005621)</h3>
+                    <i class="fa-solid fa-cloud-bolt text-indigo-400"></i>
+                    <h3 class="font-bold text-white text-base">cTrader Cloud Open API Gateway (Server-Side)</h3>
                 </div>
                 <button @click="showCBotModal = false" class="text-slate-400 hover:text-white">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
 
-            <div class="bg-slate-900/90 border border-dark-border rounded-xl p-4 space-y-2 text-xs">
+            <div class="bg-slate-900/90 border border-dark-border rounded-xl p-4 space-y-2.5 text-xs">
                 <div class="flex items-center justify-between">
-                    <span class="text-slate-400">Bridge Status:</span>
-                    <span class="font-bold px-2.5 py-0.5 rounded text-[11px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">🟢 cBot Connected & Streaming</span>
+                    <span class="text-slate-400">Cloud Execution Status:</span>
+                    <span class="font-bold px-2.5 py-0.5 rounded text-[11px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">🟢 Cloud Server Active & Autonomous</span>
                 </div>
                 <div class="flex items-center justify-between">
-                    <span class="text-slate-400">Target Account:</span>
-                    <span class="font-bold text-white font-mono">#1005621</span>
+                    <span class="text-slate-400">cTrader Account:</span>
+                    <span class="font-bold text-white font-mono">#1005621 (IC Markets / Live Open API)</span>
                 </div>
                 <div class="flex items-center justify-between">
-                    <span class="text-slate-400">Live Balance:</span>
+                    <span class="text-slate-400">Live Server Balance:</span>
                     <span class="font-bold font-mono text-emerald-400 text-sm" x-text="'$' + formatMoney(cbotStatus.balance || 39.05) + ' USD'"></span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-slate-400">Live Server Equity:</span>
+                    <span class="font-bold font-mono text-cyan-300 text-sm" x-text="'$' + formatMoney(cbotStatus.equity || 39.05) + ' USD'"></span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-slate-400">Architecture:</span>
+                    <span class="text-slate-300 font-semibold">Zero Desktop Dependency &bull; Server-Side Direct Execution</span>
                 </div>
             </div>
 
-            <div class="flex justify-end space-x-2">
-                <a href="/api/cbot/download" download="TradeTalkBridge.cs" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-xs transition">
-                    <i class="fa-solid fa-download mr-1"></i> Download TradeTalkBridge.cs
+            <div class="flex justify-between items-center pt-2">
+                <a href="/api/ctrader/auth-url" target="_blank" class="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-xs transition flex items-center space-x-1.5 shadow-md">
+                    <i class="fa-solid fa-link"></i>
+                    <span>Authorize Spotware cTrader (OAuth)</span>
                 </a>
                 <button type="button" @click="showCBotModal = false" class="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold">
                     Close
@@ -1424,13 +1434,14 @@
                 },
 
                 async closePosition(posId) {
-                    if (!confirm('Close Position #' + posId + ' immediately in cTrader?')) return;
+                    if (!confirm('Close Position #' + posId + ' immediately in cTrader Cloud?')) return;
                     try {
-                        await fetch('/api/cbot/close-position', {
+                        const res = await fetch('/api/ctrader/positions/close', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ position_id: posId })
                         });
+                        await this.fetchCBotStatus();
                     } catch (e) {}
                 },
 

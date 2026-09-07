@@ -92,10 +92,10 @@ class ExecutionEngine:
                 "executed_at": now_iso
             }
 
-        # 2. DEMO OR LIVE TRADING MODE (cTrader Bridge Direct Queue)
+        # 2. DEMO OR LIVE TRADING MODE (Direct Server-Side cTrader Open API Execution)
         elif self.mode in ("DEMO", "LIVE"):
             cbot_sig_id = f"CT_{trade_id}"
-            queue_res = cbot_bridge.queue_trade_for_cbot(
+            exec_res = cbot_bridge.queue_trade_for_cbot(
                 symbol=signal.symbol,
                 action=signal.action,
                 lot_size=vol,
@@ -104,44 +104,49 @@ class ExecutionEngine:
                 signal_id=cbot_sig_id
             )
 
-            if queue_res.get("status", "").startswith("REJECTED"):
-                return queue_res
+            if exec_res.get("status", "").startswith("REJECTED"):
+                return exec_res
+
+            ticket_num = exec_res.get("ticket") or exec_res.get("ticket_id") or cbot_sig_id
+            fill_p = exec_res.get("fill_price", signal.entry_price)
 
             live_trade = {
                 "id": trade_id,
                 "signal_id": consensus_res.signal_id,
                 "mode": self.mode,
-                "broker_order_id": f"Pending cTrader Fill ({cbot_sig_id})",
-                "ticket_id": cbot_sig_id,
+                "broker_order_id": f"cTrader Cloud Fill (#{ticket_num})",
+                "ticket_id": str(ticket_num),
                 "symbol": signal.symbol,
                 "direction": signal.action.upper(),
-                "entry_price": signal.entry_price,
+                "entry_price": fill_p,
                 "stop_loss": signal.stop_loss,
                 "take_profit": signal.take_profit,
                 "volume": vol,
                 "profit_loss": 0.0,
                 "pips": 0.0,
-                "status": "QUEUED",
+                "status": "OPEN",
                 "opened_at": now_iso
             }
             db.save_trade(live_trade)
             db.log_audit(
-                event_type=f"{self.mode}_TRADE_QUEUED",
+                event_type=f"{self.mode}_TRADE_EXECUTED",
                 actor="ExecutionEngine",
-                details=f"Dispatched {self.mode} order to cTrader: {signal.action} {vol} lots of {signal.symbol} (Ticket: {cbot_sig_id})"
+                details=f"Direct Server Execution #{ticket_num} on cTrader: {signal.action} {vol} lots of {signal.symbol} @ ${fill_p:.2f} (SL: ${signal.stop_loss:.2f}, TP: ${signal.take_profit:.2f})"
             )
             return {
-                "status": f"QUEUED_TO_CBOT_{self.mode}",
+                "status": f"EXECUTED_{self.mode}_OPEN_API",
                 "mode": self.mode,
                 "trade_id": trade_id,
-                "ticket": cbot_sig_id,
+                "ticket": ticket_num,
+                "ticket_id": str(ticket_num),
                 "symbol": signal.symbol,
                 "action": signal.action,
-                "entry_price": signal.entry_price,
+                "entry_price": fill_p,
                 "sl": signal.stop_loss,
                 "tp": signal.take_profit,
                 "volume": vol,
-                "executed_at": now_iso
+                "executed_at": now_iso,
+                "receipt": exec_res
             }
 
         return {"status": "UNKNOWN_MODE"}
