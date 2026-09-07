@@ -26,23 +26,19 @@ namespace cAlgo.Robots
         [Parameter("Auto Break-Even Pips", DefaultValue = 15.0, MinValue = 5.0, MaxValue = 50.0)]
         public double AutoBreakEvenPips { get; set; }
 
-        // --- ZERO-FAILURE CAPITAL PRESERVATION CONSTANTS ---
-        private const double DAILY_DRAWDOWN_LIMIT_USD = -3.00;     // 24-Hour Circuit Breaker Loss Cutoff
-        private const int MAX_ACTIVE_OPEN_POSITIONS = 1;          // Strict hard cap: Maximum 1 open trade
-        private static readonly string[] ALLOWED_FOREX_PAIRS = { "EURUSD", "GBPUSD" };
+        // --- GOLD-ONLY (XAUUSD) ULTRA-SAFE PARAMETERS ---
+        private const int MAX_CONCURRENT_POSITIONS = 1;          // Strictly 1 open position at all times
+        private const double FIXED_GOLD_LOT_SIZE = 0.01;         // Fixed 0.01 Micro-Lot strictly (No scaling)
+        private const double MIN_RR_RATIO = 2.0;                 // Minimum 1:2 Risk-to-Reward Ratio
 
         private static readonly HttpClient httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
         private readonly HashSet<string> _executedTickets = new HashSet<string>();
         private readonly Dictionary<long, double> _failedModifications = new Dictionary<long, double>();
 
-        private double _dayStartBalance = 0.0;
-        private DateTime _circuitBreakerTrippedUntil = DateTime.MinValue;
-
         protected override void OnStart()
         {
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12 | SecurityProtocolType.Tls11 | SecurityProtocolType.Tls;
 
-            _dayStartBalance = Account.Balance;
             string assetName = "USD";
             try
             {
@@ -59,15 +55,15 @@ namespace cAlgo.Robots
             string envName = Account.IsLive ? "LIVE REAL FUNDS" : "DEMO (Paper / Metric Verification Mode)";
 
             Print("=================================================");
-            Print("TradeTalk.AI - ZERO-FAILURE CAPITAL PRESERVER BRIDGE");
+            Print("TradeTalk.AI - STRICT GOLD-ONLY (XAUUSD) ULTRA-SAFE BRIDGE");
             Print("Environment: " + envName);
             Print("Account Number: " + Account.Number);
-            Print(string.Format(CultureInfo.InvariantCulture, "Starting Balance: ${0:F2} {1} | Equity: ${2:F2}", Account.Balance, assetName, Account.Equity));
-            Print(string.Format(CultureInfo.InvariantCulture, "Daily Circuit Breaker: ${0:F2} (24h Lockout)", DAILY_DRAWDOWN_LIMIT_USD));
-            Print("Tradeable Instruments: EURUSD, GBPUSD (0.01 Micro Lots Only)");
-            Print("Max Open Positions: " + MAX_ACTIVE_OPEN_POSITIONS);
-            Print("Multi-Timeframe Alignment: 15m & 1H (EMA 20/50 Aligned, 1:2 R:R)");
-            Print("Server URL: " + ServerUrl);
+            Print(string.Format(CultureInfo.InvariantCulture, "Balance: ${0:F2} {1} | Equity: ${2:F2}", Account.Balance, assetName, Account.Equity));
+            Print("Target Instrument: XAUUSD (Gold) ONLY");
+            Print("Position Sizing: EXACTLY 0.01 Lots Fixed");
+            Print("Max Open Positions: " + MAX_CONCURRENT_POSITIONS);
+            Print("Dynamic Auto Break-Even Guard: +" + AutoBreakEvenPips + " Pips");
+            Print("Target Server: " + ServerUrl);
             Print("=================================================");
 
             EnsureAllPositionsProtected();
@@ -79,25 +75,16 @@ namespace cAlgo.Robots
         {
             try
             {
-                // 1. Post-Execution & Open Trade Guard: Ensure position has valid SL or close immediately
+                // 1. Mandatory SL Verification: Ensure open Gold trade is protected or close immediately
                 EnsureAllPositionsProtected();
 
-                // 2. Dynamic Auto-Protection: Lock in profit to Break-Even at +15 Pips
+                // 2. Dynamic Auto Break-Even: Lock in profit to Break-Even at +15 Pips
                 ApplyAutoBreakEvenProtection();
 
-                // 3. Send live telemetry (Balance, Equity, Live Prices, Open Positions, Circuit Breaker State)
+                // 3. Send live Gold telemetry (Price, Balance, Open Positions)
                 SendTelemetry();
 
-                // 4. Check Daily Drawdown Circuit Breaker before polling new orders
-                if (IsCircuitBreakerActive())
-                {
-                    Print(string.Format(CultureInfo.InvariantCulture, 
-                        "🚨 [CIRCUIT BREAKER ACTIVE] Daily Drawdown limit (-${0:F2}) active until {1:u}. Trading halted.", 
-                        Math.Abs(DAILY_DRAWDOWN_LIMIT_USD), _circuitBreakerTrippedUntil));
-                    return;
-                }
-
-                // 5. Poll & Execute pending approved orders
+                // 4. Poll & Execute pending approved Gold orders
                 if (EnableAutoExecution)
                 {
                     PollOrders();
@@ -109,47 +96,9 @@ namespace cAlgo.Robots
             }
         }
 
-        private double GetTotalUnrealizedPnL()
-        {
-            double total = 0.0;
-            foreach (var pos in Positions)
-            {
-                total += pos.NetProfit;
-            }
-            return total;
-        }
-
-        private double GetTodayNetPnL()
-        {
-            if (_dayStartBalance <= 0) _dayStartBalance = Account.Balance;
-            return (Account.Equity - _dayStartBalance);
-        }
-
-        private bool IsCircuitBreakerActive()
-        {
-            if (DateTime.UtcNow < _circuitBreakerTrippedUntil)
-            {
-                return true;
-            }
-
-            double todayNet = GetTodayNetPnL();
-            double unrealized = GetTotalUnrealizedPnL();
-
-            if (todayNet <= DAILY_DRAWDOWN_LIMIT_USD || unrealized <= DAILY_DRAWDOWN_LIMIT_USD)
-            {
-                _circuitBreakerTrippedUntil = DateTime.UtcNow.AddHours(24);
-                Print(string.Format(CultureInfo.InvariantCulture, 
-                    "🚨 [CIRCUIT BREAKER TRIPPED] Net Daily PnL: ${0:F2} <= ${1:F2}. Halting all trading for 24 hours until {2:u}.", 
-                    todayNet, DAILY_DRAWDOWN_LIMIT_USD, _circuitBreakerTrippedUntil));
-                return true;
-            }
-
-            return false;
-        }
-
         /// <summary>
-        /// Scans all open positions. If any position has NO Stop Loss (-- / --), attempts safe SL attachment.
-        /// If SL attachment fails or is rejected, IMMEDIATELY CLOSES THE POSITION within 2 seconds.
+        /// Ensures all open positions have verified Stop Loss.
+        /// If Stop Loss attachment fails or is rejected, IMMEDIATELY CLOSES POSITION to prevent any naked risk.
         /// </summary>
         private void EnsureAllPositionsProtected()
         {
@@ -163,37 +112,38 @@ namespace cAlgo.Robots
                     {
                         Symbol sym = Symbols.GetSymbol(pos.SymbolName) ?? Symbol;
                         int digits = sym.Digits;
-                        double pipSize = sym.PipSize > 0 ? sym.PipSize : Math.Pow(10, -digits);
+                        double pipSize = sym.PipSize > 0 ? sym.PipSize : 0.01;
 
-                        double minRequiredDistance = Math.Max(sym.Spread * 3.0, pipSize * 25.0);
+                        // SL Distance >= 3.0x Spread and at least 40 pips
+                        double minDistance = Math.Max(sym.Spread * 3.0, pipSize * 40.0);
                         double targetSl = 0.0;
                         double targetTp = 0.0;
 
                         if (pos.TradeType == TradeType.Buy)
                         {
-                            targetSl = Math.Round(sym.Bid - Math.Max(minRequiredDistance, pipSize * 30.0), digits);
-                            targetTp = Math.Round(sym.Ask + Math.Max(minRequiredDistance * 2.0, pipSize * 60.0), digits);
+                            targetSl = Math.Round(sym.Bid - Math.Max(minDistance, pipSize * 60.0), digits);
+                            targetTp = Math.Round(sym.Ask + Math.Max(minDistance * 2.0, pipSize * 120.0), digits);
                         }
                         else
                         {
-                            targetSl = Math.Round(sym.Ask + Math.Max(minRequiredDistance, pipSize * 30.0), digits);
-                            targetTp = Math.Round(sym.Bid - Math.Max(minRequiredDistance * 2.0, pipSize * 60.0), digits);
+                            targetSl = Math.Round(sym.Ask + Math.Max(minDistance, pipSize * 60.0), digits);
+                            targetTp = Math.Round(sym.Bid - Math.Max(minDistance * 2.0, pipSize * 120.0), digits);
                         }
 
-                        Print(string.Format("🛡️ [Emergency SL Guard] Securing #{0} ({1} {2}): SL={3}, TP={4}", 
+                        Print(string.Format("🛡️ [Emergency SL Attachment] Securing #{0} ({1} {2}): SL={3}, TP={4}", 
                             pos.Id, pos.SymbolName, pos.TradeType, targetSl, targetTp));
 
                         TradeResult modResult = ModifyPosition(pos, targetSl, targetTp);
 
-                        // If modify failed, FAIL-SAFE EMERGENCY AUTO-CLOSE: NEVER leave any position unprotected
+                        // If modify failed, FAIL-SAFE EMERGENCY AUTO-CLOSE: NEVER leave any trade unprotected
                         if (modResult == null || !modResult.IsSuccessful || pos.StopLoss == null || pos.StopLoss <= 0)
                         {
-                            Print(string.Format("🚨 [ZERO-FAILURE FAIL-SAFE] Position #{0} is unprotected and SL attachment failed. Closing immediately to preserve capital!", pos.Id));
+                            Print(string.Format("🚨 [FAIL-SAFE AUTO-CLOSE] Position #{0} is unprotected and broker rejected SL. Closing immediately!", pos.Id));
                             ClosePosition(pos);
                         }
                         else
                         {
-                            Print(string.Format("✅ [Protection Verified] #{0} protected with SL: {1}, TP: {2}", pos.Id, pos.StopLoss, pos.TakeProfit));
+                            Print(string.Format("✅ [Protection Verified] #{0} secured with SL: {1}, TP: {2}", pos.Id, pos.StopLoss, pos.TakeProfit));
                         }
                     }
                 }
@@ -204,6 +154,9 @@ namespace cAlgo.Robots
             }
         }
 
+        /// <summary>
+        /// Dynamic Auto Break-Even: When trade is +15 pips in profit, moves SL to EntryPrice (+1 pip)
+        /// </summary>
         private void ApplyAutoBreakEvenProtection()
         {
             try
@@ -213,7 +166,7 @@ namespace cAlgo.Robots
                     if (pos.Pips >= AutoBreakEvenPips)
                     {
                         Symbol posSym = Symbols.GetSymbol(pos.SymbolName) ?? Symbol;
-                        double pipSize = posSym.PipSize > 0 ? posSym.PipSize : Math.Pow(10, -posSym.Digits);
+                        double pipSize = posSym.PipSize > 0 ? posSym.PipSize : 0.01;
 
                         if (pos.TradeType == TradeType.Buy)
                         {
@@ -222,7 +175,7 @@ namespace cAlgo.Robots
                             {
                                 if (pos.StopLoss == null || pos.StopLoss < pos.EntryPrice)
                                 {
-                                    Print(string.Format("🛡️ [Auto Break-Even] Locking Profit for #{0} (+{1:F1} Pips)! SL -> {2:F5}", pos.Id, pos.Pips, targetBe));
+                                    Print(string.Format("🛡️ [Auto Break-Even] Locking Profit for Gold #{0} (+{1:F1} Pips)! SL -> ${2:F2}", pos.Id, pos.Pips, targetBe));
                                     ModifyPosition(pos, targetBe, pos.TakeProfit);
                                 }
                             }
@@ -234,7 +187,7 @@ namespace cAlgo.Robots
                             {
                                 if (pos.StopLoss == null || pos.StopLoss > pos.EntryPrice)
                                 {
-                                    Print(string.Format("🛡️ [Auto Break-Even] Locking Profit for #{0} (+{1:F1} Pips)! SL -> {2:F5}", pos.Id, pos.Pips, targetBe));
+                                    Print(string.Format("🛡️ [Auto Break-Even] Locking Profit for Gold #{0} (+{1:F1} Pips)! SL -> ${2:F2}", pos.Id, pos.Pips, targetBe));
                                     ModifyPosition(pos, targetBe, pos.TakeProfit);
                                 }
                             }
@@ -389,33 +342,31 @@ namespace cAlgo.Robots
                     return;
                 }
 
-                // --- 1. DAILY CIRCUIT BREAKER CHECK ---
-                if (IsCircuitBreakerActive())
-                {
-                    Print("🚫 [Execution Aborted] Daily Drawdown Circuit Breaker active. New orders blocked.");
-                    return;
-                }
-
-                // --- 2. CAPACITY LIMIT CHECK: STRICT MAX 1 OPEN POSITION ---
-                if (Positions.Count >= MAX_ACTIVE_OPEN_POSITIONS)
-                {
-                    Print(string.Format("🚫 [Execution Aborted] Max Open Positions ({0}) reached. Currently open: {1}.", 
-                        MAX_ACTIVE_OPEN_POSITIONS, Positions.Count));
-                    return;
-                }
-
-                // --- 3. TRADEABLE INSTRUMENTS WHITELIST: EURUSD & GBPUSD ONLY ---
+                // --- 1. STRICT INSTRUMENT WHITELIST: GOLD (XAUUSD) ONLY ---
                 string cleanBaseSym = symbolStr.Replace("m", "").Replace(".pro", "").Replace("_i", "").ToUpperInvariant();
-                bool isAllowedForex = false;
-                foreach (var pair in ALLOWED_FOREX_PAIRS)
+                if (!cleanBaseSym.Contains("XAU") && !cleanBaseSym.Contains("GOLD"))
                 {
-                    if (cleanBaseSym.Contains(pair)) { isAllowedForex = true; break; }
+                    Print(string.Format("🚫 [Execution Aborted] {0} rejected. Directive strictly enforces GOLD-ONLY (XAUUSD).", symbolStr));
+                    return;
                 }
 
-                if (!isAllowedForex)
+                // --- 2. CAPACITY LIMIT: STRICTLY MAXIMUM 1 CONCURRENT POSITION ---
+                if (Positions.Count >= MAX_CONCURRENT_POSITIONS)
                 {
-                    Print(string.Format("🚫 [Execution Aborted] {0} is prohibited. Zero-Failure rules permit EURUSD and GBPUSD only.", symbolStr));
+                    Print(string.Format("🚫 [Execution Aborted] Max Concurrent Positions ({0}) reached. Active: {1}.", 
+                        MAX_CONCURRENT_POSITIONS, Positions.Count));
                     return;
+                }
+
+                // --- 3. ANTI-HEDGING & DUPLICATE TRADE CHECK ---
+                foreach (var openPos in Positions)
+                {
+                    string openClean = openPos.SymbolName.Replace("m", "").Replace(".pro", "").Replace("_i", "").ToUpperInvariant();
+                    if (openClean.Contains("XAU") || openClean.Contains("GOLD"))
+                    {
+                        Print("🚫 [Execution Aborted] Position already active on Gold. Opposing / Hedging trades prohibited.");
+                        return;
+                    }
                 }
 
                 Symbol targetSymbol = ResolveBrokerSymbol(symbolStr);
@@ -425,22 +376,11 @@ namespace cAlgo.Robots
                     return;
                 }
 
-                // --- 4. ANTI-HEDGING & SINGLE DIRECTION RULE ---
-                foreach (var openPos in Positions)
-                {
-                    string openClean = openPos.SymbolName.Replace("m", "").Replace(".pro", "").Replace("_i", "").ToUpperInvariant();
-                    if (openClean.Contains(cleanBaseSym) || cleanBaseSym.Contains(openClean))
-                    {
-                        Print("🚫 [Execution Aborted] Position already active on " + targetSymbol.Name + ". Opposing / Hedging trades prohibited.");
-                        return;
-                    }
-                }
-
                 TradeType tradeType = (action == "BUY") ? TradeType.Buy : TradeType.Sell;
 
-                // Micro Lot 0.01 strictly
-                double lotSize = 0.01;
-                double volumeInUnits = targetSymbol.NormalizeVolumeInUnits(lotSize * 100000);
+                // Force EXACTLY 0.01 lot per trade
+                double lotSize = FIXED_GOLD_LOT_SIZE;
+                double volumeInUnits = targetSymbol.NormalizeVolumeInUnits(lotSize * 100); // For XAUUSD, 1 Lot = 100 Units, 0.01 = 1 Unit
 
                 double rawSl = 0;
                 double.TryParse(ExtractJsonValue(json, "sl"), NumberStyles.Any, CultureInfo.InvariantCulture, out rawSl);
@@ -448,10 +388,10 @@ namespace cAlgo.Robots
                 double.TryParse(ExtractJsonValue(json, "tp"), NumberStyles.Any, CultureInfo.InvariantCulture, out rawTp);
 
                 int digits = targetSymbol.Digits;
-                double pipSize = targetSymbol.PipSize > 0 ? targetSymbol.PipSize : Math.Pow(10, -digits);
+                double pipSize = targetSymbol.PipSize > 0 ? targetSymbol.PipSize : 0.01;
 
-                // Pre-calculate broker-compliant SL & TP
-                double minDistance = Math.Max(targetSymbol.Spread * 3.0, pipSize * 25.0);
+                // Stop Level Enforcement: SL distance >= 3.0x Spread and at least 50 pips ($5.00 on Gold)
+                double minDistance = Math.Max(targetSymbol.Spread * 3.0, pipSize * 50.0);
                 double currentRefPrice = (tradeType == TradeType.Buy) ? targetSymbol.Ask : targetSymbol.Bid;
                 double validSl = rawSl;
                 double validTp = rawTp;
@@ -460,22 +400,22 @@ namespace cAlgo.Robots
                 {
                     if (validSl <= 0 || validSl >= (targetSymbol.Bid - minDistance))
                     {
-                        validSl = targetSymbol.Bid - Math.Max(minDistance, pipSize * 30.0);
+                        validSl = targetSymbol.Bid - Math.Max(minDistance, pipSize * 60.0);
                     }
                     if (validTp <= 0 || validTp <= (targetSymbol.Ask + minDistance))
                     {
-                        validTp = targetSymbol.Ask + Math.Max(minDistance * 2.0, pipSize * 60.0);
+                        validTp = targetSymbol.Ask + Math.Max(minDistance * 2.0, pipSize * 120.0);
                     }
                 }
                 else
                 {
                     if (validSl <= 0 || validSl <= (targetSymbol.Ask + minDistance))
                     {
-                        validSl = targetSymbol.Ask + Math.Max(minDistance, pipSize * 30.0);
+                        validSl = targetSymbol.Ask + Math.Max(minDistance, pipSize * 60.0);
                     }
                     if (validTp <= 0 || validTp >= (targetSymbol.Bid - minDistance))
                     {
-                        validTp = targetSymbol.Bid - Math.Max(minDistance * 2.0, pipSize * 60.0);
+                        validTp = targetSymbol.Bid - Math.Max(minDistance * 2.0, pipSize * 120.0);
                     }
                 }
 
@@ -485,17 +425,16 @@ namespace cAlgo.Robots
                 double slPips = Math.Round(Math.Abs(currentRefPrice - validSl) / pipSize, 1);
                 double tpPips = Math.Round(Math.Abs(validTp - currentRefPrice) / pipSize, 1);
 
-                // Verify valid protection before sending order
                 if (slPips <= 0 || tpPips <= 0)
                 {
-                    Print("🚫 [Pre-Validation Failed] Invalid SL/TP pips. Aborting execution.");
+                    Print("🚫 [Pre-Validation Failed] Invalid SL/TP distance. Aborting Gold execution.");
                     return;
                 }
 
-                Print(string.Format("🎯 [Zero-Failure Execution] Sending {0} {1} ({2} Units | SL: {3} ({4} Pips) | TP: {5} ({6} Pips))...", 
+                Print(string.Format("🎯 [Gold Sniper Execution] Sending {0} {1} ({2} Units | SL: ${3} ({4} Pips) | TP: ${5} ({6} Pips))...", 
                     action, targetSymbol.Name, volumeInUnits, validSl, slPips, validTp, tpPips));
 
-                // --- 5. EXECUTE ORDER WITH PRE-ATTACHED SL & TP ONLY ---
+                // --- 4. EXECUTE WITH PRE-ATTACHED SL & TP ONLY ---
                 TradeResult result = ExecuteMarketOrder(tradeType, targetSymbol.Name, volumeInUnits, "TradeTalk.AI", slPips, tpPips);
 
                 // ZERO-FAILURE RULE: If broker returns any error or rejects SL/TP, ABORT ENTIRELY. Never open naked position!
@@ -508,10 +447,10 @@ namespace cAlgo.Robots
                 Position pos = result.Position;
                 if (!string.IsNullOrEmpty(signalId)) _executedTickets.Add(signalId);
 
-                Print(string.Format("🟢 Order FILLED with Verified Protection! #{0} | Entry: {1} | SL: {2} | TP: {3}", 
+                Print(string.Format("🟢 Gold Order FILLED with Verified Protection! #{0} | Entry: ${1} | SL: ${2} | TP: ${3}", 
                     pos.Id, pos.EntryPrice, pos.StopLoss, pos.TakeProfit));
 
-                // Fail-Safe Verification: If SL is somehow missing on filled position, close within 2 seconds
+                // Fail-Safe Verification: If SL is missing on filled position, close immediately within 1 second
                 if (pos.StopLoss == null || pos.StopLoss <= 0)
                 {
                     TradeResult modRes = ModifyPosition(pos, validSl, validTp);
@@ -543,6 +482,8 @@ namespace cAlgo.Robots
                 ?? Symbols.GetSymbol(clean + ".pro")
                 ?? Symbols.GetSymbol(clean + "_i")
                 ?? Symbols.GetSymbol(clean + "micro")
+                ?? Symbols.GetSymbol("XAUUSD")
+                ?? Symbols.GetSymbol("GOLD")
                 ?? Symbol;
         }
 

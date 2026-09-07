@@ -1,10 +1,11 @@
 {
   "active_pairs": [
-    "EURUSD",
-    "GBPUSD"
+    "XAUUSD"
   ],
   "auto_trade_enabled": true,
   "scanner_active": true,
   "max_risk_percent": 1.0,
-  "environment_mode": "DEMO_FIRST"
+  "min_confidence_threshold": 85,
+  "fixed_lot_size": 0.01,
+  "environment_mode": "GOLD_SNIPER"
 }
