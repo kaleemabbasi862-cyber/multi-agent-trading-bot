@@ -19,15 +19,16 @@ git remote add origin %REPO_URL%
 
 echo [*] Pushing main branch to GitHub...
 git push -u origin main
+git push origin main:master
 
 if %errorlevel% equ 0 (
     echo.
     echo ================================================================
     echo [+] Successfully pushed to GitHub!
-    echo [+] Now go to Render Dashboard (https://dashboard.render.com):
-    echo     1. Click "New +" -> "Blueprint"
-    echo     2. Select this repository
-    echo     3. Render will automatically read render.yaml and deploy!
+    echo [*] Triggering Render Instant Auto-Deploy Hook...
+    curl -X POST "https://api.render.com/deploy/srv-daam4fm7bikc738tlmfg?key=0yLqUHNtjAg"
+    echo.
+    echo [+] Deploy Hook Triggered! Render is building latest commit now.
     echo ================================================================
 ) else (
     echo.
