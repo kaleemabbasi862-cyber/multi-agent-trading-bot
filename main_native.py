@@ -216,10 +216,16 @@ async def update_pairs_settings():
 @app.get("/", response_class=HTMLResponse)
 async def serve_dashboard():
     html_path = Path(__file__).resolve().parent / "templates" / "dashboard.html"
+    headers = {
+        "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
+        "Pragma": "no-cache",
+        "Expires": "0",
+        "X-TradeTalk-Version": "2.0.0-7agents"
+    }
     if html_path.exists():
         with open(html_path, "r", encoding="utf-8") as f:
-            return f.read()
-    return "<h1>TradeTalk AI Dashboard</h1>"
+            return HTMLResponse(content=f.read(), headers=headers)
+    return HTMLResponse(content="<h1>TradeTalk AI Dashboard</h1>", headers=headers)
 
 @app.get("/health")
 async def health_check():
