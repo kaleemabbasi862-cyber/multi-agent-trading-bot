@@ -43,6 +43,8 @@ async def get_live_consensus():
         account_status=acc_status
     )
     
+    dec_map = {d.agent_name: d for d in consensus_res.agent_decisions}
+    
     return {
         "status": "success",
         "market": market_data,
@@ -55,54 +57,60 @@ async def get_live_consensus():
                 "name": "Technical Agent",
                 "weight": "20%",
                 "role": "15m & 1H EMAs, RSI 14, S/R Levels",
-                "score": consensus_res.agent_scores.get("Technical Analyst Agent", 85),
+                "score": dec_map.get("Technical Analyst Agent").score if "Technical Analyst Agent" in dec_map else 85,
                 "status": "Active",
-                "decision": consensus_res.agent_decisions.get("Technical Analyst Agent", "PASS")
+                "decision": dec_map.get("Technical Analyst Agent").decision if "Technical Analyst Agent" in dec_map else "PASS",
+                "reasoning": dec_map.get("Technical Analyst Agent").reasoning_summary if "Technical Analyst Agent" in dec_map else ""
             },
             {
                 "id": "agent_2",
                 "name": "Fundamental Agent",
                 "weight": "15%",
                 "role": "CPI, NFP, FOMC High-Impact News Lockout",
-                "score": consensus_res.agent_scores.get("Fundamental & Sentiment Agent", 90),
+                "score": dec_map.get("Fundamental & Sentiment Agent").score if "Fundamental & Sentiment Agent" in dec_map else 90,
                 "status": "Active",
-                "decision": consensus_res.agent_decisions.get("Fundamental & Sentiment Agent", "PASS")
+                "decision": dec_map.get("Fundamental & Sentiment Agent").decision if "Fundamental & Sentiment Agent" in dec_map else "PASS",
+                "reasoning": dec_map.get("Fundamental & Sentiment Agent").reasoning_summary if "Fundamental & Sentiment Agent" in dec_map else ""
             },
             {
                 "id": "agent_3",
                 "name": "Risk Veto Agent",
                 "weight": "20% (Hard Veto)",
                 "role": "0.01 Lots Only, Min 1:2 R:R, -$5.00 Daily Circuit Breaker",
-                "score": consensus_res.agent_scores.get("Risk Management Agent", 100),
+                "score": dec_map.get("Risk Management Agent").score if "Risk Management Agent" in dec_map else 100,
                 "status": "Active (VETO POWER)",
-                "decision": consensus_res.agent_decisions.get("Risk Management Agent", "PASS")
+                "decision": dec_map.get("Risk Management Agent").decision if "Risk Management Agent" in dec_map else "PASS",
+                "reasoning": dec_map.get("Risk Management Agent").reasoning_summary if "Risk Management Agent" in dec_map else ""
             },
             {
                 "id": "agent_4",
                 "name": "Market Regime Agent",
                 "weight": "15%",
                 "role": "Trend vs Range Chop Identifier",
-                "score": consensus_res.agent_scores.get("Market Regime Agent", 80),
+                "score": dec_map.get("Market Regime Agent").score if "Market Regime Agent" in dec_map else 80,
                 "status": "Active",
-                "decision": consensus_res.agent_decisions.get("Market Regime Agent", "PASS")
+                "decision": dec_map.get("Market Regime Agent").decision if "Market Regime Agent" in dec_map else "PASS",
+                "reasoning": dec_map.get("Market Regime Agent").reasoning_summary if "Market Regime Agent" in dec_map else ""
             },
             {
                 "id": "agent_5",
                 "name": "Liquidity & SMC Agent",
                 "weight": "15%",
                 "role": "Order Blocks, Liquidity Sweeps, Fair Value Gaps (FVG)",
-                "score": consensus_res.agent_scores.get("Liquidity & SMC Agent", 85),
+                "score": dec_map.get("Liquidity & SMC Agent").score if "Liquidity & SMC Agent" in dec_map else 85,
                 "status": "Active",
-                "decision": consensus_res.agent_decisions.get("Liquidity & SMC Agent", "PASS")
+                "decision": dec_map.get("Liquidity & SMC Agent").decision if "Liquidity & SMC Agent" in dec_map else "PASS",
+                "reasoning": dec_map.get("Liquidity & SMC Agent").reasoning_summary if "Liquidity & SMC Agent" in dec_map else ""
             },
             {
                 "id": "agent_6",
                 "name": "Trade Quality Agent",
                 "weight": "15%",
                 "role": "Historical Pattern Expectancy & Edge Scoring",
-                "score": consensus_res.agent_scores.get("Trade Quality Agent", 85),
+                "score": dec_map.get("Trade Quality Agent").score if "Trade Quality Agent" in dec_map else 85,
                 "status": "Active",
-                "decision": consensus_res.agent_decisions.get("Trade Quality Agent", "PASS")
+                "decision": dec_map.get("Trade Quality Agent").decision if "Trade Quality Agent" in dec_map else "PASS",
+                "reasoning": dec_map.get("Trade Quality Agent").reasoning_summary if "Trade Quality Agent" in dec_map else ""
             },
             {
                 "id": "agent_7",
@@ -111,7 +119,8 @@ async def get_live_consensus():
                 "role": "Final Consensus Gatekeeper (>=85% Threshold + Zero Veto)",
                 "score": consensus_res.decision_score,
                 "status": consensus_res.decision_status,
-                "decision": consensus_res.decision_status
+                "decision": consensus_res.decision_status,
+                "reasoning": consensus_res.full_analysis
             }
         ]
     }
