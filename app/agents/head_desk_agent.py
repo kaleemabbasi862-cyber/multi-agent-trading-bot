@@ -62,35 +62,35 @@ class HeadDeskManagerAgent:
             )
             return decision_status, final_score, final_explanation
 
-        # 2. Score-Based Categorization
-        if final_score >= settings.HIGH_QUALITY_SCORE and risk_check.passed:
+        # 2. Score-Based Categorization (Strict 85% Threshold)
+        if final_score >= 90.0 and risk_check.passed:
             decision_status = "APPROVED"
             final_explanation = (
-                f"[DECISION: APPROVED — HIGH QUALITY] 🎯 Setup fully confirmed by all 7 quantitative agents.\n"
-                f"• Decision Confidence Score: {final_score}% (Tier-1 Quality Score >= {settings.HIGH_QUALITY_SCORE}%)\n"
-                f"• Risk-to-Reward: 1:{risk_check.rr_ratio:.2f} | Protected SL: ${signal.stop_loss:.2f} | TP: ${signal.take_profit:.2f}\n"
-                f"• Dispatched for immediate execution."
+                f"[DECISION: APPROVED — TIER 1] 🎯 [CONSENSUS CLEARANCE GRANTED]\n"
+                f"• Decision Confidence Score: {final_score}% (Threshold >= 85% Met — High Conviction)\n"
+                f"• Risk-to-Reward: 1:{risk_check.rr_ratio:.2f} (>= 1:2.0 Verified) | Protected SL: ${signal.stop_loss:.2f} | TP: ${signal.take_profit:.2f}\n"
+                f"• 0.01 Lots on XAUUSD approved for immediate zero-delay execution."
             )
-        elif final_score >= settings.MIN_DECISION_SCORE and risk_check.passed:
+        elif final_score >= 85.0 and risk_check.passed:
             decision_status = "APPROVED"
             final_explanation = (
-                f"[DECISION: APPROVED — STANDARD] 🎯 Setup satisfies sniper conviction thresholds.\n"
-                f"• Decision Confidence Score: {final_score}% (Score >= {settings.MIN_DECISION_SCORE}%)\n"
-                f"• Risk-to-Reward: 1:{risk_check.rr_ratio:.2f} | 0.01 Lots XAUUSD\n"
-                f"• Dispatched for immediate execution."
+                f"[DECISION: APPROVED — STANDARD] 🎯 [CONSENSUS CLEARANCE GRANTED]\n"
+                f"• Decision Confidence Score: {final_score}% (Threshold >= 85% Met)\n"
+                f"• Risk-to-Reward: 1:{risk_check.rr_ratio:.2f} (>= 1:2.0 Verified) | Protected SL: ${signal.stop_loss:.2f} | TP: ${signal.take_profit:.2f}\n"
+                f"• 0.01 Lots on XAUUSD approved for immediate zero-delay execution."
             )
-        elif 75.0 <= final_score < settings.MIN_DECISION_SCORE:
+        elif 75.0 <= final_score < 85.0:
             decision_status = "WATCHLIST"
             final_explanation = (
-                f"[DECISION: WATCHLIST / WAIT] ⏳ Moderate conviction. Candidate flagged for monitoring.\n"
-                f"• Decision Confidence Score: {final_score}% (Requires >= {settings.MIN_DECISION_SCORE}% for automatic execution)\n"
-                f"• Capital preserved. Awaiting tighter structural alignment."
+                f"[DECISION: WATCHLIST / WAIT] ⏳ Moderate conviction.\n"
+                f"• Decision Confidence Score: {final_score}% (Requires >= 85.0% for automatic execution)\n"
+                f"• Capital preserved. Trade rejected until >= 85% consensus conviction is reached."
             )
         else:
             decision_status = "REJECTED"
             final_explanation = (
                 f"[DECISION: REJECTED] ❌ Insufficient edge or contradictory agent consensus.\n"
-                f"• Decision Confidence Score: {final_score}% (Below 75.0% threshold)\n"
+                f"• Decision Confidence Score: {final_score}% (Below 85.0% threshold)\n"
                 f"• Signal discarded."
             )
 
