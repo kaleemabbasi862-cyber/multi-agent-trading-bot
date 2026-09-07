@@ -2,6 +2,7 @@ import math
 from typing import Dict, Any, Tuple
 from app.config import settings
 from app.database.models import SignalPayload, AgentDecisionOutput, RiskCheckResult
+import settings_manager
 
 class RiskManagementAgent:
     name: str = "Risk Management Agent"
@@ -31,10 +32,10 @@ class RiskManagementAgent:
         passed = True
         score = 95.0
         
-        # 1. Whitelist Check (Strict Gold XAUUSD)
-        if "XAU" not in sym and "GOLD" not in sym:
+        # 1. Whitelist Check
+        if not settings_manager.is_pair_whitelisted(sym):
             passed = False
-            veto_reason = f"Non-Gold instrument ({sym}) strictly rejected per Gold Directive."
+            veto_reason = f"Instrument ({sym}) is not in active whitelist."
             reasons.append(veto_reason)
             score = 0.0
             

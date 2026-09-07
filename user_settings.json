@@ -7,5 +7,7 @@
   "max_risk_percent": 1.0,
   "min_confidence_threshold": 85,
   "fixed_lot_size": 0.01,
-  "environment_mode": "GOLD_SNIPER"
+  "environment_mode": "GOLD_SNIPER",
+  "active_symbol": "XAUUSD",
+  "active_lot_size": 0.01
 }

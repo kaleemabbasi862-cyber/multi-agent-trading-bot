@@ -27,7 +27,7 @@ from app.database.models import SignalPayload
 from app.database.db import db
 from app.engine.consensus_engine import consensus_engine
 from app.engine.execution_engine import execution_engine
-from app.services.market_feed_v2 import get_gold_market_snapshot
+from app.services.market_feed_v2 import get_market_snapshot, get_gold_market_snapshot
 from app.services.economic_calendar import economic_calendar
 from app.services.webhook_security import webhook_security
 import cbot_bridge
@@ -36,7 +36,7 @@ import copilot_agent
 
 # Initialize FastAPI App
 app = FastAPI(
-    title="TradeTalk AI V2 - Autonomous Multi-Agent Gold Trading System",
+    title="TradeTalk AI V2 - Autonomous Multi-Agent Trading System",
     version=settings.VERSION
 )
 
@@ -94,7 +94,7 @@ async def receive_tradingview_webhook(
         raise HTTPException(status_code=401, detail=sec_err)
 
     # Normalize Payload
-    symbol = payload_json.get("symbol", "XAUUSD")
+    symbol = payload_json.get("symbol", settings_manager.get_active_symbol())
     action = payload_json.get("action") or payload_json.get("signal") or "BUY"
     action = action.upper()
     entry = float(payload_json.get("entry_price") or payload_json.get("price") or 2750.0)
@@ -102,6 +102,7 @@ async def receive_tradingview_webhook(
     tp = float(payload_json.get("take_profit") or payload_json.get("tp") or (entry + 12.0 if action == "BUY" else entry - 12.0))
     tf = payload_json.get("timeframe", "15m")
     strat = payload_json.get("strategy_name", "TradingView_Webhook_v2")
+    vol = float(payload_json.get("volume") or payload_json.get("lot_size") or settings_manager.get_active_lot_size())
 
     sig_model = SignalPayload(
         id=payload_json.get("id") or f"TV_{uuid.uuid4().hex[:8].upper()}",
@@ -110,12 +111,13 @@ async def receive_tradingview_webhook(
         entry_price=entry,
         stop_loss=sl,
         take_profit=tp,
+        volume=vol,
         timeframe=tf,
         strategy_name=strat,
         source="TRADINGVIEW_WEBHOOK"
     )
 
-    market_data = get_gold_market_snapshot()
+    market_data = get_market_snapshot(symbol)
     macro_data = economic_calendar.get_macro_status()
     acc_status = cbot_bridge.get_cbot_status()
 
@@ -148,33 +150,60 @@ async def receive_tradingview_webhook(
 class CopilotChatRequest(BaseModel):
     message: str
 
+class SettingsUpdateRequest(BaseModel):
+    active_symbol: Optional[str] = None
+    active_lot_size: Optional[float] = None
+    auto_trade_enabled: Optional[bool] = None
+
 @app.post("/api/copilot/chat")
 async def chat_copilot(req: CopilotChatRequest):
     sys_state = {
         "auto_trade_enabled": settings_manager.load_settings().get("auto_trade_enabled", True),
         "trading_mode": execution_engine.mode,
-        "active_pairs": ["XAUUSD"]
+        "active_pairs": settings_manager.get_active_pairs(),
+        "active_symbol": settings_manager.get_active_symbol(),
+        "active_lot_size": settings_manager.get_active_lot_size()
     }
     return copilot_agent.execute_copilot_intent(req.message, sys_state)
 
 @app.post("/api/scan-now")
 async def trigger_manual_scan():
-    """Triggers immediate market scan on XAUUSD Gold."""
-    market_data = get_gold_market_snapshot(force_refresh=True)
+    """Triggers immediate market scan on active symbol."""
+    cur_settings = settings_manager.load_settings()
+    cur_sym = cur_settings.get("active_symbol", "XAUUSD")
+    cur_lot = cur_settings.get("active_lot_size", 0.01)
+
+    market_data = get_market_snapshot(cur_sym, force_refresh=True)
     p = market_data["price"]
+    pip = market_data.get("pip_size", 0.01)
     trend = market_data["indicators"]["trend"]
     act = "BUY" if trend == "BULLISH" else "SELL"
-    sl = p - 6.0 if act == "BUY" else p + 6.0
-    tp = p + 12.0 if act == "BUY" else p - 12.0
+
+    if "XAU" in cur_sym or "GOLD" in cur_sym:
+        sl_dist = 6.0
+        tp_dist = 12.0
+    elif "XAG" in cur_sym or "SILVER" in cur_sym:
+        sl_dist = 0.35
+        tp_dist = 0.75
+    elif "JPY" in cur_sym:
+        sl_dist = 0.40
+        tp_dist = 0.85
+    else:
+        sl_dist = 0.0035
+        tp_dist = 0.0075
+
+    sl = round(p - sl_dist, 5) if act == "BUY" else round(p + sl_dist, 5)
+    tp = round(p + tp_dist, 5) if act == "BUY" else round(p - tp_dist, 5)
 
     sig = SignalPayload(
-        symbol="XAUUSD",
+        symbol=cur_sym,
         action=act,
         entry_price=p,
         stop_loss=sl,
         take_profit=tp,
+        volume=cur_lot,
         timeframe="15m & 1H",
-        strategy_name="GoldSniper_Autonomous_Scan",
+        strategy_name=f"{cur_sym}_Autonomous_Scan",
         source="MARKET_SCANNER"
     )
 
@@ -188,26 +217,45 @@ async def trigger_manual_scan():
         account_status=acc_status
     )
 
-    if consensus_res.decision_status == "APPROVED" and settings_manager.load_settings().get("auto_trade_enabled", True):
+    if consensus_res.decision_status == "APPROVED" and cur_settings.get("auto_trade_enabled", True):
         exec_res = execution_engine.dispatch_trade(consensus_res, sig)
         consensus_res.execution_result = exec_res
 
     return consensus_res
 
 @app.get("/api/pairs/settings")
+@app.get("/api/settings")
 async def get_pairs_settings():
+    s = settings_manager.load_settings()
     return {
-        "all_pairs": [{"symbol": "XAUUSD", "name": "Gold / USD", "category": "Metals", "icon": "fa-coins"}],
-        "active_pairs": ["XAUUSD"],
-        "auto_trade_enabled": settings_manager.load_settings().get("auto_trade_enabled", True),
+        "all_pairs": settings_manager.ALL_SUPPORTED_PAIRS,
+        "active_symbol": s.get("active_symbol", "XAUUSD"),
+        "active_pairs": s.get("active_pairs", ["XAUUSD"]),
+        "active_lot_size": s.get("active_lot_size", 0.01),
+        "fixed_lot_size": s.get("active_lot_size", 0.01),
+        "auto_trade_enabled": s.get("auto_trade_enabled", True),
         "trading_mode": execution_engine.mode
     }
 
+@app.post("/api/settings/update")
 @app.post("/api/pairs/settings")
-async def update_pairs_settings():
+async def update_settings(req: SettingsUpdateRequest):
+    if req.active_symbol:
+        settings_manager.set_active_symbol(req.active_symbol)
+    if req.active_lot_size is not None:
+        settings_manager.set_active_lot_size(req.active_lot_size)
+    if req.auto_trade_enabled is not None:
+        s = settings_manager.load_settings()
+        s["auto_trade_enabled"] = bool(req.auto_trade_enabled)
+        settings_manager.save_settings(s)
+
+    updated = settings_manager.load_settings()
     return {
-        "active_pairs": ["XAUUSD"],
-        "message": "System is locked strictly to Gold (XAUUSD) Sniper Mode"
+        "status": "SUCCESS",
+        "active_symbol": updated.get("active_symbol", "XAUUSD"),
+        "active_lot_size": updated.get("active_lot_size", 0.01),
+        "auto_trade_enabled": updated.get("auto_trade_enabled", True),
+        "message": f"Settings updated: {updated.get('active_symbol')} @ {updated.get('active_lot_size')} Lots"
     }
 
 # -------------------------------------------------------------

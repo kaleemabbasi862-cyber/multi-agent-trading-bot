@@ -48,3 +48,24 @@ def test_risk_agent_vetoes_circuit_breaker():
     assert risk_check.passed is False
     assert dec.decision == "VETO"
     assert "Circuit Breaker" in risk_check.veto_reason
+
+def test_dynamic_pair_settings_and_lot_controls():
+    import settings_manager
+    # Test setting active pair
+    sym = settings_manager.set_active_symbol("EURUSD")
+    assert sym == "EURUSD"
+    assert settings_manager.is_pair_whitelisted("EURUSD") is True
+    assert settings_manager.is_pair_whitelisted("XAGUSD") is True
+    assert settings_manager.is_pair_whitelisted("INVALID_COIN") is False
+
+    # Test lot sizing clamping
+    lot = settings_manager.set_active_lot_size(0.05)
+    assert lot == 0.05
+    clamped_max = settings_manager.set_active_lot_size(2.50)
+    assert clamped_max == 1.00
+    clamped_min = settings_manager.set_active_lot_size(-0.10)
+    assert clamped_min == 0.01
+
+    # Reset to XAUUSD
+    settings_manager.set_active_symbol("XAUUSD")
+    settings_manager.set_active_lot_size(0.01)

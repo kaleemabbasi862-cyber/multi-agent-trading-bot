@@ -13,10 +13,9 @@ if sys.platform == "win32":
 
 load_dotenv()
 
-# --- GOLD-ONLY ULTRA-SAFE PARAMETERS ---
-ALLOWED_SYMBOLS = ["XAUUSD", "GOLD"]
+# --- MULTI-ASSET ULTRA-SAFE PARAMETERS ---
+ALLOWED_SYMBOLS = ["XAUUSD", "GOLD", "XAGUSD", "SILVER", "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCHF"]
 MAX_ACTIVE_OPEN_POSITIONS = 1       # Strictly 1 active trade maximum
-FIXED_LOT_SIZE = 0.01               # Fixed 0.01 Micro-Lot strictly
 MIN_CONFIDENCE_THRESHOLD = 85       # Minimum 85% conviction required
 
 # State Store - Updated live by cBot Webhook Bridge
@@ -24,7 +23,7 @@ CBOT_LIVE_PRICES = {}
 
 CBOT_STATE = {
     "is_connected": True,
-    "mode": "GOLD_ONLY_SNIPER",
+    "mode": "MULTI_ASSET_QUANT",
     "account_id": "1005621",
     "account_type": "DEMO",
     "is_live": False,
@@ -37,6 +36,7 @@ CBOT_STATE = {
     "open_positions": [],
     "total_unrealized_pnl": 0.0,
     "target_symbol": "XAUUSD",
+    "target_lot_size": 0.01,
     "last_heartbeat": datetime.datetime.now(datetime.timezone.utc).strftime("%H:%M:%S UTC"),
     "last_heartbeat_timestamp": time.time(),
     "live_prices": {}
@@ -62,7 +62,7 @@ def update_heartbeat(data: dict) -> dict:
     is_live = bool(data.get("is_live", False))
     acc_type = "LIVE" if is_live else "DEMO"
 
-    # Capture live broker tick prices for Gold
+    # Capture live broker tick prices for symbols
     sym = data.get("symbol")
     bid = data.get("bid")
     ask = data.get("ask")
@@ -84,7 +84,7 @@ def update_heartbeat(data: dict) -> dict:
     total_unrealized_pnl = sum(float(p.get("net_profit", 0.0)) for p in open_pos)
 
     CBOT_STATE["is_connected"] = True
-    CBOT_STATE["mode"] = "GOLD_ONLY_SNIPER"
+    CBOT_STATE["mode"] = "MULTI_ASSET_QUANT"
     CBOT_STATE["account_id"] = acc_id
     CBOT_STATE["account_type"] = acc_type
     CBOT_STATE["is_live"] = is_live
@@ -107,8 +107,8 @@ def update_heartbeat(data: dict) -> dict:
         state_res["signal"] = top_order.get("action")
         state_res["action"] = top_order.get("action")
         state_res["symbol"] = top_order.get("symbol")
-        state_res["lots"] = FIXED_LOT_SIZE
-        state_res["lot_size"] = FIXED_LOT_SIZE
+        state_res["lots"] = top_order.get("lot_size", 0.01)
+        state_res["lot_size"] = top_order.get("lot_size", 0.01)
         state_res["sl"] = top_order.get("sl", 0.0)
         state_res["tp"] = top_order.get("tp", 0.0)
         state_res["ticket_id"] = top_order.get("id")
@@ -117,9 +117,11 @@ def update_heartbeat(data: dict) -> dict:
     return state_res
 
 def get_cbot_live_price(symbol: str = "XAUUSD") -> dict:
-    """Returns live Gold broker price streamed by cBot if fresh."""
+    """Returns live broker price streamed by cBot if fresh."""
     sym_clean = symbol.upper().replace("M", "").replace(".PRO", "").replace("_I", "")
-    item = CBOT_LIVE_PRICES.get(sym_clean) or CBOT_LIVE_PRICES.get("XAUUSD")
+    item = CBOT_LIVE_PRICES.get(sym_clean)
+    if not item and "XAU" in sym_clean:
+        item = CBOT_LIVE_PRICES.get("XAUUSD")
     if item and (time.time() - item.get("updated_at", 0) < 30):
         return item
     return None
@@ -128,19 +130,19 @@ def get_cbot_status() -> dict:
     """Returns live cBot bridge status with active balance and live prices."""
     global CBOT_STATE
     CBOT_STATE["is_connected"] = True
-    CBOT_STATE["mode"] = "GOLD_ONLY_SNIPER"
+    CBOT_STATE["mode"] = "MULTI_ASSET_QUANT"
     CBOT_STATE["live_prices"] = CBOT_LIVE_PRICES
     return CBOT_STATE
 
 def queue_trade_for_cbot(symbol: str, action: str, lot_size: float, sl_price: float, tp_price: float, signal_id: str) -> dict:
-    """Queues an approved Gold trade with strict Gold-Only constraints."""
+    """Queues an approved trade with strict safety constraints and dynamic lot sizing."""
     global PENDING_CBOT_ORDERS
     sym_clean = symbol.upper().replace("M", "").replace(".PRO", "").replace("_I", "")
 
-    # 1. Strict Instrument Whitelist (XAUUSD / Gold ONLY)
-    if "XAU" not in sym_clean and "GOLD" not in sym_clean:
-        print(f"[cBot Bridge] [!] REJECTED: {symbol} is NOT permitted. Gold-Only directive active.")
-        return {"status": "REJECTED_INSTRUMENT_NOT_PERMITTED", "error": "Only XAUUSD (Gold) permitted"}
+    # 1. Strict Instrument Whitelist Check
+    if not any(sym_clean == s or sym_clean in s or s in sym_clean for s in ALLOWED_SYMBOLS):
+        print(f"[cBot Bridge] [!] REJECTED: {symbol} is NOT in allowed whitelist: {ALLOWED_SYMBOLS}")
+        return {"status": "REJECTED_INSTRUMENT_NOT_PERMITTED", "error": f"{symbol} not permitted"}
 
     # 2. Strict Max 1 Open Position Hard Cap
     open_positions = CBOT_STATE.get("open_positions", [])
@@ -151,29 +153,29 @@ def queue_trade_for_cbot(symbol: str, action: str, lot_size: float, sl_price: fl
     # 3. Anti-Hedging & Duplicate Position Check
     for pos in open_positions:
         pos_sym = pos.get("symbol", "").upper().replace("M", "").replace(".PRO", "").replace("_I", "")
-        if "XAU" in pos_sym or "GOLD" in pos_sym:
-            print(f"[cBot Bridge] [!] REJECTED: An active position already exists on Gold. Opposing/hedging prohibited.")
-            return {"status": "REJECTED_OPPOSING_TRADE_EXISTS", "error": "Position already active on XAUUSD"}
+        if pos_sym == sym_clean:
+            print(f"[cBot Bridge] [!] REJECTED: An active position already exists on {sym_clean}. Opposing/hedging prohibited.")
+            return {"status": "REJECTED_OPPOSING_TRADE_EXISTS", "error": f"Position already active on {sym_clean}"}
 
     # 4. Mandatory SL & TP Pre-Validation
     if sl_price <= 0 or tp_price <= 0:
         print(f"[cBot Bridge] [!] REJECTED: Invalid SL/TP ({sl_price}/{tp_price}). Unprotected orders strictly disallowed.")
         return {"status": "REJECTED_INVALID_PROTECTION", "error": "SL and TP must be strictly defined"}
 
-    # 5. Fixed 0.01 Micro-Lot
-    lot_size = FIXED_LOT_SIZE
+    # 5. Dynamic Lot Sizing (Clamped 0.01 to 1.00)
+    final_lot = max(0.01, min(1.00, round(float(lot_size or 0.01), 2)))
 
     order_item = {
         "id": signal_id,
-        "symbol": "XAUUSD",
+        "symbol": sym_clean,
         "action": action.upper(),
-        "lot_size": FIXED_LOT_SIZE,
+        "lot_size": final_lot,
         "sl": sl_price,
         "tp": tp_price,
         "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat()
     }
     PENDING_CBOT_ORDERS.append(order_item)
-    print(f"[cBot Bridge] [+] Queued Approved GOLD Trade for cBot: {action} {FIXED_LOT_SIZE} Lots of XAUUSD (SL: {sl_price}, TP: {tp_price})")
+    print(f"[cBot Bridge] [+] Queued Approved Trade for cBot: {action} {final_lot} Lots of {sym_clean} (SL: {sl_price}, TP: {tp_price})")
     return order_item
 
 def queue_close_position(position_id: int) -> dict:

@@ -307,13 +307,17 @@ namespace cAlgo.Robots
                 string signalId = ExtractJsonValue(json, "ticket_id");
                 if (string.IsNullOrEmpty(signalId)) signalId = ExtractJsonValue(json, "id");
 
-                if (string.IsNullOrEmpty(symbolStr) || (action != "BUY" && action != "SELL")) return;
-
-                // 1. Strict Instrument Whitelist (GOLD ONLY)
+                if (string.IsNullOrEmpty(symbolStr) || (action != "BUY" && action !                // 1. Strict Instrument Whitelist (Metals & Major FX)
                 string symClean = symbolStr.ToUpperInvariant().Replace("M", "").Replace(".PRO", "").Replace("_I", "");
-                if (!symClean.Contains("XAU") && !symClean.Contains("GOLD"))
+                bool isAllowed = symClean.Contains("XAU") || symClean.Contains("GOLD") ||
+                                 symClean.Contains("XAG") || symClean.Contains("SILVER") ||
+                                 symClean.Contains("EURUSD") || symClean.Contains("GBPUSD") ||
+                                 symClean.Contains("USDJPY") || symClean.Contains("AUDUSD") ||
+                                 symClean.Contains("USDCHF");
+
+                if (!isAllowed)
                 {
-                    Print(string.Format("🚫 [REJECTED] {0} is blocked. Directive enforces GOLD-ONLY execution.", symbolStr));
+                    Print(string.Format("🚫 [REJECTED] {0} is blocked. Asset is not in active whitelist.", symbolStr));
                     return;
                 }
 
@@ -327,10 +331,17 @@ namespace cAlgo.Robots
                     return;
                 }
 
-                // 4. Parse SL and TP
-                double rawSl = 0, rawTp = 0;
+                // 4. Parse SL, TP, and Configurable Lot Size
+                double rawSl = 0, rawTp = 0, targetLotSize = 0.01;
                 double.TryParse(ExtractJsonValue(json, "sl"), NumberStyles.Any, CultureInfo.InvariantCulture, out rawSl);
                 double.TryParse(ExtractJsonValue(json, "tp"), NumberStyles.Any, CultureInfo.InvariantCulture, out rawTp);
+
+                string lotStr = ExtractJsonValue(json, "lot_size");
+                if (string.IsNullOrEmpty(lotStr)) lotStr = ExtractJsonValue(json, "lots");
+                if (double.TryParse(lotStr, NumberStyles.Any, CultureInfo.InvariantCulture, out double parsedLot) && parsedLot > 0)
+                {
+                    targetLotSize = Math.Max(0.01, Math.Min(1.00, parsedLot));
+                }
 
                 if (rawSl <= 0 || rawTp <= 0)
                 {
@@ -338,15 +349,16 @@ namespace cAlgo.Robots
                     return;
                 }
 
-                Symbol targetSymbol = Symbols.GetSymbol(symbolStr) ?? Symbols.GetSymbol(symbolStr + "m") ?? Symbol;
+                Symbol targetSymbol = Symbols.GetSymbol(symbolStr) ?? Symbols.GetSymbol(symbolStr + "m") ?? Symbols.GetSymbol(symbolStr + ".pro") ?? Symbol;
                 TradeType tradeType = action == "BUY" ? TradeType.Buy : TradeType.Sell;
 
-                // Volume normalization for Gold: 0.01 lot = 1 unit (1 lot = 100 units)
-                double volumeInUnits = targetSymbol.NormalizeVolumeInUnits(FIXED_GOLD_LOT_SIZE * 100);
+                // Dynamic Volume Calculation (Handles Metals & FX)
+                double volumeMultiplier = targetSymbol.LotSize > 0 ? targetSymbol.LotSize : 100.0;
+                double volumeInUnits = targetSymbol.NormalizeVolumeInUnits(targetLotSize * volumeMultiplier);
                 if (volumeInUnits <= 0) volumeInUnits = targetSymbol.VolumeInUnitsMin;
 
                 int digits = targetSymbol.Digits;
-                double pipSize = targetSymbol.PipSize > 0 ? targetSymbol.PipSize : 0.01;
+                double pipSize = targetSymbol.PipSize > 0 ? targetSymbol.PipSize : (digits == 5 || digits == 3 ? 0.0001 : 0.01);
                 double minDistance = Math.Max(targetSymbol.Spread * 3.0, pipSize * 40.0);
                 double currentRefPrice = tradeType == TradeType.Buy ? targetSymbol.Ask : targetSymbol.Bid;
 
@@ -374,13 +386,14 @@ namespace cAlgo.Robots
                 double slPips = Math.Round(Math.Abs(currentRefPrice - validSl) / pipSize, 1);
                 double tpPips = Math.Round(Math.Abs(validTp - currentRefPrice) / pipSize, 1);
 
-                Print(string.Format("🚀 [Executing Verified Gold Sniper Trade] {0} {1} ({2} units) | SL: {3} ({4} pips) | TP: {5} ({6} pips)",
-                    action, targetSymbol.Name, volumeInUnits, validSl, slPips, validTp, tpPips));
+                Print(string.Format("🚀 [Executing Verified AI Trade] {0} {1} ({2:F2} lots / {3} units) | SL: {4} ({5} pips) | TP: {6} ({7} pips)",
+                    action, targetSymbol.Name, targetLotSize, volumeInUnits, validSl, slPips, validTp, tpPips));
 
                 TradeResult result = ExecuteMarketOrder(tradeType, targetSymbol.Name, volumeInUnits, "TradeTalk.AI.V2", slPips, tpPips);
                 if (!result.IsSuccessful)
                 {
                     result = ExecuteMarketOrder(tradeType, targetSymbol.Name, volumeInUnits, "TradeTalk.AI.V2");
+                }eTalk.AI.V2");
                 }
 
                 if (result.IsSuccessful && result.Position != null)

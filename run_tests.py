@@ -6,7 +6,8 @@ sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 from tests.test_risk_calculations import (
     test_risk_agent_passes_valid_gold_trade,
     test_risk_agent_vetoes_insufficient_rr,
-    test_risk_agent_vetoes_circuit_breaker
+    test_risk_agent_vetoes_circuit_breaker,
+    test_dynamic_pair_settings_and_lot_controls
 )
 from tests.test_7_agents import test_all_7_agents_evaluate_valid_setup
 from tests.test_guardian import test_guardian_blocks_high_spread, test_guardian_blocks_upcoming_news
@@ -18,6 +19,7 @@ def main():
         ("Risk Agent: Passes Valid Gold Trade", test_risk_agent_passes_valid_gold_trade),
         ("Risk Agent: Vetoes Insufficient R:R", test_risk_agent_vetoes_insufficient_rr),
         ("Risk Agent: Vetoes Circuit Breaker", test_risk_agent_vetoes_circuit_breaker),
+        ("Pair & Lot: Dynamic Selector & Lot Stepper", test_dynamic_pair_settings_and_lot_controls),
         ("7 Agents: Complete Consensus Pipeline", test_all_7_agents_evaluate_valid_setup),
         ("No-Trade Guardian: High Spread Blocker", test_guardian_blocks_high_spread),
         ("No-Trade Guardian: High Impact News Blocker", test_guardian_blocks_upcoming_news),

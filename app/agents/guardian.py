@@ -2,6 +2,7 @@ import time
 from typing import Dict, Any, Tuple, Optional
 from app.config import settings
 from app.database.models import SignalPayload
+import settings_manager
 
 class NoTradeGuardian:
     name: str = "No-Trade Guardian"
@@ -40,9 +41,9 @@ class NoTradeGuardian:
         if signal.id and signal.id in processed_signal_ids:
             return True, f"Rule 1 Violations: Duplicate signal ID '{signal.id}' already processed."
 
-        # Rule 2: Whitelist Restriction (Gold Only)
-        if "XAU" not in sym and "GOLD" not in sym:
-            return True, f"Rule 2 Violation: Instrument '{sym}' is forbidden. System restricted to XAUUSD Gold."
+        # Rule 2: Whitelist Restriction
+        if not settings_manager.is_pair_whitelisted(sym):
+            return True, f"Rule 2 Violation: Instrument '{sym}' is not whitelisted. Active Whitelist: {settings_manager.get_active_pairs()}."
 
         # Rule 3: Missing or Corrupted Quotes
         if p <= 0:

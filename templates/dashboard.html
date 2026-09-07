@@ -120,7 +120,7 @@
                         </span>
                     </template>
                 </div>
-                <p class="text-xs text-slate-400 font-medium">Real-Time Multi-Agent Consensus &bull; cTrader Account #<span x-text="cbotStatus.account_id || '1005621'"></span> &bull; 0.01 Lots Only</p>
+                <p class="text-xs text-slate-400 font-medium">Real-Time Multi-Agent Consensus &bull; cTrader Account #<span x-text="cbotStatus.account_id || '1005621'"></span> &bull; <span class="text-amber-300 font-bold" x-text="selectedSymbol + ' (' + Number(selectedLotSize).toFixed(2) + ' Lots)'"></span></p>
             </div>
         </div>
 
@@ -148,7 +148,7 @@
             <!-- SCAN NOW BUTTON -->
             <button @click="triggerScanNow()" :disabled="scanning" class="flex items-center space-x-1.5 bg-indigo-600 hover:bg-indigo-500 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold transition shadow-md shadow-indigo-600/20 disabled:opacity-50">
                 <i class="fa-solid fa-radar" :class="scanning ? 'fa-spin' : ''"></i>
-                <span x-text="scanning ? 'Scanning...' : 'Scan Markets'"></span>
+                <span x-text="scanning ? 'Scanning...' : 'Scan ' + selectedSymbol"></span>
             </button>
 
             <!-- SIMULATOR BUTTON -->
@@ -162,30 +162,89 @@
     <!-- 3. MAIN DASHBOARD CONTENT -->
     <main class="flex-1 max-w-7xl w-full mx-auto p-4 lg:p-8 space-y-6 pb-28 mb-12">
 
-        <!-- PAIR WHITELIST / SELECTION SETTINGS BAR -->
-        <div class="bg-dark-card/95 border border-indigo-500/30 rounded-2xl p-4 shadow-xl backdrop-blur-md relative overflow-hidden">
+        <!-- DYNAMIC PAIR WHITELIST & CONFIGURABLE LOT SIZE CONTROLS BAR -->
+        <div class="bg-dark-card/95 border border-indigo-500/30 rounded-2xl p-3.5 sm:p-4 shadow-xl backdrop-blur-md relative overflow-hidden">
             <div class="absolute -right-16 -top-16 w-36 h-36 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none"></div>
 
-            <div class="flex flex-wrap items-center justify-between gap-4 relative z-10">
+            <div class="flex flex-wrap items-center justify-between gap-3 sm:gap-4 relative z-10">
+                <!-- LEFT INFO & ACTIVE BADGES -->
                 <div class="flex items-center space-x-3">
                     <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600/30 to-emerald-500/20 border border-indigo-500/40 text-indigo-300 flex items-center justify-center text-base shadow-sm">
-                        <i class="fa-solid fa-list-check"></i>
+                        <i class="fa-solid fa-sliders"></i>
                     </div>
                     <div>
-                        <div class="flex items-center space-x-2">
-                            <h4 class="text-xs font-black uppercase tracking-wider text-white">Active Pair Whitelist</h4>
-                            <span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">XAUUSD Gold Active</span>
+                        <div class="flex items-center space-x-2 flex-wrap gap-1">
+                            <h4 class="text-xs font-black uppercase tracking-wider text-white">Active Pair & Lot Control</h4>
+                            <span class="px-2 py-0.5 rounded-full text-[10px] font-black tracking-tight flex items-center gap-1"
+                                  :class="selectedSymbol === 'XAUUSD' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : (selectedSymbol === 'XAGUSD' ? 'bg-slate-400/20 text-slate-200 border border-slate-400/40' : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/40')">
+                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 pulse-live"></span>
+                                <span x-text="selectedSymbol + ' Active'"></span>
+                            </span>
+                            <span class="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold flex items-center gap-1"
+                                  :class="selectedLotSize <= 0.02 ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40' : (selectedLotSize <= 0.05 ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : (selectedLotSize <= 0.10 ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'bg-rose-500/20 text-rose-400 border border-rose-500/40'))">
+                                <i class="fa-solid fa-shield-halved text-[9px]"></i>
+                                <span x-text="'Active Lot: ' + Number(selectedLotSize).toFixed(2) + ' Lots'"></span>
+                            </span>
                         </div>
-                        <p class="text-[11px] text-slate-400 font-medium mt-0.5">Toggle which assets the 7 AI quantitative agents scan and execute in cTrader.</p>
+                        <p class="text-[11px] text-slate-400 font-medium mt-0.5">Switch active instrument and configure execution volume for the 7 AI quantitative agents.</p>
                     </div>
                 </div>
 
-                <div class="flex flex-wrap items-center gap-2">
-                    <div class="flex items-center space-x-2 px-3 py-1.5 rounded-xl border bg-amber-500/20 border-amber-500/50 text-amber-300 text-xs font-bold shadow-sm">
-                        <i class="fa-solid fa-square-check text-emerald-400"></i>
-                        <i class="fa-solid fa-coins text-xs"></i>
-                        <span>XAUUSD (Gold)</span>
+                <!-- RIGHT CONTROLS (PAIR SELECTOR + LOT STEPPER) -->
+                <div class="flex flex-wrap items-center gap-2.5 sm:gap-3">
+                    <!-- PAIR SELECTOR DROPDOWN -->
+                    <div class="flex items-center space-x-1.5 bg-slate-900/90 border border-indigo-500/40 rounded-xl px-2.5 py-1.5 shadow-inner">
+                        <i class="fa-solid fa-chart-line text-indigo-400 text-xs"></i>
+                        <span class="text-[11px] text-slate-400 font-bold hidden sm:inline">Pair:</span>
+                        <select x-model="selectedSymbol" @change="onSymbolChange()"
+                                class="bg-transparent text-white font-black text-xs focus:outline-none cursor-pointer pr-1">
+                            <optgroup label="Metals">
+                                <option value="XAUUSD" class="bg-slate-900 text-amber-300 font-bold">XAUUSD (Gold)</option>
+                                <option value="XAGUSD" class="bg-slate-900 text-slate-200 font-bold">XAGUSD (Silver)</option>
+                            </optgroup>
+                            <optgroup label="Major Forex">
+                                <option value="EURUSD" class="bg-slate-900 text-blue-300 font-bold">EURUSD (Euro)</option>
+                                <option value="GBPUSD" class="bg-slate-900 text-emerald-300 font-bold">GBPUSD (Pound)</option>
+                                <option value="USDJPY" class="bg-slate-900 text-rose-300 font-bold">USDJPY (Yen)</option>
+                                <option value="AUDUSD" class="bg-slate-900 text-teal-300 font-bold">AUDUSD (Aussie)</option>
+                                <option value="USDCHF" class="bg-slate-900 text-purple-300 font-bold">USDCHF (Swiss)</option>
+                            </optgroup>
+                        </select>
                     </div>
+
+                    <!-- LOT SIZE STEPPER -->
+                    <div class="flex items-center space-x-1 bg-slate-900/90 border border-indigo-500/40 rounded-xl p-1 shadow-inner">
+                        <span class="text-[11px] text-slate-400 font-bold px-1.5 hidden sm:inline">Lot Size:</span>
+                        
+                        <!-- DECREMENT BUTTON -->
+                        <button @click="decrementLot()" type="button" title="Decrease Lot Size"
+                                class="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white flex items-center justify-center text-xs font-black transition border border-slate-700 disabled:opacity-40"
+                                :disabled="selectedLotSize <= 0.01">
+                            <i class="fa-solid fa-minus text-[9px]"></i>
+                        </button>
+
+                        <!-- LOT INPUT -->
+                        <div class="px-1 py-0.5 text-center">
+                            <input type="number" step="0.01" min="0.01" max="1.00"
+                                   x-model.number="selectedLotSize" @change="onLotChange()"
+                                   class="w-12 sm:w-14 bg-slate-950 border border-slate-700 rounded-md text-center text-xs font-mono font-black text-white focus:outline-none focus:border-indigo-400 py-0.5">
+                        </div>
+
+                        <!-- INCREMENT BUTTON -->
+                        <button @click="incrementLot()" type="button" title="Increase Lot Size"
+                                class="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white flex items-center justify-center text-xs font-black transition border border-slate-700 disabled:opacity-40"
+                                :disabled="selectedLotSize >= 1.00">
+                            <i class="fa-solid fa-plus text-[9px]"></i>
+                        </button>
+                    </div>
+
+                    <!-- QUICK SAVE FEEDBACK TOAST -->
+                    <template x-if="settingsSavedToast">
+                        <span class="px-2 py-1 rounded-lg text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 animate-pulse flex items-center space-x-1">
+                            <i class="fa-solid fa-check text-[9px]"></i>
+                            <span>Saved</span>
+                        </span>
+                    </template>
                 </div>
             </div>
         </div>
@@ -1061,6 +1120,9 @@
                 priceFlashes: {},
                 cbotStatus: { mode: 'PAPER', is_connected: true, balance: 39.05, equity: 39.05, account_id: '1005621', currency: 'USD', is_live: false },
                 systemState: { auto_trade_enabled: true },
+                selectedSymbol: 'XAUUSD',
+                selectedLotSize: 0.01,
+                settingsSavedToast: false,
                 activePopover: null,
                 hoverPopover: null,
                 stats: { total: 0, approved: 0, rejected: 0 },
@@ -1082,6 +1144,7 @@
                 btResult: null,
 
                 initDashboard() {
+                    this.fetchSettings();
                     this.fetchLivePrices();
                     this.fetchSignals();
                     this.fetchCBotStatus();
@@ -1237,13 +1300,61 @@
                     }
                 },
 
-                async toggleAutoTrade() {
+                async fetchSettings() {
                     try {
-                        const res = await fetch('/api/auto-trade/toggle', { method: 'POST' });
+                        const res = await fetch('/api/pairs/settings');
                         if (res.ok) {
                             const data = await res.json();
-                            this.systemState.auto_trade_enabled = data.auto_trade_enabled;
+                            if (data.active_symbol) this.selectedSymbol = data.active_symbol;
+                            if (data.active_lot_size) this.selectedLotSize = Number(data.active_lot_size);
+                            if (data.auto_trade_enabled !== undefined) this.systemState.auto_trade_enabled = data.auto_trade_enabled;
                         }
+                    } catch (e) {}
+                },
+
+                async saveSettings() {
+                    try {
+                        const res = await fetch('/api/settings/update', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                active_symbol: this.selectedSymbol,
+                                active_lot_size: this.selectedLotSize,
+                                auto_trade_enabled: this.systemState.auto_trade_enabled
+                            })
+                        });
+                        if (res.ok) {
+                            this.settingsSavedToast = true;
+                            setTimeout(() => { this.settingsSavedToast = false; }, 2000);
+                        }
+                    } catch (e) {}
+                },
+
+                onSymbolChange() {
+                    this.simForm.symbol = this.selectedSymbol;
+                    this.autoFillFromLive(this.selectedSymbol);
+                    this.saveSettings();
+                },
+
+                onLotChange() {
+                    this.selectedLotSize = Math.max(0.01, Math.min(1.00, Number(this.selectedLotSize) || 0.01));
+                    this.saveSettings();
+                },
+
+                incrementLot() {
+                    this.selectedLotSize = Number(Math.min(1.00, (Number(this.selectedLotSize) || 0.01) + 0.01).toFixed(2));
+                    this.saveSettings();
+                },
+
+                decrementLot() {
+                    this.selectedLotSize = Number(Math.max(0.01, (Number(this.selectedLotSize) || 0.01) - 0.01).toFixed(2));
+                    this.saveSettings();
+                },
+
+                async toggleAutoTrade() {
+                    try {
+                        this.systemState.auto_trade_enabled = !this.systemState.auto_trade_enabled;
+                        await this.saveSettings();
                     } catch (e) {}
                 },
 
@@ -1302,12 +1413,25 @@
                 },
 
                 autoFillFromLive(sym) {
+                    this.selectedSymbol = sym;
                     if (this.marketPrices[sym]) {
                         const p = this.marketPrices[sym].price;
                         this.simForm.symbol = sym;
                         this.simForm.entry_price = p;
-                        this.simForm.stop_loss = Number((p - 6.0).toFixed(2));
-                        this.simForm.take_profit = Number((p + 12.0).toFixed(2));
+
+                        if (sym.includes('XAU') || sym.includes('GOLD')) {
+                            this.simForm.stop_loss = Number((p - 6.0).toFixed(2));
+                            this.simForm.take_profit = Number((p + 12.0).toFixed(2));
+                        } else if (sym.includes('XAG') || sym.includes('SILVER')) {
+                            this.simForm.stop_loss = Number((p - 0.35).toFixed(3));
+                            this.simForm.take_profit = Number((p + 0.75).toFixed(3));
+                        } else if (sym.includes('JPY')) {
+                            this.simForm.stop_loss = Number((p - 0.40).toFixed(3));
+                            this.simForm.take_profit = Number((p + 0.85).toFixed(3));
+                        } else {
+                            this.simForm.stop_loss = Number((p - 0.0035).toFixed(5));
+                            this.simForm.take_profit = Number((p + 0.0075).toFixed(5));
+                        }
                     }
                 },
 
@@ -1318,6 +1442,12 @@
 
                 formatNumber(val, sym) {
                     if (val === undefined || val === null || isNaN(val)) return '0.00';
+                    if (sym && (sym.includes('EUR') || sym.includes('GBP') || sym.includes('AUD') || sym.includes('CHF'))) {
+                        return Number(val).toFixed(5);
+                    }
+                    if (sym && (sym.includes('XAG') || sym.includes('JPY'))) {
+                        return Number(val).toFixed(3);
+                    }
                     return Number(val).toFixed(2);
                 },
 
