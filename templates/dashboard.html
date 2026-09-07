@@ -120,7 +120,7 @@
                         </span>
                     </template>
                 </div>
-                <p class="text-xs text-slate-400 font-medium">Real-Time Multi-Agent Consensus &bull; cTrader Account #<span x-text="cbotStatus.account_id || '1005621'"></span> &bull; <span class="text-amber-300 font-bold" x-text="selectedSymbol + ' (' + Number(selectedLotSize).toFixed(2) + ' Lots)'"></span></p>
+                <p class="text-xs text-slate-400 font-medium">Real-Time Multi-Agent Consensus &bull; cTrader Account #<span x-text="cbotStatus.account_id || '5908018'"></span> &bull; <span class="text-amber-300 font-bold" x-text="selectedSymbol + ' (' + Number(selectedLotSize).toFixed(2) + ' Lots)'"></span></p>
             </div>
         </div>
 
@@ -135,7 +135,7 @@
             <!-- cTRADER CLOUD GATEWAY BUTTON -->
             <button @click="showCBotModal = true" class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition shadow-sm bg-emerald-600/15 border-emerald-500/40 text-emerald-300 hover:bg-emerald-600/25">
                 <span class="w-2 h-2 rounded-full bg-emerald-400 pulse-live mr-0.5"></span>
-                <span x-text="'cTrader: #' + (cbotStatus.account_id || '1005621') + ' ($' + formatMoney(cbotStatus.balance || 39.05) + ')'"></span>
+                <span x-text="'cTrader: #' + (cbotStatus.account_id || '5908018') + ' ($' + formatMoney(cbotStatus.balance || 39.05) + ')'"></span>
             </button>
 
             <!-- AUTO TRADE TOGGLE -->
@@ -755,7 +755,7 @@
             <div class="px-6 py-4 border-b border-dark-border flex flex-wrap items-center justify-between gap-3 bg-slate-900/60">
                 <div class="flex items-center space-x-2.5">
                     <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 pulse-live shadow-sm shadow-emerald-400/50"></span>
-                    <h2 class="font-bold text-white text-sm">Active Open Positions (Live cTrader Account #1005621)</h2>
+                    <h2 class="font-bold text-white text-sm">Active Open Positions (Live cTrader Account #5908018)</h2>
                     <span class="text-xs px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 font-mono font-bold"
                           x-text="(cbotStatus.open_positions ? cbotStatus.open_positions.length : 0) + ' / 1 Position'"></span>
                 </div>
@@ -820,7 +820,7 @@
                             <tr>
                                 <td colspan="9" class="text-center py-6 text-slate-500 text-xs">
                                     <i class="fa-solid fa-folder-open text-xl mb-1.5 block opacity-40"></i>
-                                    No open market positions currently active on cTrader Account #1005621.
+                                    No open market positions currently active on cTrader Account #5908018.
                                 </td>
                             </tr>
                         </template>
@@ -1087,7 +1087,7 @@
                 </div>
                 <div class="flex items-center justify-between">
                     <span class="text-slate-400">cTrader Account:</span>
-                    <span class="font-bold text-white font-mono">#1005621 (IC Markets / Live Open API)</span>
+                    <span class="font-bold text-white font-mono">#5908018 (IC Markets / Live Open API)</span>
                 </div>
                 <div class="flex items-center justify-between">
                     <span class="text-slate-400">Live Server Balance:</span>
@@ -1142,7 +1142,7 @@
                 rejectedSignals: [],
                 marketPrices: {},
                 priceFlashes: {},
-                cbotStatus: { mode: 'PAPER', is_connected: true, balance: 39.05, equity: 39.05, account_id: '1005621', currency: 'USD', is_live: false },
+                cbotStatus: { mode: 'PAPER', is_connected: true, balance: 39.05, equity: 39.05, account_id: '5908018', currency: 'USD', is_live: false },
                 systemState: { auto_trade_enabled: true },
                 selectedSymbol: 'XAUUSD',
                 selectedLotSize: 0.01,

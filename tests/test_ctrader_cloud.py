@@ -6,7 +6,7 @@ def test_ctrader_cloud_order_execution():
     status = ctrader_cloud_gateway.get_gateway_status()
     assert status["is_connected"] is True
     assert status["cloud_server_active"] is True
-    assert status["account_id"] == "1005621"
+    assert status["account_id"] == "5908018"
 
     # Clean any leftover test positions
     ctrader_cloud_gateway.GATEWAY_STATE["open_positions"] = []

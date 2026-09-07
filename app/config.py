@@ -64,7 +64,7 @@ class Settings:
     # cTrader Credentials
     CTRADER_CLIENT_ID: str = os.getenv("CTRADER_CLIENT_ID", "")
     CTRADER_CLIENT_SECRET: str = os.getenv("CTRADER_CLIENT_SECRET", "")
-    CTRADER_ACCOUNT_ID: str = os.getenv("CTRADER_ACCOUNT_ID", "1005621")
+    CTRADER_ACCOUNT_ID: str = os.getenv("CTRADER_ACCOUNT_ID", "5908018")
     CTRADER_ENVIRONMENT: str = os.getenv("CTRADER_ENVIRONMENT", "live")
     CBOT_AUTH_TOKEN: str = os.getenv("CBOT_AUTH_TOKEN", "cbot_token_secure_9918")
 

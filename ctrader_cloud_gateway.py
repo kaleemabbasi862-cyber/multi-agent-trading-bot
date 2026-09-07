@@ -23,7 +23,7 @@ logger = logging.getLogger("TradeTalk.cTraderCloudGateway")
 # --- MULTI-ASSET SERVER-SIDE EXECUTION PARAMETERS ---
 ALLOWED_SYMBOLS = ["XAUUSD", "GOLD", "XAGUSD", "SILVER", "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCHF"]
 MAX_ACTIVE_OPEN_POSITIONS = 1       # Strictly 1 active trade maximum
-DEFAULT_ACCOUNT_ID = os.getenv("CTRADER_ACCOUNT_ID", "1005621").strip('"')
+DEFAULT_ACCOUNT_ID = os.getenv("CTRADER_ACCOUNT_ID", "5908018").strip('"')
 
 # Spotware cTrader Open API Configuration
 CTRADER_CONFIG = {
@@ -61,6 +61,9 @@ GATEWAY_STATE: Dict[str, Any] = {
     "live_prices": {},
     "last_error": None
 }
+
+# Queue of pending approved orders for local/VPS cBot bridge execution
+PENDING_CBOT_ORDERS: List[Dict[str, Any]] = []
 
 # Executed Trade History & In-Memory Receipts
 EXECUTED_RECEIPTS: Dict[str, Dict[str, Any]] = {}
@@ -245,12 +248,30 @@ def execute_market_order(
     ticket_num = random.randint(710000, 999999)
     ticket_id = f"CT_{ticket_num}"
 
+    # Queue for local/VPS cBot bridge execution
+    cbot_order_item = {
+        "id": ticket_id,
+        "ticket_id": ticket_id,
+        "symbol": sym_clean,
+        "action": act_upper,
+        "signal": act_upper,
+        "lot_size": final_lot,
+        "lots": final_lot,
+        "volume": final_lot,
+        "sl": sl_price,
+        "tp": tp_price,
+        "entry_price": fill_price,
+        "created_at": now_iso
+    }
+    PENDING_CBOT_ORDERS.append(cbot_order_item)
+
     # If Spotware OAuth token is present, attempt direct REST execution
     token = CTRADER_CONFIG.get("access_token")
     if token:
         try:
+            target_account_int = int(GATEWAY_STATE["account_id"]) if str(GATEWAY_STATE["account_id"]).isdigit() else 5908018
             order_req = {
-                "ctidTraderAccountId": int(GATEWAY_STATE["account_id"]) if str(GATEWAY_STATE["account_id"]).isdigit() else 1005621,
+                "ctidTraderAccountId": target_account_int,
                 "symbolName": sym_clean,
                 "tradeSide": "BUY" if act_upper == "BUY" else "SELL",
                 "volume": units,
@@ -259,13 +280,13 @@ def execute_market_order(
                 "comment": comment[:50]
             }
             # Attempt Spotware API endpoint
-            requests.post(
+            res = requests.post(
                 "https://openapi.ctrader.com/apps/trader/v2/orders",
                 headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
                 json=order_req,
                 timeout=5
             )
-            print(f"[cTrader Cloud] 🟢 Spotware Open API Order Dispatched: {act_upper} {final_lot} Lots of {sym_clean}")
+            print(f"[cTrader Cloud] 🟢 Spotware Open API Order Dispatched to #{target_account_int}: {act_upper} {final_lot} Lots of {sym_clean} (Status: {res.status_code})")
         except Exception as e:
             logger.debug(f"Direct Spotware HTTP attempt note: {e}")
 
@@ -433,6 +454,76 @@ def get_gateway_status() -> Dict[str, Any]:
     GATEWAY_STATE["cloud_server_active"] = True
     GATEWAY_STATE["last_sync_timestamp"] = time.time()
     return GATEWAY_STATE
+
+def get_pending_cbot_orders() -> List[Dict[str, Any]]:
+    """Fetches and clears pending orders for cBot."""
+    global PENDING_CBOT_ORDERS
+    orders = list(PENDING_CBOT_ORDERS)
+    PENDING_CBOT_ORDERS.clear()
+    return orders
+
+def update_heartbeat(data: dict) -> dict:
+    """Updates gateway state when cBot streams real-time broker data."""
+    global GATEWAY_STATE, PENDING_CBOT_ORDERS
+    now_ts = time.time()
+    now_str = datetime.datetime.now(datetime.timezone.utc).strftime("%H:%M:%S UTC")
+
+    acc_id = str(data.get("account_id") or data.get("accountNumber") or data.get("accountId") or GATEWAY_STATE["account_id"])
+    bal = float(data.get("balance", data.get("Balance", GATEWAY_STATE["balance"])))
+    eq = float(data.get("equity", data.get("Equity", bal)))
+    marg = float(data.get("margin", data.get("Margin", 0.0)))
+    f_marg = float(data.get("free_margin", data.get("freeMargin", eq)))
+    curr = str(data.get("currency", data.get("Currency", "USD")))
+    broker = str(data.get("broker", data.get("brokerName", "IC Markets cTrader")))
+    is_live = bool(data.get("is_live", True))
+
+    sym = data.get("symbol")
+    bid = data.get("bid")
+    ask = data.get("ask")
+    price = data.get("live_price") or bid
+    if sym and price:
+        sym_clean = str(sym).upper().replace("M", "").replace(".PRO", "").replace("_I", "")
+        p_val = float(price)
+        update_live_market_prices({
+            sym_clean: {
+                "symbol": sym_clean,
+                "price": p_val,
+                "bid": float(bid or p_val),
+                "ask": float(ask or (p_val + 0.35)),
+                "updated_at": now_ts
+            }
+        })
+
+    open_pos = data.get("open_positions", data.get("positions", []))
+    if open_pos:
+        GATEWAY_STATE["open_positions"] = open_pos
+
+    GATEWAY_STATE["account_id"] = acc_id
+    GATEWAY_STATE["balance"] = round(bal, 2)
+    GATEWAY_STATE["equity"] = round(eq, 2)
+    GATEWAY_STATE["margin"] = round(marg, 2)
+    GATEWAY_STATE["free_margin"] = round(f_marg, 2)
+    GATEWAY_STATE["currency"] = curr
+    GATEWAY_STATE["broker"] = broker
+    GATEWAY_STATE["is_live"] = is_live
+    GATEWAY_STATE["last_sync"] = now_str
+    GATEWAY_STATE["last_sync_timestamp"] = now_ts
+
+    state_res = dict(GATEWAY_STATE)
+    if PENDING_CBOT_ORDERS:
+        top_order = PENDING_CBOT_ORDERS[0]
+        state_res["pending_orders"] = list(PENDING_CBOT_ORDERS)
+        state_res["signal"] = top_order.get("action")
+        state_res["action"] = top_order.get("action")
+        state_res["symbol"] = top_order.get("symbol")
+        state_res["lots"] = top_order.get("lot_size", 0.01)
+        state_res["lot_size"] = top_order.get("lot_size", 0.01)
+        state_res["sl"] = top_order.get("sl", 0.0)
+        state_res["tp"] = top_order.get("tp", 0.0)
+        state_res["ticket_id"] = top_order.get("id")
+        state_res["id"] = top_order.get("id")
+
+    return state_res
 
 def get_live_price(symbol: str = "XAUUSD") -> Optional[Dict[str, Any]]:
     """Returns latest live price for symbol if fresh."""

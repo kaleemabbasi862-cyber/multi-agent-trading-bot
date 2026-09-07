@@ -15,6 +15,6 @@ services:
       - key: CTRADER_CLIENT_SECRET
         value: "al5kdBjwDuPX6CCgrJ0o3AholHFhCGAPuN2lj75UUV3NxEHFTm"
       - key: CTRADER_ACCOUNT_ID
-        value: "1005621"
+        value: "5908018"
       - key: CTRADER_ENVIRONMENT
         value: "live"

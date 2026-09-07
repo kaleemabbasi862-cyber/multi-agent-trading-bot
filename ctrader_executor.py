@@ -19,7 +19,7 @@ load_dotenv()
 CTRADER_CONFIG = {
     "client_id": os.getenv("CTRADER_CLIENT_ID", "38205_uwQq76FzYirpd9qMjjrPqcO7VcT1CqFHkDx8GXwzMBxratuPNT").strip('"'),
     "client_secret": os.getenv("CTRADER_CLIENT_SECRET", "al5kdBjwDuPX6CCgrJ0o3AholHFhCGAPuN2lj75UUV3NxEHFTm").strip('"'),
-    "account_id": os.getenv("CTRADER_ACCOUNT_ID", "1005621").strip('"'),
+    "account_id": os.getenv("CTRADER_ACCOUNT_ID", "5908018").strip('"'),
     "environment": os.getenv("CTRADER_ENVIRONMENT", "live").strip('"').capitalize(),
     "access_token": os.getenv("CTRADER_ACCESS_TOKEN", "").strip('"'),
     "refresh_token": os.getenv("CTRADER_REFRESH_TOKEN", "").strip('"')
@@ -53,7 +53,7 @@ def get_oauth_auth_url(redirect_uri: str = "https://multi-agent-trading-bot.onre
     }
     return f"{SPOTWARE_AUTH_URL}?{urllib.parse.urlencode(params)}"
 
-def fetch_real_account_data(access_token: str, target_account_id: str = "1005621") -> dict:
+def fetch_real_account_data(access_token: str, target_account_id: str = "5908018") -> dict:
     """Fetches real account info & balance from Spotware Open API."""
     global CTRADER_STATE
     if not access_token:
@@ -217,7 +217,7 @@ def execute_ctrader_trade(symbol: str, action: str, lot_size: float, sl_price: f
             "Content-Type": "application/json"
         }
         order_req = {
-            "ctidTraderAccountId": int(account_id) if account_id.isdigit() else 1005621,
+            "ctidTraderAccountId": int(account_id) if account_id.isdigit() else 5908018,
             "symbolName": symbol,
             "tradeSide": "BUY" if action_upper == "BUY" else "SELL",
             "volume": units,

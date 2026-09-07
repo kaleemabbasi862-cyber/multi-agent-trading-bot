@@ -48,29 +48,15 @@ def queue_close_position(position_id: Any) -> Dict[str, Any]:
     return ctrader_cloud_gateway.close_position(position_id)
 
 def update_heartbeat(data: dict) -> dict:
-    """Optional incoming stream update from broker or webhook."""
-    sym = data.get("symbol")
-    bid = data.get("bid")
-    ask = data.get("ask")
-    price = data.get("live_price") or bid
-    if sym and price:
-        sym_clean = str(sym).upper().replace("M", "").replace(".PRO", "").replace("_I", "")
-        p_val = float(price)
-        ctrader_cloud_gateway.update_live_market_prices({
-            sym_clean: {
-                "symbol": sym_clean,
-                "price": p_val,
-                "bid": float(bid or p_val),
-                "ask": float(ask or (p_val + 0.35)),
-                "updated_at": time.time()
-            }
-        })
-    return ctrader_cloud_gateway.get_gateway_status()
+    """Streams real-time broker account & tick prices from cBot or webhook."""
+    return ctrader_cloud_gateway.update_heartbeat(data)
 
 def get_pending_orders_for_cbot() -> list:
-    """Kept for backward compatibility."""
-    return []
+    """cBot polls this function to fetch unexecuted approved orders."""
+    return ctrader_cloud_gateway.get_pending_cbot_orders()
 
 def record_cbot_execution(receipt: dict) -> dict:
-    """Kept for backward compatibility."""
+    """cBot reports filled order execution receipt."""
+    order_id = receipt.get("id") or receipt.get("order_id") or receipt.get("ticket_id")
+    print(f"[cBot Bridge] [+] 🟢 Authentic cTrader Order Filled: Ticket #{receipt.get('ticket_id')} for {receipt.get('symbol')} @ {receipt.get('fill_price')}")
     return receipt
