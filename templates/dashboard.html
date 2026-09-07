@@ -302,7 +302,7 @@
         </div>
 
         <!-- 7-AGENT CHARACTER AVATAR WAR-ROOM (COMPACT HORIZONTAL DOCK) -->
-        <div class="bg-dark-card/95 border border-indigo-500/30 rounded-2xl p-3.5 shadow-2xl backdrop-blur-xl relative">
+        <div class="bg-dark-card/95 border border-indigo-500/30 rounded-2xl p-3.5 shadow-2xl backdrop-blur-xl relative" @click.away="activePopover = null">
             <!-- HEADER STRIP -->
             <div class="flex items-center justify-between pb-2.5 mb-2.5 border-b border-dark-border/80">
                 <div class="flex items-center space-x-2">
@@ -311,7 +311,7 @@
                         <i class="fa-solid fa-chess-board text-indigo-400"></i>
                         <span>7-Agent AI War-Room &bull; Round Table</span>
                     </h2>
-                    <span class="text-[10px] text-slate-400 font-mono hidden sm:inline">(Hover avatar for instant deep intelligence)</span>
+                    <span class="text-[10px] text-slate-400 font-mono hidden sm:inline">(Hover or click avatar for instant deep intelligence)</span>
                 </div>
 
                 <template x-if="activeSignal">
@@ -331,8 +331,12 @@
             <div class="grid grid-cols-7 gap-2 sm:gap-3 items-center">
                 
                 <!-- AVATAR 1: THE CHART SNIPER (Technical) -->
-                <div class="group relative flex flex-col items-center text-center cursor-pointer">
-                    <div class="w-11 h-11 sm:w-13 sm:h-13 rounded-full bg-gradient-to-tr from-blue-950 via-slate-900 to-blue-900/80 border-2 border-blue-500/70 p-0.5 flex items-center justify-center shadow-lg shadow-blue-500/20 group-hover:scale-110 group-hover:border-blue-400 transition-all duration-200">
+                <div class="relative flex flex-col items-center text-center cursor-pointer"
+                     @mouseenter="hoverPopover = 'tech'"
+                     @mouseleave="hoverPopover = null"
+                     @click.stop="togglePopover('tech')">
+                    <div class="w-11 h-11 sm:w-13 sm:h-13 rounded-full bg-gradient-to-tr from-blue-950 via-slate-900 to-blue-900/80 border-2 border-blue-500/70 p-0.5 flex items-center justify-center shadow-lg shadow-blue-500/20 hover:scale-110 hover:border-blue-400 transition-all duration-200"
+                         :class="(activePopover === 'tech' || hoverPopover === 'tech') ? 'ring-2 ring-sky-400 scale-110' : ''">
                         <div class="w-full h-full rounded-full bg-slate-950/90 flex items-center justify-center text-blue-400 text-sm sm:text-base">
                             <i class="fa-solid fa-crosshairs"></i>
                         </div>
@@ -341,20 +345,46 @@
                     <span class="text-[9px] px-1.5 py-0.2 rounded-full font-extrabold bg-blue-500/15 text-blue-400 border border-blue-500/30"
                           x-text="getAgentScore('Technical Analyst Agent')"></span>
 
-                    <!-- POPOVER TOOLTIP -->
-                    <div class="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-64 bg-slate-900/98 border border-blue-500/50 rounded-xl p-3 shadow-2xl backdrop-blur-md opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-all duration-200 z-50 text-left">
-                        <div class="flex items-center justify-between border-b border-slate-800 pb-1.5 mb-1.5">
-                            <span class="font-bold text-xs text-white flex items-center gap-1.5"><i class="fa-solid fa-chart-line text-blue-400"></i> Technical Agent (20%)</span>
-                            <span class="text-[10px] font-mono text-blue-400 font-bold" x-text="getAgentScore('Technical Analyst Agent')"></span>
+                    <!-- CYBERPUNK HUD POPOVER -->
+                    <div class="absolute bottom-full mb-3.5 left-0 sm:left-1/2 sm:-translate-x-1/2 z-50 transition-all duration-200 ease-out text-left"
+                         :class="(activePopover === 'tech' || hoverPopover === 'tech') ? 'opacity-100 pointer-events-auto visible scale-100' : 'opacity-0 pointer-events-none invisible scale-95'"
+                         style="background: rgba(13, 17, 28, 0.96); backdrop-filter: blur(16px); border: 1px solid rgba(56, 189, 248, 0.4); box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.7), 0 0 20px rgba(56, 189, 248, 0.2); border-radius: 12px; min-width: 270px; max-width: 320px; padding: 14px 16px;">
+                        <!-- CARET ARROW -->
+                        <div class="absolute -bottom-1.5 left-6 sm:left-1/2 sm:-translate-x-1/2 w-3 h-3 bg-[#0d111c] border-b border-r border-sky-400/40 rotate-45"></div>
+                        
+                        <!-- HEADER -->
+                        <div class="flex items-center justify-between border-b border-slate-800/80 pb-2 mb-2.5">
+                            <div class="flex items-center gap-2">
+                                <div class="w-6 h-6 rounded-md bg-sky-500/20 border border-sky-400/40 flex items-center justify-center text-sky-400 text-xs">
+                                    <i class="fa-solid fa-crosshairs"></i>
+                                </div>
+                                <div>
+                                    <h4 class="font-bold text-white text-sm leading-tight">The Chart Sniper</h4>
+                                    <span class="text-[10px] text-sky-300 font-semibold tracking-wide uppercase">Technical Analyst (20%)</span>
+                                </div>
+                            </div>
+                            <span class="px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-sky-500/20 text-sky-300 border border-sky-500/40" x-text="getAgentScore('Technical Analyst Agent')"></span>
                         </div>
-                        <p class="text-[10px] text-slate-300 leading-relaxed urdu-text mb-1" x-text="getAgentSummary('Technical Analyst Agent')"></p>
-                        <div class="text-[9px] text-slate-400 pt-1 border-t border-slate-800/80">Rules: 15m/1H EMA 20/50/200, RSI 14, S/R</div>
+                        
+                        <!-- BODY -->
+                        <p class="text-xs text-slate-300 leading-relaxed urdu-text mb-2.5" x-text="getAgentSummary('Technical Analyst Agent')"></p>
+                        
+                        <!-- BADGES -->
+                        <div class="flex flex-wrap gap-1.5 pt-2 border-t border-slate-800/80">
+                            <span style="background: rgba(255, 255, 255, 0.06); padding: 2px 6px; border-radius: 4px; color: #38bdf8; font-size: 10px; font-weight: 700;">EMA 20/50/200</span>
+                            <span style="background: rgba(255, 255, 255, 0.06); padding: 2px 6px; border-radius: 4px; color: #38bdf8; font-size: 10px; font-weight: 700;">RSI 14 Reversal</span>
+                            <span style="background: rgba(255, 255, 255, 0.06); padding: 2px 6px; border-radius: 4px; color: #38bdf8; font-size: 10px; font-weight: 700;">15m/1H Breakout</span>
+                        </div>
                     </div>
                 </div>
 
                 <!-- AVATAR 2: THE NEWS RADAR (Fundamental) -->
-                <div class="group relative flex flex-col items-center text-center cursor-pointer">
-                    <div class="w-11 h-11 sm:w-13 sm:h-13 rounded-full bg-gradient-to-tr from-amber-950 via-slate-900 to-amber-900/80 border-2 border-amber-500/70 p-0.5 flex items-center justify-center shadow-lg shadow-amber-500/20 group-hover:scale-110 group-hover:border-amber-400 transition-all duration-200">
+                <div class="relative flex flex-col items-center text-center cursor-pointer"
+                     @mouseenter="hoverPopover = 'fund'"
+                     @mouseleave="hoverPopover = null"
+                     @click.stop="togglePopover('fund')">
+                    <div class="w-11 h-11 sm:w-13 sm:h-13 rounded-full bg-gradient-to-tr from-amber-950 via-slate-900 to-amber-900/80 border-2 border-amber-500/70 p-0.5 flex items-center justify-center shadow-lg shadow-amber-500/20 hover:scale-110 hover:border-amber-400 transition-all duration-200"
+                         :class="(activePopover === 'fund' || hoverPopover === 'fund') ? 'ring-2 ring-amber-400 scale-110' : ''">
                         <div class="w-full h-full rounded-full bg-slate-950/90 flex items-center justify-center text-amber-400 text-sm sm:text-base">
                             <i class="fa-solid fa-satellite-dish"></i>
                         </div>
@@ -363,20 +393,46 @@
                     <span class="text-[9px] px-1.5 py-0.2 rounded-full font-extrabold bg-amber-500/15 text-amber-400 border border-amber-500/30"
                           x-text="getAgentScore('Fundamental & Sentiment Agent')"></span>
 
-                    <!-- POPOVER TOOLTIP -->
-                    <div class="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-64 bg-slate-900/98 border border-amber-500/50 rounded-xl p-3 shadow-2xl backdrop-blur-md opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-all duration-200 z-50 text-left">
-                        <div class="flex items-center justify-between border-b border-slate-800 pb-1.5 mb-1.5">
-                            <span class="font-bold text-xs text-white flex items-center gap-1.5"><i class="fa-solid fa-newspaper text-amber-400"></i> Fundamental Agent (15%)</span>
-                            <span class="text-[10px] font-mono text-amber-400 font-bold" x-text="getAgentScore('Fundamental & Sentiment Agent')"></span>
+                    <!-- CYBERPUNK HUD POPOVER -->
+                    <div class="absolute bottom-full mb-3.5 left-1/2 -translate-x-1/2 z-50 transition-all duration-200 ease-out text-left"
+                         :class="(activePopover === 'fund' || hoverPopover === 'fund') ? 'opacity-100 pointer-events-auto visible scale-100' : 'opacity-0 pointer-events-none invisible scale-95'"
+                         style="background: rgba(13, 17, 28, 0.96); backdrop-filter: blur(16px); border: 1px solid rgba(245, 158, 11, 0.4); box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.7), 0 0 20px rgba(245, 158, 11, 0.2); border-radius: 12px; min-width: 270px; max-width: 320px; padding: 14px 16px;">
+                        <!-- CARET ARROW -->
+                        <div class="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-[#0d111c] border-b border-r border-amber-400/40 rotate-45"></div>
+                        
+                        <!-- HEADER -->
+                        <div class="flex items-center justify-between border-b border-slate-800/80 pb-2 mb-2.5">
+                            <div class="flex items-center gap-2">
+                                <div class="w-6 h-6 rounded-md bg-amber-500/20 border border-amber-400/40 flex items-center justify-center text-amber-400 text-xs">
+                                    <i class="fa-solid fa-satellite-dish"></i>
+                                </div>
+                                <div>
+                                    <h4 class="font-bold text-white text-sm leading-tight">The News Radar</h4>
+                                    <span class="text-[10px] text-amber-300 font-semibold tracking-wide uppercase">Fundamental & News (15%)</span>
+                                </div>
+                            </div>
+                            <span class="px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40" x-text="getAgentScore('Fundamental & Sentiment Agent')"></span>
                         </div>
-                        <p class="text-[10px] text-slate-300 leading-relaxed urdu-text mb-1" x-text="getAgentSummary('Fundamental & Sentiment Agent')"></p>
-                        <div class="text-[9px] text-slate-400 pt-1 border-t border-slate-800/80">Rules: CPI, NFP, FOMC High-Impact Lockout</div>
+                        
+                        <!-- BODY -->
+                        <p class="text-xs text-slate-300 leading-relaxed urdu-text mb-2.5" x-text="getAgentSummary('Fundamental & Sentiment Agent')"></p>
+                        
+                        <!-- BADGES -->
+                        <div class="flex flex-wrap gap-1.5 pt-2 border-t border-slate-800/80">
+                            <span style="background: rgba(255, 255, 255, 0.06); padding: 2px 6px; border-radius: 4px; color: #fbbf24; font-size: 10px; font-weight: 700;">High-Impact News</span>
+                            <span style="background: rgba(255, 255, 255, 0.06); padding: 2px 6px; border-radius: 4px; color: #fbbf24; font-size: 10px; font-weight: 700;">CPI / NFP / FOMC</span>
+                            <span style="background: rgba(255, 255, 255, 0.06); padding: 2px 6px; border-radius: 4px; color: #fbbf24; font-size: 10px; font-weight: 700;">Sentiment Lockout</span>
+                        </div>
                     </div>
                 </div>
 
                 <!-- AVATAR 3: THE SHIELD GUARDIAN (Risk Veto) -->
-                <div class="group relative flex flex-col items-center text-center cursor-pointer">
-                    <div class="w-11 h-11 sm:w-13 sm:h-13 rounded-full bg-gradient-to-tr from-purple-950 via-slate-900 to-rose-900/80 border-2 border-purple-500/80 p-0.5 flex items-center justify-center shadow-lg shadow-purple-500/30 group-hover:scale-110 group-hover:border-purple-400 transition-all duration-200 relative">
+                <div class="relative flex flex-col items-center text-center cursor-pointer"
+                     @mouseenter="hoverPopover = 'risk'"
+                     @mouseleave="hoverPopover = null"
+                     @click.stop="togglePopover('risk')">
+                    <div class="w-11 h-11 sm:w-13 sm:h-13 rounded-full bg-gradient-to-tr from-purple-950 via-slate-900 to-rose-900/80 border-2 border-purple-500/80 p-0.5 flex items-center justify-center shadow-lg shadow-purple-500/30 hover:scale-110 hover:border-purple-400 transition-all duration-200 relative"
+                         :class="(activePopover === 'risk' || hoverPopover === 'risk') ? 'ring-2 ring-purple-400 scale-110' : ''">
                         <div class="w-full h-full rounded-full bg-slate-950/90 flex items-center justify-center text-purple-400 text-sm sm:text-base">
                             <i class="fa-solid fa-shield-halved"></i>
                         </div>
@@ -385,20 +441,46 @@
                     <span class="mt-1 text-[11px] font-bold text-purple-300 tracking-tight whitespace-nowrap">Shield Guard</span>
                     <span class="text-[9px] px-1.5 py-0.2 rounded-full font-extrabold bg-purple-500/20 text-purple-300 border border-purple-500/40">0.01 Lots</span>
 
-                    <!-- POPOVER TOOLTIP -->
-                    <div class="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-64 bg-slate-900/98 border border-purple-500/50 rounded-xl p-3 shadow-2xl backdrop-blur-md opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-all duration-200 z-50 text-left">
-                        <div class="flex items-center justify-between border-b border-slate-800 pb-1.5 mb-1.5">
-                            <span class="font-bold text-xs text-purple-300 flex items-center gap-1.5"><i class="fa-solid fa-shield-halved"></i> Risk Veto Agent (20%)</span>
-                            <span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40">VETO POWER</span>
+                    <!-- CYBERPUNK HUD POPOVER -->
+                    <div class="absolute bottom-full mb-3.5 left-1/2 -translate-x-1/2 z-50 transition-all duration-200 ease-out text-left"
+                         :class="(activePopover === 'risk' || hoverPopover === 'risk') ? 'opacity-100 pointer-events-auto visible scale-100' : 'opacity-0 pointer-events-none invisible scale-95'"
+                         style="background: rgba(13, 17, 28, 0.96); backdrop-filter: blur(16px); border: 1px solid rgba(244, 63, 94, 0.4); box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.7), 0 0 20px rgba(244, 63, 94, 0.2); border-radius: 12px; min-width: 270px; max-width: 320px; padding: 14px 16px;">
+                        <!-- CARET ARROW -->
+                        <div class="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-[#0d111c] border-b border-r border-rose-400/40 rotate-45"></div>
+                        
+                        <!-- HEADER -->
+                        <div class="flex items-center justify-between border-b border-slate-800/80 pb-2 mb-2.5">
+                            <div class="flex items-center gap-2">
+                                <div class="w-6 h-6 rounded-md bg-purple-500/20 border border-purple-400/40 flex items-center justify-center text-purple-400 text-xs">
+                                    <i class="fa-solid fa-shield-halved"></i>
+                                </div>
+                                <div>
+                                    <h4 class="font-bold text-white text-sm leading-tight">The Shield Guardian</h4>
+                                    <span class="text-[10px] text-rose-400 font-bold tracking-wide uppercase">Risk Arbiter (20%)</span>
+                                </div>
+                            </div>
+                            <span class="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-rose-500/20 text-rose-300 border border-rose-500/40">VETO POWER</span>
                         </div>
-                        <p class="text-[10px] text-slate-300 leading-relaxed urdu-text mb-1" x-text="getAgentSummary('Risk Management Agent')"></p>
-                        <div class="text-[9px] text-slate-400 pt-1 border-t border-slate-800/80">Rules: 0.01 Lot, Min 1:2 R:R, -$5.00 Daily Cutoff</div>
+                        
+                        <!-- BODY -->
+                        <p class="text-xs text-slate-300 leading-relaxed urdu-text mb-2.5" x-text="getAgentSummary('Risk Management Agent')"></p>
+                        
+                        <!-- BADGES -->
+                        <div class="flex flex-wrap gap-1.5 pt-2 border-t border-slate-800/80">
+                            <span style="background: rgba(255, 255, 255, 0.06); padding: 2px 6px; border-radius: 4px; color: #c084fc; font-size: 10px; font-weight: 700;">0.01 Lot Strict</span>
+                            <span style="background: rgba(255, 255, 255, 0.06); padding: 2px 6px; border-radius: 4px; color: #c084fc; font-size: 10px; font-weight: 700;">Min 1:2 R:R</span>
+                            <span style="background: rgba(255, 255, 255, 0.06); padding: 2px 6px; border-radius: 4px; color: #fb7185; font-size: 10px; font-weight: 700;">-$5 Daily Cutoff</span>
+                        </div>
                     </div>
                 </div>
 
                 <!-- AVATAR 4: THE MARKET NAVIGATOR (Regime) -->
-                <div class="group relative flex flex-col items-center text-center cursor-pointer">
-                    <div class="w-11 h-11 sm:w-13 sm:h-13 rounded-full bg-gradient-to-tr from-teal-950 via-slate-900 to-teal-900/80 border-2 border-teal-500/70 p-0.5 flex items-center justify-center shadow-lg shadow-teal-500/20 group-hover:scale-110 group-hover:border-teal-400 transition-all duration-200">
+                <div class="relative flex flex-col items-center text-center cursor-pointer"
+                     @mouseenter="hoverPopover = 'regime'"
+                     @mouseleave="hoverPopover = null"
+                     @click.stop="togglePopover('regime')">
+                    <div class="w-11 h-11 sm:w-13 sm:h-13 rounded-full bg-gradient-to-tr from-teal-950 via-slate-900 to-teal-900/80 border-2 border-teal-500/70 p-0.5 flex items-center justify-center shadow-lg shadow-teal-500/20 hover:scale-110 hover:border-teal-400 transition-all duration-200"
+                         :class="(activePopover === 'regime' || hoverPopover === 'regime') ? 'ring-2 ring-teal-400 scale-110' : ''">
                         <div class="w-full h-full rounded-full bg-slate-950/90 flex items-center justify-center text-teal-400 text-sm sm:text-base">
                             <i class="fa-solid fa-compass"></i>
                         </div>
@@ -407,20 +489,46 @@
                     <span class="text-[9px] px-1.5 py-0.2 rounded-full font-extrabold bg-teal-500/15 text-teal-400 border border-teal-500/30"
                           x-text="getAgentScore('Market Regime Agent')"></span>
 
-                    <!-- POPOVER TOOLTIP -->
-                    <div class="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-64 bg-slate-900/98 border border-teal-500/50 rounded-xl p-3 shadow-2xl backdrop-blur-md opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-all duration-200 z-50 text-left">
-                        <div class="flex items-center justify-between border-b border-slate-800 pb-1.5 mb-1.5">
-                            <span class="font-bold text-xs text-white flex items-center gap-1.5"><i class="fa-solid fa-compass text-teal-400"></i> Market Regime (15%)</span>
-                            <span class="text-[10px] font-mono text-teal-400 font-bold" x-text="getAgentScore('Market Regime Agent')"></span>
+                    <!-- CYBERPUNK HUD POPOVER -->
+                    <div class="absolute bottom-full mb-3.5 left-1/2 -translate-x-1/2 z-50 transition-all duration-200 ease-out text-left"
+                         :class="(activePopover === 'regime' || hoverPopover === 'regime') ? 'opacity-100 pointer-events-auto visible scale-100' : 'opacity-0 pointer-events-none invisible scale-95'"
+                         style="background: rgba(13, 17, 28, 0.96); backdrop-filter: blur(16px); border: 1px solid rgba(20, 184, 166, 0.4); box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.7), 0 0 20px rgba(20, 184, 166, 0.2); border-radius: 12px; min-width: 270px; max-width: 320px; padding: 14px 16px;">
+                        <!-- CARET ARROW -->
+                        <div class="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-[#0d111c] border-b border-r border-teal-400/40 rotate-45"></div>
+                        
+                        <!-- HEADER -->
+                        <div class="flex items-center justify-between border-b border-slate-800/80 pb-2 mb-2.5">
+                            <div class="flex items-center gap-2">
+                                <div class="w-6 h-6 rounded-md bg-teal-500/20 border border-teal-400/40 flex items-center justify-center text-teal-400 text-xs">
+                                    <i class="fa-solid fa-compass"></i>
+                                </div>
+                                <div>
+                                    <h4 class="font-bold text-white text-sm leading-tight">The Market Navigator</h4>
+                                    <span class="text-[10px] text-teal-300 font-semibold tracking-wide uppercase">Regime Classifier (15%)</span>
+                                </div>
+                            </div>
+                            <span class="px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-teal-500/20 text-teal-300 border border-teal-500/40" x-text="getAgentScore('Market Regime Agent')"></span>
                         </div>
-                        <p class="text-[10px] text-slate-300 leading-relaxed urdu-text mb-1" x-text="getAgentSummary('Market Regime Agent')"></p>
-                        <div class="text-[9px] text-slate-400 pt-1 border-t border-slate-800/80">Rules: Trend vs Range Chop Classifier</div>
+                        
+                        <!-- BODY -->
+                        <p class="text-xs text-slate-300 leading-relaxed urdu-text mb-2.5" x-text="getAgentSummary('Market Regime Agent')"></p>
+                        
+                        <!-- BADGES -->
+                        <div class="flex flex-wrap gap-1.5 pt-2 border-t border-slate-800/80">
+                            <span style="background: rgba(255, 255, 255, 0.06); padding: 2px 6px; border-radius: 4px; color: #2dd4bf; font-size: 10px; font-weight: 700;">ADX Volatility</span>
+                            <span style="background: rgba(255, 255, 255, 0.06); padding: 2px 6px; border-radius: 4px; color: #2dd4bf; font-size: 10px; font-weight: 700;">Trend / Chop Filter</span>
+                            <span style="background: rgba(255, 255, 255, 0.06); padding: 2px 6px; border-radius: 4px; color: #2dd4bf; font-size: 10px; font-weight: 700;">ATR Expansion</span>
+                        </div>
                     </div>
                 </div>
 
                 <!-- AVATAR 5: THE LIQUIDITY HUNTER (SMC) -->
-                <div class="group relative flex flex-col items-center text-center cursor-pointer">
-                    <div class="w-11 h-11 sm:w-13 sm:h-13 rounded-full bg-gradient-to-tr from-cyan-950 via-slate-900 to-indigo-900/80 border-2 border-cyan-500/70 p-0.5 flex items-center justify-center shadow-lg shadow-cyan-500/20 group-hover:scale-110 group-hover:border-cyan-400 transition-all duration-200">
+                <div class="relative flex flex-col items-center text-center cursor-pointer"
+                     @mouseenter="hoverPopover = 'smc'"
+                     @mouseleave="hoverPopover = null"
+                     @click.stop="togglePopover('smc')">
+                    <div class="w-11 h-11 sm:w-13 sm:h-13 rounded-full bg-gradient-to-tr from-cyan-950 via-slate-900 to-indigo-900/80 border-2 border-cyan-500/70 p-0.5 flex items-center justify-center shadow-lg shadow-cyan-500/20 hover:scale-110 hover:border-cyan-400 transition-all duration-200"
+                         :class="(activePopover === 'smc' || hoverPopover === 'smc') ? 'ring-2 ring-cyan-400 scale-110' : ''">
                         <div class="w-full h-full rounded-full bg-slate-950/90 flex items-center justify-center text-cyan-400 text-sm sm:text-base">
                             <i class="fa-solid fa-water"></i>
                         </div>
@@ -429,20 +537,46 @@
                     <span class="text-[9px] px-1.5 py-0.2 rounded-full font-extrabold bg-cyan-500/15 text-cyan-400 border border-cyan-500/30"
                           x-text="getAgentScore('Liquidity & SMC Agent')"></span>
 
-                    <!-- POPOVER TOOLTIP -->
-                    <div class="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-64 bg-slate-900/98 border border-cyan-500/50 rounded-xl p-3 shadow-2xl backdrop-blur-md opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-all duration-200 z-50 text-left">
-                        <div class="flex items-center justify-between border-b border-slate-800 pb-1.5 mb-1.5">
-                            <span class="font-bold text-xs text-white flex items-center gap-1.5"><i class="fa-solid fa-water text-cyan-400"></i> Liquidity & SMC (15%)</span>
-                            <span class="text-[10px] font-mono text-cyan-400 font-bold" x-text="getAgentScore('Liquidity & SMC Agent')"></span>
+                    <!-- CYBERPUNK HUD POPOVER -->
+                    <div class="absolute bottom-full mb-3.5 left-1/2 -translate-x-1/2 z-50 transition-all duration-200 ease-out text-left"
+                         :class="(activePopover === 'smc' || hoverPopover === 'smc') ? 'opacity-100 pointer-events-auto visible scale-100' : 'opacity-0 pointer-events-none invisible scale-95'"
+                         style="background: rgba(13, 17, 28, 0.96); backdrop-filter: blur(16px); border: 1px solid rgba(6, 182, 212, 0.4); box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.7), 0 0 20px rgba(6, 182, 212, 0.2); border-radius: 12px; min-width: 270px; max-width: 320px; padding: 14px 16px;">
+                        <!-- CARET ARROW -->
+                        <div class="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-[#0d111c] border-b border-r border-cyan-400/40 rotate-45"></div>
+                        
+                        <!-- HEADER -->
+                        <div class="flex items-center justify-between border-b border-slate-800/80 pb-2 mb-2.5">
+                            <div class="flex items-center gap-2">
+                                <div class="w-6 h-6 rounded-md bg-cyan-500/20 border border-cyan-400/40 flex items-center justify-center text-cyan-400 text-xs">
+                                    <i class="fa-solid fa-water"></i>
+                                </div>
+                                <div>
+                                    <h4 class="font-bold text-white text-sm leading-tight">The Liquidity Hunter</h4>
+                                    <span class="text-[10px] text-cyan-300 font-semibold tracking-wide uppercase">SMC & Liquidity (15%)</span>
+                                </div>
+                            </div>
+                            <span class="px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40" x-text="getAgentScore('Liquidity & SMC Agent')"></span>
                         </div>
-                        <p class="text-[10px] text-slate-300 leading-relaxed urdu-text mb-1" x-text="getAgentSummary('Liquidity & SMC Agent')"></p>
-                        <div class="text-[9px] text-slate-400 pt-1 border-t border-slate-800/80">Rules: Order Blocks, Liquidity Sweeps, FVGs</div>
+                        
+                        <!-- BODY -->
+                        <p class="text-xs text-slate-300 leading-relaxed urdu-text mb-2.5" x-text="getAgentSummary('Liquidity & SMC Agent')"></p>
+                        
+                        <!-- BADGES -->
+                        <div class="flex flex-wrap gap-1.5 pt-2 border-t border-slate-800/80">
+                            <span style="background: rgba(255, 255, 255, 0.06); padding: 2px 6px; border-radius: 4px; color: #22d3ee; font-size: 10px; font-weight: 700;">Order Blocks (OB)</span>
+                            <span style="background: rgba(255, 255, 255, 0.06); padding: 2px 6px; border-radius: 4px; color: #22d3ee; font-size: 10px; font-weight: 700;">Liquidity Sweeps</span>
+                            <span style="background: rgba(255, 255, 255, 0.06); padding: 2px 6px; border-radius: 4px; color: #22d3ee; font-size: 10px; font-weight: 700;">FVG Imbalance</span>
+                        </div>
                     </div>
                 </div>
 
                 <!-- AVATAR 6: THE QUANT BRAIN (Quality) -->
-                <div class="group relative flex flex-col items-center text-center cursor-pointer">
-                    <div class="w-11 h-11 sm:w-13 sm:h-13 rounded-full bg-gradient-to-tr from-emerald-950 via-slate-900 to-emerald-900/80 border-2 border-emerald-500/70 p-0.5 flex items-center justify-center shadow-lg shadow-emerald-500/20 group-hover:scale-110 group-hover:border-emerald-400 transition-all duration-200">
+                <div class="relative flex flex-col items-center text-center cursor-pointer"
+                     @mouseenter="hoverPopover = 'quant'"
+                     @mouseleave="hoverPopover = null"
+                     @click.stop="togglePopover('quant')">
+                    <div class="w-11 h-11 sm:w-13 sm:h-13 rounded-full bg-gradient-to-tr from-emerald-950 via-slate-900 to-emerald-900/80 border-2 border-emerald-500/70 p-0.5 flex items-center justify-center shadow-lg shadow-emerald-500/20 hover:scale-110 hover:border-emerald-400 transition-all duration-200"
+                         :class="(activePopover === 'quant' || hoverPopover === 'quant') ? 'ring-2 ring-emerald-400 scale-110' : ''">
                         <div class="w-full h-full rounded-full bg-slate-950/90 flex items-center justify-center text-emerald-400 text-sm sm:text-base">
                             <i class="fa-solid fa-brain"></i>
                         </div>
@@ -451,20 +585,46 @@
                     <span class="text-[9px] px-1.5 py-0.2 rounded-full font-extrabold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
                           x-text="getAgentScore('Trade Quality Agent')"></span>
 
-                    <!-- POPOVER TOOLTIP -->
-                    <div class="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-64 bg-slate-900/98 border border-emerald-500/50 rounded-xl p-3 shadow-2xl backdrop-blur-md opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-all duration-200 z-50 text-left">
-                        <div class="flex items-center justify-between border-b border-slate-800 pb-1.5 mb-1.5">
-                            <span class="font-bold text-xs text-white flex items-center gap-1.5"><i class="fa-solid fa-brain text-emerald-400"></i> Trade Quality (15%)</span>
-                            <span class="text-[10px] font-mono text-emerald-400 font-bold" x-text="getAgentScore('Trade Quality Agent')"></span>
+                    <!-- CYBERPUNK HUD POPOVER -->
+                    <div class="absolute bottom-full mb-3.5 left-1/2 -translate-x-1/2 z-50 transition-all duration-200 ease-out text-left"
+                         :class="(activePopover === 'quant' || hoverPopover === 'quant') ? 'opacity-100 pointer-events-auto visible scale-100' : 'opacity-0 pointer-events-none invisible scale-95'"
+                         style="background: rgba(13, 17, 28, 0.96); backdrop-filter: blur(16px); border: 1px solid rgba(16, 185, 129, 0.4); box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.7), 0 0 20px rgba(16, 185, 129, 0.2); border-radius: 12px; min-width: 270px; max-width: 320px; padding: 14px 16px;">
+                        <!-- CARET ARROW -->
+                        <div class="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-[#0d111c] border-b border-r border-emerald-400/40 rotate-45"></div>
+                        
+                        <!-- HEADER -->
+                        <div class="flex items-center justify-between border-b border-slate-800/80 pb-2 mb-2.5">
+                            <div class="flex items-center gap-2">
+                                <div class="w-6 h-6 rounded-md bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-400 text-xs">
+                                    <i class="fa-solid fa-brain"></i>
+                                </div>
+                                <div>
+                                    <h4 class="font-bold text-white text-sm leading-tight">The Quant Brain</h4>
+                                    <span class="text-[10px] text-emerald-300 font-semibold tracking-wide uppercase">Trade Quality (15%)</span>
+                                </div>
+                            </div>
+                            <span class="px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40" x-text="getAgentScore('Trade Quality Agent')"></span>
                         </div>
-                        <p class="text-[10px] text-slate-300 leading-relaxed urdu-text mb-1" x-text="getAgentSummary('Trade Quality Agent')"></p>
-                        <div class="text-[9px] text-slate-400 pt-1 border-t border-slate-800/80">Rules: Statistical Win Rate & Edge Evaluation</div>
+                        
+                        <!-- BODY -->
+                        <p class="text-xs text-slate-300 leading-relaxed urdu-text mb-2.5" x-text="getAgentSummary('Trade Quality Agent')"></p>
+                        
+                        <!-- BADGES -->
+                        <div class="flex flex-wrap gap-1.5 pt-2 border-t border-slate-800/80">
+                            <span style="background: rgba(255, 255, 255, 0.06); padding: 2px 6px; border-radius: 4px; color: #34d399; font-size: 10px; font-weight: 700;">Statistical Edge</span>
+                            <span style="background: rgba(255, 255, 255, 0.06); padding: 2px 6px; border-radius: 4px; color: #34d399; font-size: 10px; font-weight: 700;">Historical Win Rate</span>
+                            <span style="background: rgba(255, 255, 255, 0.06); padding: 2px 6px; border-radius: 4px; color: #34d399; font-size: 10px; font-weight: 700;">Expectancy Ratio</span>
+                        </div>
                     </div>
                 </div>
 
                 <!-- AVATAR 7: THE GENERAL (Head Desk - Centerpiece) -->
-                <div class="group relative flex flex-col items-center text-center cursor-pointer">
-                    <div class="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-gradient-to-tr from-amber-600 via-emerald-600 to-indigo-600 p-0.5 flex items-center justify-center shadow-xl shadow-amber-500/30 group-hover:scale-115 transition-all duration-200 relative">
+                <div class="relative flex flex-col items-center text-center cursor-pointer"
+                     @mouseenter="hoverPopover = 'head'"
+                     @mouseleave="hoverPopover = null"
+                     @click.stop="togglePopover('head')">
+                    <div class="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-gradient-to-tr from-amber-600 via-emerald-600 to-indigo-600 p-0.5 flex items-center justify-center shadow-xl shadow-amber-500/30 hover:scale-115 transition-all duration-200 relative"
+                         :class="(activePopover === 'head' || hoverPopover === 'head') ? 'ring-2 ring-amber-400 scale-115' : ''">
                         <div class="w-full h-full rounded-full bg-slate-950 flex items-center justify-center text-amber-300 text-base sm:text-lg">
                             <i class="fa-solid fa-chess-king"></i>
                         </div>
@@ -478,16 +638,39 @@
                           :class="activeSignal ? (activeSignal.status === 'APPROVED' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40' : (activeSignal.status && activeSignal.status.includes('<85%') ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'bg-rose-500/20 text-rose-400 border border-rose-500/40')) : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/40'"
                           x-text="activeSignal ? (activeSignal.status === 'APPROVED' ? 'APPROVED (' + activeSignal.decision_score + '%)' : activeSignal.status) : '>= 85% GATE'"></span>
 
-                    <!-- POPOVER TOOLTIP -->
-                    <div class="absolute bottom-full mb-2 right-0 sm:left-1/2 sm:-translate-x-1/2 w-72 bg-slate-900/98 border border-amber-500/50 rounded-xl p-3 shadow-2xl backdrop-blur-md opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-all duration-200 z-50 text-left">
-                        <div class="flex items-center justify-between border-b border-slate-800 pb-1.5 mb-1.5">
-                            <span class="font-black text-xs text-amber-300 flex items-center gap-1.5"><i class="fa-solid fa-chess-king"></i> Head Desk Manager (Executive)</span>
-                            <span class="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400"
+                    <!-- CYBERPUNK HUD POPOVER -->
+                    <div class="absolute bottom-full mb-3.5 right-0 sm:left-1/2 sm:-translate-x-1/2 z-50 transition-all duration-200 ease-out text-left"
+                         :class="(activePopover === 'head' || hoverPopover === 'head') ? 'opacity-100 pointer-events-auto visible scale-100' : 'opacity-0 pointer-events-none invisible scale-95'"
+                         style="background: rgba(13, 17, 28, 0.96); backdrop-filter: blur(16px); border: 1px solid rgba(245, 158, 11, 0.5); box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.7), 0 0 20px rgba(245, 158, 11, 0.25); border-radius: 12px; min-width: 280px; max-width: 340px; padding: 14px 16px;">
+                        <!-- CARET ARROW -->
+                        <div class="absolute -bottom-1.5 right-6 sm:left-1/2 sm:-translate-x-1/2 w-3 h-3 bg-[#0d111c] border-b border-r border-amber-400/50 rotate-45"></div>
+                        
+                        <!-- HEADER -->
+                        <div class="flex items-center justify-between border-b border-slate-800/80 pb-2 mb-2.5">
+                            <div class="flex items-center gap-2">
+                                <div class="w-6 h-6 rounded-md bg-amber-500/20 border border-amber-400/40 flex items-center justify-center text-amber-300 text-xs">
+                                    <i class="fa-solid fa-chess-king"></i>
+                                </div>
+                                <div>
+                                    <h4 class="font-bold text-white text-sm leading-tight">The General</h4>
+                                    <span class="text-[10px] text-amber-300 font-bold tracking-wide uppercase">Executive Arbiter</span>
+                                </div>
+                            </div>
+                            <span class="px-2 py-0.5 rounded text-[11px] font-mono font-black"
+                                  :class="activeSignal ? (activeSignal.status === 'APPROVED' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40' : 'bg-rose-500/20 text-rose-400 border border-rose-500/40') : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'"
                                   x-text="activeSignal ? activeSignal.decision_score + '%' : '>= 85%'"></span>
                         </div>
-                        <p class="text-[10px] text-slate-200 leading-relaxed urdu-text mb-1"
+                        
+                        <!-- BODY -->
+                        <p class="text-xs text-slate-200 leading-relaxed urdu-text mb-2.5"
                            x-text="activeSignal ? (activeSignal.rejection_reason || activeSignal.full_analysis || 'All 7 quantitative agents satisfied. Execution cleared.') : 'Continuously arbitrating weighted consensus across all 7 agents...'"></p>
-                        <div class="text-[9px] text-slate-400 pt-1 border-t border-slate-800/80">Rule: Minimum 85% Conviction + Zero Risk Veto Gate</div>
+                        
+                        <!-- BADGES -->
+                        <div class="flex flex-wrap gap-1.5 pt-2 border-t border-slate-800/80">
+                            <span style="background: rgba(255, 255, 255, 0.06); padding: 2px 6px; border-radius: 4px; color: #fcd34d; font-size: 10px; font-weight: 700;">>= 85% Conviction</span>
+                            <span style="background: rgba(255, 255, 255, 0.06); padding: 2px 6px; border-radius: 4px; color: #fcd34d; font-size: 10px; font-weight: 700;">Zero Risk Veto</span>
+                            <span style="background: rgba(255, 255, 255, 0.06); padding: 2px 6px; border-radius: 4px; color: #fcd34d; font-size: 10px; font-weight: 700;">cTrader Auto-Execution</span>
+                        </div>
                     </div>
                 </div>
 
@@ -878,6 +1061,8 @@
                 priceFlashes: {},
                 cbotStatus: { mode: 'PAPER', is_connected: true, balance: 39.05, equity: 39.05, account_id: '1005621', currency: 'USD', is_live: false },
                 systemState: { auto_trade_enabled: true },
+                activePopover: null,
+                hoverPopover: null,
                 stats: { total: 0, approved: 0, rejected: 0 },
                 simForm: {
                     symbol: 'XAUUSD',
@@ -987,6 +1172,10 @@
                     if (!this.activeSignal || !this.activeSignal.agent_decisions) return '--';
                     const dec = this.activeSignal.agent_decisions.find(a => a.agent_name === agentName);
                     return dec ? dec.score + '/100' : '--';
+                },
+
+                togglePopover(agentKey) {
+                    this.activePopover = this.activePopover === agentKey ? null : agentKey;
                 },
 
                 async inspectDecisionDNA(sigId) {
