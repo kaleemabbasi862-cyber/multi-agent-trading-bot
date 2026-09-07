@@ -153,6 +153,7 @@ class CopilotChatRequest(BaseModel):
 class SettingsUpdateRequest(BaseModel):
     active_symbol: Optional[str] = None
     active_lot_size: Optional[float] = None
+    min_confidence_threshold: Optional[float] = None
     auto_trade_enabled: Optional[bool] = None
 
 @app.post("/api/copilot/chat")
@@ -162,7 +163,8 @@ async def chat_copilot(req: CopilotChatRequest):
         "trading_mode": execution_engine.mode,
         "active_pairs": settings_manager.get_active_pairs(),
         "active_symbol": settings_manager.get_active_symbol(),
-        "active_lot_size": settings_manager.get_active_lot_size()
+        "active_lot_size": settings_manager.get_active_lot_size(),
+        "min_confidence_threshold": settings_manager.get_min_confidence_threshold()
     }
     return copilot_agent.execute_copilot_intent(req.message, sys_state)
 
@@ -233,6 +235,7 @@ async def get_pairs_settings():
         "active_pairs": s.get("active_pairs", ["XAUUSD"]),
         "active_lot_size": s.get("active_lot_size", 0.01),
         "fixed_lot_size": s.get("active_lot_size", 0.01),
+        "min_confidence_threshold": s.get("min_confidence_threshold", 75.0),
         "auto_trade_enabled": s.get("auto_trade_enabled", True),
         "trading_mode": execution_engine.mode
     }
@@ -244,6 +247,8 @@ async def update_settings(req: SettingsUpdateRequest):
         settings_manager.set_active_symbol(req.active_symbol)
     if req.active_lot_size is not None:
         settings_manager.set_active_lot_size(req.active_lot_size)
+    if req.min_confidence_threshold is not None:
+        settings_manager.set_min_confidence_threshold(req.min_confidence_threshold)
     if req.auto_trade_enabled is not None:
         s = settings_manager.load_settings()
         s["auto_trade_enabled"] = bool(req.auto_trade_enabled)
@@ -254,8 +259,9 @@ async def update_settings(req: SettingsUpdateRequest):
         "status": "SUCCESS",
         "active_symbol": updated.get("active_symbol", "XAUUSD"),
         "active_lot_size": updated.get("active_lot_size", 0.01),
+        "min_confidence_threshold": updated.get("min_confidence_threshold", 75.0),
         "auto_trade_enabled": updated.get("auto_trade_enabled", True),
-        "message": f"Settings updated: {updated.get('active_symbol')} @ {updated.get('active_lot_size')} Lots"
+        "message": f"Settings updated: {updated.get('active_symbol')} @ {updated.get('active_lot_size')} Lots | Gate: {updated.get('min_confidence_threshold')}%"
     }
 
 # -------------------------------------------------------------

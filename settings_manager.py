@@ -22,7 +22,7 @@ DEFAULT_SETTINGS = {
     "auto_trade_enabled": True,
     "scanner_active": True,
     "max_risk_percent": 1.0,
-    "min_confidence_threshold": 85,
+    "min_confidence_threshold": 75,
     "environment_mode": "MULTI_ASSET_QUANT"
 }
 
@@ -44,6 +44,10 @@ def load_settings() -> dict:
                 lot = float(data.get("active_lot_size") or data.get("fixed_lot_size") or 0.01)
                 data["active_lot_size"] = max(0.01, min(1.00, round(lot, 2)))
                 data["fixed_lot_size"] = data["active_lot_size"]
+
+                # Normalize confidence threshold (60% to 90%)
+                thresh = float(data.get("min_confidence_threshold", 75))
+                data["min_confidence_threshold"] = max(60.0, min(90.0, round(thresh, 1)))
 
                 if "active_pairs" in data and isinstance(data["active_pairs"], list) and len(data["active_pairs"]) > 0:
                     valid = [s.upper() for s in data["active_pairs"] if s.upper() in all_syms]
@@ -101,6 +105,18 @@ def set_active_lot_size(lot_size: float) -> float:
 def get_active_pairs() -> list:
     """Returns list of currently active pair symbols."""
     return load_settings().get("active_pairs", ["XAUUSD"])
+
+def get_min_confidence_threshold() -> float:
+    """Returns the current quantitative conviction threshold for execution."""
+    return float(load_settings().get("min_confidence_threshold", 75.0))
+
+def set_min_confidence_threshold(threshold: float) -> float:
+    """Updates quantitative conviction threshold within [60.0, 90.0]."""
+    clamped = max(60.0, min(90.0, round(float(threshold), 1)))
+    s = load_settings()
+    s["min_confidence_threshold"] = clamped
+    save_settings(s)
+    return clamped
 
 def is_pair_whitelisted(symbol: str) -> bool:
     """Checks if a given symbol is in the supported pair whitelist."""

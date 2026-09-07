@@ -11,6 +11,7 @@ class SignalPayload(BaseModel):
     timeframe: str = "15m"
     strategy_name: str = "GoldSniper_MTF_1H"
     source: str = "MANUAL_OR_SCANNER"
+    volume: Optional[float] = 0.01
     timestamp: Optional[str] = None
 
 class AgentDecisionOutput(BaseModel):

@@ -66,6 +66,16 @@ def test_dynamic_pair_settings_and_lot_controls():
     clamped_min = settings_manager.set_active_lot_size(-0.10)
     assert clamped_min == 0.01
 
-    # Reset to XAUUSD
+    # Test threshold clamping
+    thresh = settings_manager.set_min_confidence_threshold(70.0)
+    assert thresh == 70.0
+    assert settings_manager.get_min_confidence_threshold() == 70.0
+    clamped_t_max = settings_manager.set_min_confidence_threshold(99.0)
+    assert clamped_t_max == 90.0
+    clamped_t_min = settings_manager.set_min_confidence_threshold(40.0)
+    assert clamped_t_min == 60.0
+
+    # Reset to XAUUSD, 0.01 Lot, 75% threshold
     settings_manager.set_active_symbol("XAUUSD")
     settings_manager.set_active_lot_size(0.01)
+    settings_manager.set_min_confidence_threshold(75.0)

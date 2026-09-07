@@ -64,4 +64,4 @@ def test_all_7_agents_evaluate_valid_setup():
     )
 
     assert status == "APPROVED"
-    assert score >= 85.0
+    assert score >= 75.0

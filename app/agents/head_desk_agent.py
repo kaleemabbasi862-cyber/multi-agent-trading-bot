@@ -1,4 +1,5 @@
 from typing import List, Dict, Any, Tuple
+import settings_manager
 from app.config import settings
 from app.database.models import SignalPayload, AgentDecisionOutput, RiskCheckResult
 
@@ -62,37 +63,41 @@ class HeadDeskManagerAgent:
             )
             return decision_status, final_score, final_explanation
 
-        # 2. Score-Based Categorization (Strict 85% Threshold)
-        if final_score >= 90.0 and risk_check.passed:
+        # 2. Dynamic Score-Based Categorization (Configurable via Settings Manager, Default 75%)
+        try:
+            threshold = float(settings_manager.get_min_confidence_threshold())
+        except Exception:
+            threshold = 75.0
+
+        vol = getattr(signal, "volume", 0.01) or 0.01
+        lot_str = f"{vol:.2f} Lots"
+        sym_str = getattr(signal, "symbol", "XAUUSD") or "XAUUSD"
+
+        if final_score >= threshold and risk_check.passed:
+            tier = "TIER 1" if final_score >= max(threshold + 10.0, 85.0) else "STANDARD"
             decision_status = "APPROVED"
             final_explanation = (
-                f"[DECISION: APPROVED — TIER 1] 🎯 [CONSENSUS CLEARANCE GRANTED]\n"
-                f"• Decision Confidence Score: {final_score}% (Threshold >= 85% Met — High Conviction)\n"
+                f"[DECISION: APPROVED — {tier}] 🎯 [CONSENSUS CLEARANCE GRANTED]\n"
+                f"• Decision Confidence Score: {final_score}% (Threshold >= {int(threshold)}% Met)\n"
                 f"• Risk-to-Reward: 1:{risk_check.rr_ratio:.2f} (>= 1:2.0 Verified) | Protected SL: ${signal.stop_loss:.2f} | TP: ${signal.take_profit:.2f}\n"
-                f"• 0.01 Lots on XAUUSD approved for immediate zero-delay execution."
+                f"• {lot_str} on {sym_str} approved for immediate execution."
             )
-        elif final_score >= 85.0 and risk_check.passed:
-            decision_status = "APPROVED"
+        elif (threshold - 10.0) <= final_score < threshold:
+            decision_status = f"BLOCKED (<{int(threshold)}% Conviction)"
             final_explanation = (
-                f"[DECISION: APPROVED — STANDARD] 🎯 [CONSENSUS CLEARANCE GRANTED]\n"
-                f"• Decision Confidence Score: {final_score}% (Threshold >= 85% Met)\n"
-                f"• Risk-to-Reward: 1:{risk_check.rr_ratio:.2f} (>= 1:2.0 Verified) | Protected SL: ${signal.stop_loss:.2f} | TP: ${signal.take_profit:.2f}\n"
-                f"• 0.01 Lots on XAUUSD approved for immediate zero-delay execution."
-            )
-        elif 75.0 <= final_score < 85.0:
-            decision_status = "BLOCKED (<85% Conviction)"
-            final_explanation = (
-                f"[DECISION: BLOCKED — CONVICTION < 85%] 🚫 [EXECUTION HALTED]\n"
-                f"• Decision Confidence Score: {final_score}% (Requires >= 85.0% for automatic execution)\n"
-                f"• Capital preserved. Trade rejected until >= 85% consensus conviction is reached."
+                f"[DECISION: BLOCKED — CONVICTION < {int(threshold)}%] 🚫 [EXECUTION HALTED]\n"
+                f"• Decision Confidence Score: {final_score}% (Requires >= {int(threshold)}% for automatic execution)\n"
+                f"• Capital preserved. Trade rejected until >= {int(threshold)}% consensus conviction is reached."
             )
         else:
             decision_status = "REJECTED"
             final_explanation = (
                 f"[DECISION: REJECTED] ❌ Insufficient edge or contradictory agent consensus.\n"
-                f"• Decision Confidence Score: {final_score}% (Below 85.0% threshold)\n"
+                f"• Decision Confidence Score: {final_score}% (Below {int(threshold)}% threshold)\n"
                 f"• Signal discarded."
             )
+
+        return decision_status, final_score, final_explanation
 
         return decision_status, final_score, final_explanation
 

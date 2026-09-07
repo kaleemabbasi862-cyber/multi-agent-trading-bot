@@ -190,7 +190,7 @@
                     </div>
                 </div>
 
-                <!-- RIGHT CONTROLS (PAIR SELECTOR + LOT STEPPER) -->
+                <!-- RIGHT CONTROLS (PAIR SELECTOR + LOT STEPPER + CONVICTION GATE SLIDER) -->
                 <div class="flex flex-wrap items-center gap-2.5 sm:gap-3">
                     <!-- PAIR SELECTOR DROPDOWN -->
                     <div class="flex items-center space-x-1.5 bg-slate-900/90 border border-indigo-500/40 rounded-xl px-2.5 py-1.5 shadow-inner">
@@ -236,6 +236,20 @@
                                 :disabled="selectedLotSize >= 1.00">
                             <i class="fa-solid fa-plus text-[9px]"></i>
                         </button>
+                    </div>
+
+                    <!-- CONVICTION THRESHOLD SLIDER -->
+                    <div class="flex items-center space-x-2 bg-slate-900/90 border border-amber-500/40 rounded-xl px-2.5 py-1.5 shadow-inner" title="Minimum agent consensus conviction required to execute trades">
+                        <i class="fa-solid fa-gauge-high text-amber-400 text-xs"></i>
+                        <div class="flex flex-col">
+                            <div class="flex items-center justify-between gap-1 text-[10px] font-bold text-slate-400">
+                                <span>Gate:</span>
+                                <span class="text-amber-300 font-mono font-black" x-text="minConfidenceThreshold + '%'"></span>
+                            </div>
+                            <input type="range" min="60" max="90" step="5"
+                                   x-model.number="minConfidenceThreshold" @input="onThresholdChange()"
+                                   class="w-20 sm:w-24 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-400">
+                        </div>
                     </div>
 
                     <!-- QUICK SAVE FEEDBACK TOAST -->
@@ -300,8 +314,8 @@
                     <span>Approval Conviction</span>
                     <i class="fa-solid fa-percentage text-amber-400"></i>
                 </div>
-                <div class="font-mono font-black text-xl text-amber-400">>= 85%</div>
-                <div class="mt-2 text-[11px] text-slate-400">High Conviction Only</div>
+                <div class="font-mono font-black text-xl text-amber-400" x-text="'>= ' + minConfidenceThreshold + '%'"></div>
+                <div class="mt-2 text-[11px] text-slate-400" x-text="minConfidenceThreshold >= 80 ? 'High Conviction Only' : 'Balanced Execution Gate'"></div>
             </div>
         </div>
 
@@ -694,8 +708,8 @@
                     </div>
                     <span class="mt-1 text-[11px] font-black text-amber-300 tracking-tight whitespace-nowrap">The General</span>
                     <span class="text-[9px] px-2 py-0.2 rounded-full font-black uppercase"
-                          :class="activeSignal ? (activeSignal.status === 'APPROVED' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40' : (activeSignal.status && activeSignal.status.includes('<85%') ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'bg-rose-500/20 text-rose-400 border border-rose-500/40')) : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/40'"
-                          x-text="activeSignal ? (activeSignal.status === 'APPROVED' ? 'APPROVED (' + activeSignal.decision_score + '%)' : activeSignal.status) : '>= 85% GATE'"></span>
+                          :class="activeSignal ? (activeSignal.status === 'APPROVED' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40' : (activeSignal.status && activeSignal.status.includes('BLOCKED') ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'bg-rose-500/20 text-rose-400 border border-rose-500/40')) : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/40'"
+                          x-text="activeSignal ? (activeSignal.status === 'APPROVED' ? 'APPROVED (' + activeSignal.decision_score + '%)' : activeSignal.status) : ('>= ' + minConfidenceThreshold + '% GATE')"></span>
 
                     <!-- CYBERPUNK HUD POPOVER -->
                     <div class="absolute bottom-full mb-3.5 right-0 sm:left-1/2 sm:-translate-x-1/2 z-50 transition-all duration-200 ease-out text-left"
@@ -717,7 +731,7 @@
                             </div>
                             <span class="px-2 py-0.5 rounded text-[11px] font-mono font-black"
                                   :class="activeSignal ? (activeSignal.status === 'APPROVED' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40' : 'bg-rose-500/20 text-rose-400 border border-rose-500/40') : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'"
-                                  x-text="activeSignal ? activeSignal.decision_score + '%' : '>= 85%'"></span>
+                                  x-text="activeSignal ? activeSignal.decision_score + '%' : ('>= ' + minConfidenceThreshold + '%')"></span>
                         </div>
                         
                         <!-- BODY -->
@@ -726,7 +740,7 @@
                         
                         <!-- BADGES -->
                         <div class="flex flex-wrap gap-1.5 pt-2 border-t border-slate-800/80">
-                            <span style="background: rgba(255, 255, 255, 0.06); padding: 2px 6px; border-radius: 4px; color: #fcd34d; font-size: 10px; font-weight: 700;">>= 85% Conviction</span>
+                            <span style="background: rgba(255, 255, 255, 0.06); padding: 2px 6px; border-radius: 4px; color: #fcd34d; font-size: 10px; font-weight: 700;" x-text="'>= ' + minConfidenceThreshold + '% Conviction'"></span>
                             <span style="background: rgba(255, 255, 255, 0.06); padding: 2px 6px; border-radius: 4px; color: #fcd34d; font-size: 10px; font-weight: 700;">Zero Risk Veto</span>
                             <span style="background: rgba(255, 255, 255, 0.06); padding: 2px 6px; border-radius: 4px; color: #fcd34d; font-size: 10px; font-weight: 700;">cTrader Auto-Execution</span>
                         </div>
@@ -865,8 +879,8 @@
                                 <td class="py-3 px-4 text-slate-300 text-[11px]" x-text="item.timeframe || '15m'"></td>
                                 <td class="py-3 px-4 whitespace-nowrap">
                                     <span class="px-2.5 py-1 rounded-md font-bold text-[10px] inline-flex items-center space-x-1"
-                                          :class="item.status === 'APPROVED' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : (item.status && item.status.includes('<85%') ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30')">
-                                        <i class="fa-solid" :class="item.status === 'APPROVED' ? 'fa-check' : (item.status && item.status.includes('<85%') ? 'fa-shield-halved text-amber-400' : 'fa-xmark')"></i>
+                                          :class="item.status === 'APPROVED' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : (item.status && (item.status.includes('BLOCKED') || item.status.includes('<')) ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30')">
+                                        <i class="fa-solid" :class="item.status === 'APPROVED' ? 'fa-check' : (item.status && (item.status.includes('BLOCKED') || item.status.includes('<')) ? 'fa-shield-halved text-amber-400' : 'fa-xmark')"></i>
                                         <span x-text="item.status"></span>
                                     </span>
                                 </td>
@@ -1122,6 +1136,7 @@
                 systemState: { auto_trade_enabled: true },
                 selectedSymbol: 'XAUUSD',
                 selectedLotSize: 0.01,
+                minConfidenceThreshold: 75,
                 settingsSavedToast: false,
                 activePopover: null,
                 hoverPopover: null,
@@ -1307,6 +1322,7 @@
                             const data = await res.json();
                             if (data.active_symbol) this.selectedSymbol = data.active_symbol;
                             if (data.active_lot_size) this.selectedLotSize = Number(data.active_lot_size);
+                            if (data.min_confidence_threshold) this.minConfidenceThreshold = Number(data.min_confidence_threshold);
                             if (data.auto_trade_enabled !== undefined) this.systemState.auto_trade_enabled = data.auto_trade_enabled;
                         }
                     } catch (e) {}
@@ -1320,6 +1336,7 @@
                             body: JSON.stringify({
                                 active_symbol: this.selectedSymbol,
                                 active_lot_size: this.selectedLotSize,
+                                min_confidence_threshold: this.minConfidenceThreshold,
                                 auto_trade_enabled: this.systemState.auto_trade_enabled
                             })
                         });
@@ -1328,6 +1345,11 @@
                             setTimeout(() => { this.settingsSavedToast = false; }, 2000);
                         }
                     } catch (e) {}
+                },
+
+                onThresholdChange() {
+                    this.minConfidenceThreshold = Math.max(60, Math.min(90, Number(this.minConfidenceThreshold) || 75));
+                    this.saveSettings();
                 },
 
                 onSymbolChange() {
