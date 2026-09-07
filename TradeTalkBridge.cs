@@ -28,6 +28,7 @@ namespace cAlgo.Robots
 
         private static readonly HttpClient httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
         private readonly HashSet<string> _executedTickets = new HashSet<string>();
+        private readonly Dictionary<long, double> _failedModifications = new Dictionary<long, double>();
 
         protected override void OnStart()
         {
@@ -86,7 +87,8 @@ namespace cAlgo.Robots
 
         /// <summary>
         /// Scans all open positions and attaches safe SL and TP if currently unprotected (-- / --).
-        /// Specifically handles XAGUSD and XAUUSD minimum stop levels.
+        /// Caches failed modification attempts until price moves by at least 30 pips.
+        /// Strictly enforces (Spread * 3.0) minimum distance from current market price.
         /// </summary>
         private void EnsureAllPositionsProtected()
         {
@@ -104,26 +106,82 @@ namespace cAlgo.Robots
                             pipSize = Math.Pow(10, -digits);
                         }
 
-                        double minDistance = Math.Max(sym.Spread * 2.0, pipSize * 20);
+                        double currentMarketPrice = (pos.TradeType == TradeType.Buy) ? sym.Bid : sym.Ask;
+
+                        // 1. Cache failed modification check: require at least 30 pips movement before retrying
+                        if (_failedModifications.ContainsKey(pos.Id))
+                        {
+                            double lastAttemptPrice = _failedModifications[pos.Id];
+                            double movedPips = Math.Abs(currentMarketPrice - lastAttemptPrice) / pipSize;
+                            if (movedPips < 30.0)
+                            {
+                                continue; // Skip to prevent repetitive popups
+                            }
+                        }
+
+                        // 2. Dynamic Stop Loss Distance: strictly at least (Spread * 3.0) and at least 30 pips away
+                        double minRequiredDistance = Math.Max(sym.Spread * 3.0, pipSize * 30.0);
 
                         double? targetSl = pos.StopLoss;
                         double? targetTp = pos.TakeProfit;
 
                         if (pos.TradeType == TradeType.Buy)
                         {
-                            if (targetSl == null) targetSl = Math.Round(pos.EntryPrice - Math.Max(minDistance, pipSize * 50), digits);
-                            if (targetTp == null) targetTp = Math.Round(pos.EntryPrice + Math.Max(minDistance * 1.8, pipSize * 100), digits);
+                            // SL for BUY must be strictly BELOW current Bid
+                            if (targetSl == null || targetSl >= (sym.Bid - minRequiredDistance))
+                            {
+                                targetSl = Math.Round(sym.Bid - Math.Max(minRequiredDistance, pipSize * 60.0), digits);
+                            }
+
+                            // TP for BUY must be strictly ABOVE current Ask
+                            if (targetTp == null || targetTp <= (sym.Ask + minRequiredDistance))
+                            {
+                                targetTp = Math.Round(sym.Ask + Math.Max(minRequiredDistance * 2.0, pipSize * 120.0), digits);
+                            }
+
+                            // Strict validation check: SL strictly below Bid - (Spread * 3)
+                            if (targetSl >= (sym.Bid - (sym.Spread * 3.0)))
+                            {
+                                continue;
+                            }
+                        }
+                        else // SELL
+                        {
+                            // SL for SELL must be strictly ABOVE current Ask
+                            if (targetSl == null || targetSl <= (sym.Ask + minRequiredDistance))
+                            {
+                                targetSl = Math.Round(sym.Ask + Math.Max(minRequiredDistance, pipSize * 60.0), digits);
+                            }
+
+                            // TP for SELL must be strictly BELOW current Bid
+                            if (targetTp == null || targetTp >= (sym.Bid - minRequiredDistance))
+                            {
+                                targetTp = Math.Round(sym.Bid - Math.Max(minRequiredDistance * 2.0, pipSize * 120.0), digits);
+                            }
+
+                            // Strict validation check: SL strictly above Ask + (Spread * 3)
+                            if (targetSl <= (sym.Ask + (sym.Spread * 3.0)))
+                            {
+                                continue;
+                            }
+                        }
+
+                        Print(string.Format("🛡️ [Auto-Protection Guard] Modifying #{0} ({1} {2}): Current={3}, SL={4}, TP={5}", 
+                            pos.Id, pos.SymbolName, pos.TradeType, currentMarketPrice, targetSl, targetTp));
+
+                        TradeResult modResult = ModifyPosition(pos, targetSl, targetTp);
+                        if (modResult != null && !modResult.IsSuccessful)
+                        {
+                            Print(string.Format("⚠️ ModifyPosition for #{0} rejected: {1}. Caching attempt until 30 pips movement.", pos.Id, modResult.Error));
+                            _failedModifications[pos.Id] = currentMarketPrice;
                         }
                         else
                         {
-                            if (targetSl == null) targetSl = Math.Round(pos.EntryPrice + Math.Max(minDistance, pipSize * 50), digits);
-                            if (targetTp == null) targetTp = Math.Round(pos.EntryPrice - Math.Max(minDistance * 1.8, pipSize * 100), digits);
+                            if (_failedModifications.ContainsKey(pos.Id))
+                            {
+                                _failedModifications.Remove(pos.Id);
+                            }
                         }
-
-                        Print(string.Format("🛡️ [Auto-Protection Guard] Securing position #{0} ({1} {2}): Setting SL={3}, TP={4}", 
-                            pos.Id, pos.SymbolName, pos.TradeType, targetSl, targetTp));
-                        
-                        ModifyPosition(pos, targetSl, targetTp);
                     }
                 }
             }
@@ -147,19 +205,27 @@ namespace cAlgo.Robots
                         if (pos.TradeType == TradeType.Buy)
                         {
                             double targetBe = Math.Round(pos.EntryPrice + (1.0 * pipSize), posSym.Digits);
-                            if (pos.StopLoss == null || pos.StopLoss < pos.EntryPrice)
+                            // Ensure break even is strictly below current Bid - (Spread * 3)
+                            if (targetBe < (posSym.Bid - (posSym.Spread * 3.0)))
                             {
-                                Print(string.Format("🛡️ [Auto Break-Even] Locking Profit for #{0} ({1} +{2:F1} Pips)! Moving SL to Break-Even @ {3:F5}", pos.Id, pos.SymbolName, pos.Pips, targetBe));
-                                ModifyPosition(pos, targetBe, pos.TakeProfit);
+                                if (pos.StopLoss == null || pos.StopLoss < pos.EntryPrice)
+                                {
+                                    Print(string.Format("🛡️ [Auto Break-Even] Locking Profit for #{0} ({1} +{2:F1} Pips)! Moving SL to Break-Even @ {3:F5}", pos.Id, pos.SymbolName, pos.Pips, targetBe));
+                                    ModifyPosition(pos, targetBe, pos.TakeProfit);
+                                }
                             }
                         }
                         else if (pos.TradeType == TradeType.Sell)
                         {
                             double targetBe = Math.Round(pos.EntryPrice - (1.0 * pipSize), posSym.Digits);
-                            if (pos.StopLoss == null || pos.StopLoss > pos.EntryPrice)
+                            // Ensure break even is strictly above current Ask + (Spread * 3)
+                            if (targetBe > (posSym.Ask + (posSym.Spread * 3.0)))
                             {
-                                Print(string.Format("🛡️ [Auto Break-Even] Locking Profit for #{0} ({1} +{2:F1} Pips)! Moving SL to Break-Even @ {3:F5}", pos.Id, pos.SymbolName, pos.Pips, targetBe));
-                                ModifyPosition(pos, targetBe, pos.TakeProfit);
+                                if (pos.StopLoss == null || pos.StopLoss > pos.EntryPrice)
+                                {
+                                    Print(string.Format("🛡️ [Auto Break-Even] Locking Profit for #{0} ({1} +{2:F1} Pips)! Moving SL to Break-Even @ {3:F5}", pos.Id, pos.SymbolName, pos.Pips, targetBe));
+                                    ModifyPosition(pos, targetBe, pos.TakeProfit);
+                                }
                             }
                         }
                     }
@@ -179,7 +245,7 @@ namespace cAlgo.Robots
                 string assetName = (Account.Asset != null && !string.IsNullOrEmpty(Account.Asset.Name)) ? Account.Asset.Name : "USD";
                 string broker = Account.BrokerName ?? "IC Markets cTrader Live";
 
-                string symClean = Symbol.Name.Replace("m", "").Replace(".pro", "").ToUpperInvariant();
+                string symClean = Symbol.Name.Replace("m", "").Replace(".pro", "").Replace("_i", "").ToUpperInvariant();
 
                 // Serialize Active Open Positions
                 StringBuilder positionsJson = new StringBuilder("[");
@@ -360,8 +426,8 @@ namespace cAlgo.Robots
                     pipSize = Math.Pow(10, -digits);
                 }
 
-                // 2. Dynamic Stop-Level Enforcement (Minimum 2.0x Spread / PipSize buffer)
-                double minDistance = Math.Max(targetSymbol.Spread * 2.0, pipSize * 20);
+                // 2. Dynamic Stop-Level Enforcement (Strictly at least Spread * 3.0 and at least 30 pips)
+                double minDistance = Math.Max(targetSymbol.Spread * 3.0, pipSize * 30.0);
 
                 double currentRefPrice = (tradeType == TradeType.Buy) ? targetSymbol.Ask : targetSymbol.Bid;
                 double validSl = rawSl;
@@ -369,24 +435,24 @@ namespace cAlgo.Robots
 
                 if (tradeType == TradeType.Buy)
                 {
-                    if (validSl <= 0 || validSl >= (currentRefPrice - minDistance))
+                    if (validSl <= 0 || validSl >= (targetSymbol.Bid - minDistance))
                     {
-                        validSl = currentRefPrice - Math.Max(minDistance, pipSize * 50);
+                        validSl = targetSymbol.Bid - Math.Max(minDistance, pipSize * 60.0);
                     }
-                    if (validTp <= 0 || validTp <= (currentRefPrice + minDistance))
+                    if (validTp <= 0 || validTp <= (targetSymbol.Ask + minDistance))
                     {
-                        validTp = currentRefPrice + Math.Max(minDistance * 1.8, pipSize * 100);
+                        validTp = targetSymbol.Ask + Math.Max(minDistance * 2.0, pipSize * 120.0);
                     }
                 }
                 else
                 {
-                    if (validSl <= 0 || validSl <= (currentRefPrice + minDistance))
+                    if (validSl <= 0 || validSl <= (targetSymbol.Ask + minDistance))
                     {
-                        validSl = currentRefPrice + Math.Max(minDistance, pipSize * 50);
+                        validSl = targetSymbol.Ask + Math.Max(minDistance, pipSize * 60.0);
                     }
-                    if (validTp <= 0 || validTp >= (currentRefPrice - minDistance))
+                    if (validTp <= 0 || validTp >= (targetSymbol.Bid - minDistance))
                     {
-                        validTp = currentRefPrice - Math.Max(minDistance * 1.8, pipSize * 100);
+                        validTp = targetSymbol.Bid - Math.Max(minDistance * 2.0, pipSize * 120.0);
                     }
                 }
 
@@ -423,11 +489,16 @@ namespace cAlgo.Robots
                         try 
                         { 
                             Print(string.Format("🛡️ Attaching guaranteed protection to #{0}: SL={1}, TP={2}", pos.Id, validSl, validTp));
-                            ModifyPosition(pos, validSl, validTp); 
+                            TradeResult modRes = ModifyPosition(pos, validSl, validTp); 
+                            if (modRes != null && !modRes.IsSuccessful)
+                            {
+                                _failedModifications[pos.Id] = currentRefPrice;
+                            }
                         } 
                         catch (Exception modEx)
                         {
                             Print("Secondary ModifyPosition note: " + modEx.Message);
+                            _failedModifications[pos.Id] = currentRefPrice;
                         }
                     }
 
