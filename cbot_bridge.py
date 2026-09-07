@@ -13,29 +13,34 @@ if sys.platform == "win32":
 
 load_dotenv()
 
-# --- HARD RISK SAFETY LIMITS ---
-HARD_DRAWDOWN_LIMIT_USD = -5.00     # Maximum allowable unrealized loss in USD
-MIN_BALANCE_FOR_METALS_USD = 200.00 # Minimum account balance required to trade metals/crypto
-MAX_ACTIVE_OPEN_POSITIONS = 1       # Maximum simultaneous open positions
+# --- ZERO-FAILURE CAPITAL PRESERVATION CONSTANTS ---
+DAILY_DRAWDOWN_LIMIT_USD = -3.00     # Hard cutoff: stop all trading for 24h if loss reaches -$3.00
+CIRCUIT_BREAKER_DURATION_SEC = 86400 # 24 hours lockout period
+MAX_ACTIVE_OPEN_POSITIONS = 1       # Hard cap: strictly maximum 1 active trade
+ALLOWED_SYMBOLS = ["EURUSD", "GBPUSD"] # Exclusively tradeable instruments (0.01 Micro Lots)
 
-# Real-Time Price Stream from cTrader
+# State Store - Updated live by cBot Webhook Bridge
 CBOT_LIVE_PRICES = {}
 
-# Real State Store - Updated live by cBot Webhook Bridge
 CBOT_STATE = {
     "is_connected": True,
     "mode": "CBOT_BRIDGE_ACTIVE",
     "account_id": "1005621",
+    "account_type": "DEMO",          # DEMO (Paper Testing) or LIVE
+    "is_live": False,
     "balance": 39.05,
     "equity": 39.05,
     "margin": 0.0,
     "free_margin": 39.05,
     "currency": "USD",
-    "broker": "Qartal Markets",
+    "broker": "IC Markets / Qartal cTrader",
     "open_positions": [],
     "total_unrealized_pnl": 0.0,
-    "drawdown_halt": False,
-    "is_micro_account": True,
+    "today_realized_pnl": 0.0,
+    "day_start_balance": 39.05,
+    "circuit_breaker_active": False,
+    "circuit_breaker_until": None,
+    "circuit_breaker_until_ts": 0,
     "last_heartbeat": datetime.datetime.now(datetime.timezone.utc).strftime("%H:%M:%S UTC"),
     "last_heartbeat_timestamp": time.time(),
     "live_prices": {}
@@ -57,7 +62,11 @@ def update_heartbeat(data: dict) -> dict:
     marg = float(data.get("margin", data.get("Margin", 0.0)))
     f_marg = float(data.get("free_margin", data.get("freeMargin", data.get("FreeMargin", eq))))
     curr = str(data.get("currency", data.get("asset", data.get("Currency", "USD"))))
-    broker = str(data.get("broker", data.get("brokerName", data.get("Broker", "IC Markets cTrader Live"))))
+    broker = str(data.get("broker", data.get("brokerName", data.get("Broker", "IC Markets cTrader"))))
+
+    # Environment / Account Type Detection (Demo vs Live)
+    is_live = bool(data.get("is_live", False))
+    acc_type = "LIVE" if is_live else "DEMO"
 
     # Capture live broker tick prices
     sym = data.get("symbol")
@@ -68,7 +77,7 @@ def update_heartbeat(data: dict) -> dict:
         sym_clean = str(sym).upper().replace("M", "").replace(".PRO", "").replace("_I", "")
         p_val = float(live_p or bid)
         bid_val = float(bid or p_val)
-        ask_val = float(ask or (bid_val + 0.25))
+        ask_val = float(ask or (bid_val + 0.00012))
         CBOT_LIVE_PRICES[sym_clean] = {
             "symbol": sym_clean,
             "price": p_val,
@@ -80,12 +89,33 @@ def update_heartbeat(data: dict) -> dict:
     open_pos = data.get("open_positions", data.get("positions", []))
     total_unrealized_pnl = sum(float(p.get("net_profit", 0.0)) for p in open_pos)
 
-    is_drawdown_halt = total_unrealized_pnl <= HARD_DRAWDOWN_LIMIT_USD or (eq - bal) <= HARD_DRAWDOWN_LIMIT_USD
-    is_micro_account = bal < MIN_BALANCE_FOR_METALS_USD
+    # Initialize or track day start balance
+    day_start_bal = CBOT_STATE.get("day_start_balance", bal)
+    if day_start_bal <= 0:
+        day_start_bal = bal
+
+    # Net daily performance calculation (Realized + Unrealized)
+    today_net_pnl = round(eq - day_start_bal, 2)
+
+    # Circuit Breaker Verification: Check if -$3.00 daily loss limit hit
+    circuit_breaker_active = False
+    circuit_breaker_until_ts = CBOT_STATE.get("circuit_breaker_until_ts", 0)
+
+    if now_ts < circuit_breaker_until_ts:
+        circuit_breaker_active = True
+    else:
+        if today_net_pnl <= DAILY_DRAWDOWN_LIMIT_USD or total_unrealized_pnl <= DAILY_DRAWDOWN_LIMIT_USD:
+            circuit_breaker_active = True
+            circuit_breaker_until_ts = now_ts + CIRCUIT_BREAKER_DURATION_SEC
+            CBOT_STATE["circuit_breaker_until_ts"] = circuit_breaker_until_ts
+            CBOT_STATE["circuit_breaker_until"] = datetime.datetime.fromtimestamp(circuit_breaker_until_ts, datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+            print(f"🚨 [CIRCUIT BREAKER TRIGGERED] Net Daily PnL: ${today_net_pnl:.2f} <= ${DAILY_DRAWDOWN_LIMIT_USD:.2f}. Trading halted for 24h until {CBOT_STATE['circuit_breaker_until']}")
 
     CBOT_STATE["is_connected"] = True
     CBOT_STATE["mode"] = "CBOT_BRIDGE_ACTIVE"
     CBOT_STATE["account_id"] = acc_id
+    CBOT_STATE["account_type"] = acc_type
+    CBOT_STATE["is_live"] = is_live
     CBOT_STATE["balance"] = round(bal, 2)
     CBOT_STATE["equity"] = round(eq, 2)
     CBOT_STATE["margin"] = round(marg, 2)
@@ -94,17 +124,17 @@ def update_heartbeat(data: dict) -> dict:
     CBOT_STATE["broker"] = broker
     CBOT_STATE["open_positions"] = open_pos
     CBOT_STATE["total_unrealized_pnl"] = round(total_unrealized_pnl, 2)
-    CBOT_STATE["drawdown_halt"] = is_drawdown_halt
-    CBOT_STATE["is_micro_account"] = is_micro_account
+    CBOT_STATE["today_realized_pnl"] = today_net_pnl
+    CBOT_STATE["day_start_balance"] = round(day_start_bal, 2)
+    CBOT_STATE["circuit_breaker_active"] = circuit_breaker_active
     CBOT_STATE["last_heartbeat"] = now_str
     CBOT_STATE["last_heartbeat_timestamp"] = now_ts
     CBOT_STATE["live_prices"] = CBOT_LIVE_PRICES
 
-    # If in hard drawdown halt, purge any queued buy/sell orders
-    if is_drawdown_halt:
+    # If circuit breaker active, purge pending buy/sell execution orders
+    if circuit_breaker_active:
         PENDING_CBOT_ORDERS = [o for o in PENDING_CBOT_ORDERS if o.get("action") == "CLOSE"]
 
-    # Return state with immediate pending orders for zero-latency dispatch
     state_res = dict(CBOT_STATE)
     if PENDING_CBOT_ORDERS:
         top_order = PENDING_CBOT_ORDERS[0]
@@ -138,40 +168,44 @@ def get_cbot_status() -> dict:
     return CBOT_STATE
 
 def queue_trade_for_cbot(symbol: str, action: str, lot_size: float, sl_price: float, tp_price: float, signal_id: str) -> dict:
-    """Queues an approved trade for the cBot to poll and execute with strict hard risk validation."""
+    """Queues an approved trade for the cBot with Zero-Failure Capital Preservation validation."""
     global PENDING_CBOT_ORDERS
-    sym_upper = symbol.upper()
+    sym_clean = symbol.upper().replace("M", "").replace(".PRO", "").replace("_I", "")
 
-    # Constraint 1: Hard Drawdown Cutoff
-    if CBOT_STATE.get("drawdown_halt") or CBOT_STATE.get("total_unrealized_pnl", 0.0) <= HARD_DRAWDOWN_LIMIT_USD:
-        print(f"[cBot Bridge] [!] REJECTED: Hard Drawdown Cutoff active (${CBOT_STATE.get('total_unrealized_pnl', 0.0)} <= ${HARD_DRAWDOWN_LIMIT_USD}).")
-        return {"status": "REJECTED_HARD_DRAWDOWN_CUTOFF", "error": "Drawdown limit reached"}
+    # 1. Tradeable Instruments Whitelist (EURUSD and GBPUSD exclusively)
+    if sym_clean not in ALLOWED_SYMBOLS:
+        print(f"[cBot Bridge] [!] REJECTED: {symbol} is NOT permitted. Zero-Failure rules allow EURUSD & GBPUSD only.")
+        return {"status": "REJECTED_INSTRUMENT_NOT_PERMITTED", "error": "Only EURUSD and GBPUSD permitted"}
 
-    # Constraint 2: Ban Metals/Commodities/Crypto on Micro Balances
-    is_metal_or_crypto = any(m in sym_upper for m in ["XAU", "GOLD", "XAG", "SILVER", "BTC", "OIL", "US30", "ETH"])
-    if is_metal_or_crypto and CBOT_STATE.get("balance", 0.0) < MIN_BALANCE_FOR_METALS_USD:
-        print(f"[cBot Bridge] [!] REJECTED: {symbol} is banned on micro account (${CBOT_STATE.get('balance', 0.0):.2f} < ${MIN_BALANCE_FOR_METALS_USD}).")
-        return {"status": "REJECTED_METALS_BANNED_ON_MICRO_BALANCE", "error": "Metals banned on balance < $200"}
+    # 2. Daily Drawdown Circuit Breaker (-$3.00 Lockout)
+    if CBOT_STATE.get("circuit_breaker_active"):
+        print(f"[cBot Bridge] [!] REJECTED: Daily Circuit Breaker ACTIVE. Trading halted for 24h.")
+        return {"status": "REJECTED_CIRCUIT_BREAKER_ACTIVE", "error": "Daily Drawdown Circuit Breaker Active"}
 
-    # Constraint 3: Strict Max 1 Open Position Hard Cap
+    # 3. Strict Max 1 Open Position Hard Cap
     open_positions = CBOT_STATE.get("open_positions", [])
     if len(open_positions) >= MAX_ACTIVE_OPEN_POSITIONS:
         print(f"[cBot Bridge] [!] REJECTED: Max open positions ({MAX_ACTIVE_OPEN_POSITIONS}) reached. Currently open: {len(open_positions)}")
         return {"status": "REJECTED_MAX_OPEN_POSITIONS_REACHED", "error": "Max 1 position allowed"}
 
-    # Constraint 3B: Anti-Hedging / Opposing Trades Check
+    # 4. Anti-Hedging & Single Direction Rule
     for pos in open_positions:
-        if pos.get("symbol", "").upper() == sym_upper or sym_upper.startswith(pos.get("symbol", "").upper().replace("USD", "")):
-            print(f"[cBot Bridge] [!] REJECTED: Active position already exists on {symbol}. Opposing/hedging prohibited.")
+        pos_sym = pos.get("symbol", "").upper().replace("M", "").replace(".PRO", "").replace("_I", "")
+        if pos_sym == sym_clean:
+            print(f"[cBot Bridge] [!] REJECTED: Active position already exists on {symbol}. Opposing / duplicate trades prohibited.")
             return {"status": "REJECTED_OPPOSING_TRADE_EXISTS", "error": "Position already exists on symbol"}
 
-    # Micro account lot size cap
-    if CBOT_STATE.get("balance", 0.0) < MIN_BALANCE_FOR_METALS_USD:
-        lot_size = 0.01
+    # 5. Strict Protection Pre-Validation
+    if sl_price <= 0 or tp_price <= 0:
+        print(f"[cBot Bridge] [!] REJECTED: Invalid SL/TP ({sl_price}/{tp_price}). Unprotected orders strictly disallowed.")
+        return {"status": "REJECTED_INVALID_PROTECTION", "error": "SL and TP must be strictly defined"}
+
+    # 6. Enforce Micro-Lot 0.01
+    lot_size = 0.01
 
     order_item = {
         "id": signal_id,
-        "symbol": symbol,
+        "symbol": sym_clean,
         "action": action.upper(),
         "lot_size": lot_size,
         "sl": sl_price,
@@ -179,7 +213,7 @@ def queue_trade_for_cbot(symbol: str, action: str, lot_size: float, sl_price: fl
         "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat()
     }
     PENDING_CBOT_ORDERS.append(order_item)
-    print(f"[cBot Bridge] [+] Queued Approved Trade for cBot: {action} {lot_size} Lots of {symbol} (SL: {sl_price}, TP: {tp_price})")
+    print(f"[cBot Bridge] [+] Queued Approved Trade for cBot: {action} {lot_size} Lots of {sym_clean} (SL: {sl_price}, TP: {tp_price})")
     return order_item
 
 def queue_close_position(position_id: int) -> dict:
@@ -204,7 +238,6 @@ def record_cbot_execution(receipt: dict) -> dict:
     """cBot reports filled order execution receipt."""
     order_id = receipt.get("id") or receipt.get("order_id")
     EXECUTED_CBOT_RECEIPTS[order_id] = receipt
-    # Clear matching from pending queue
     global PENDING_CBOT_ORDERS
     PENDING_CBOT_ORDERS = [o for o in PENDING_CBOT_ORDERS if o.get("id") != order_id]
     print(f"[cBot Bridge] [+] 🟢 Authentic cTrader Order Filled: Ticket #{receipt.get('ticket_id')} ({receipt.get('position_id')}) for {receipt.get('symbol')} @ {receipt.get('fill_price')}")

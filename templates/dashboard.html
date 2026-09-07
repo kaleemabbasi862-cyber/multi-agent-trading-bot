@@ -117,18 +117,29 @@
                 <i class="fa-solid fa-robot text-white text-lg"></i>
             </div>
             <div>
-                <div class="flex items-center space-x-2">
+                <div class="flex flex-wrap items-center gap-1.5">
                     <span class="font-black text-xl tracking-tight text-white">TradeTalk<span class="text-indigo-400">.AI</span></span>
                     <span class="px-2 py-0.5 text-[10px] font-black rounded-full flex items-center space-x-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                        <i class="fa-solid fa-bolt text-emerald-400 text-[9px]"></i>
-                        <span>cBot Bridge Active</span>
+                        <i class="fa-solid fa-shield-halved text-emerald-400 text-[9px]"></i>
+                        <span>Zero-Failure Preserver</span>
                     </span>
-                    <span class="px-2 py-0.5 text-[10px] font-black rounded-full flex items-center space-x-1 bg-amber-500/15 text-amber-300 border border-amber-500/30">
-                        <i class="fa-solid fa-crosshairs text-amber-400 text-[9px]"></i>
-                        <span>AI Consensus (≥70% Conf | 1:1.5+ RR)</span>
+                    <span class="px-2 py-0.5 text-[10px] font-black rounded-full flex items-center space-x-1 bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
+                        <i class="fa-solid fa-layer-group text-indigo-400 text-[9px]"></i>
+                        <span>15m & 1H MTF Aligned (1:2 R:R)</span>
                     </span>
+                    <span class="px-2 py-0.5 text-[10px] font-black rounded-full flex items-center space-x-1"
+                          :class="cbotStatus.is_live ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'">
+                        <i class="fa-solid" :class="cbotStatus.is_live ? 'fa-satellite-dish' : 'fa-flask'"></i>
+                        <span x-text="cbotStatus.is_live ? 'Live Real Funds' : 'cTrader Demo (Paper Test)'"></span>
+                    </span>
+                    <template x-if="cbotStatus.circuit_breaker_active">
+                        <span class="px-2 py-0.5 text-[10px] font-black rounded-full flex items-center space-x-1 bg-rose-500/20 text-rose-300 border border-rose-500/40 animate-pulse">
+                            <i class="fa-solid fa-triangle-exclamation text-rose-400"></i>
+                            <span>Circuit Breaker Active (-$3.00 Limit)</span>
+                        </span>
+                    </template>
                 </div>
-                <p class="text-xs text-slate-400 font-medium">Real-Time Multi-Agent Consensus & cTrader Account #1005621</p>
+                <p class="text-xs text-slate-400 font-medium">Multi-Timeframe Trend Consensus &bull; EURUSD & GBPUSD (0.01 Micro Lots) &bull; cTrader Account #<span x-text="cbotStatus.account_id || '1005621'"></span></p>
             </div>
         </div>
 
@@ -1165,25 +1176,22 @@ namespace cAlgo.Robots
     }
 }`,
                 allSupportedPairs: [
-                    { symbol: 'XAUUSD', name: 'Gold / USD', category: 'Metals', icon: 'fa-coins' },
-                    { symbol: 'XAGUSD', name: 'Silver / USD', category: 'Metals', icon: 'fa-gem' },
                     { symbol: 'EURUSD', name: 'EUR / USD', category: 'Forex', icon: 'fa-euro-sign' },
-                    { symbol: 'GBPUSD', name: 'GBP / USD', category: 'Forex', icon: 'fa-sterling-sign' },
-                    { symbol: 'BTCUSD', name: 'BTC / USD', category: 'Crypto', icon: 'fa-brands fa-bitcoin' }
+                    { symbol: 'GBPUSD', name: 'GBP / USD', category: 'Forex', icon: 'fa-sterling-sign' }
                 ],
                 activePairs: ['EURUSD', 'GBPUSD'],
                 pairToast: null,
-                cbotStatus: { mode: 'CBOT_BRIDGE_ACTIVE', is_connected: true, balance: 39.05, equity: 39.05, account_id: '1005621', currency: 'USD' },
+                cbotStatus: { mode: 'CBOT_BRIDGE_ACTIVE', is_connected: true, balance: 39.05, equity: 39.05, account_id: '1005621', currency: 'USD', account_type: 'DEMO', is_live: false, circuit_breaker_active: false },
                 systemState: { auto_trade_enabled: true, last_scan_time: null, total_scans: 0, active_pairs: ['EURUSD', 'GBPUSD'] },
                 stats: { total: 0, approved: 0, rejected: 0, approval_rate: 0 },
                 simForm: {
                     symbol: 'EURUSD',
                     action: 'BUY',
                     entry_price: 1.1625,
-                    stop_loss: 1.1605,
-                    take_profit: 1.1660,
-                    timeframe: '15m',
-                    strategy_name: 'Trend_Crossover_v1'
+                    stop_loss: 1.1610,
+                    take_profit: 1.1655,
+                    timeframe: '15m & 1H',
+                    strategy_name: 'ZeroFailure_MTF_1H'
                 },
 
                 initDashboard() {

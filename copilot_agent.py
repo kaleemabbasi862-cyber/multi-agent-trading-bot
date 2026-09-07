@@ -40,15 +40,13 @@ def execute_copilot_intent(user_query: str, system_state: dict) -> dict:
     is_urdu = any(char > '\u0600' and char < '\u06FF' for char in user_query) or any(k in q for k in ["karo", "batao", "kya", "band", "chala", "rakho", "lagao"])
 
     # 1. Action: Manage Pair Whitelist Selection (Voice & Chat controls)
-    # Check for "Only trade Gold and Silver" / "صرف گولڈ اور سلور"
-    if ("only" in q or "صرف" in q) and ("gold" in q or "گولڈ" in q or "سونا" in q) and ("silver" in q or "سلور" in q or "چاندی" in q):
-        new_pairs = settings_manager.set_active_pairs(["XAUUSD", "XAGUSD"])
-        system_state["active_pairs"] = new_pairs
-        reply = "پیئر لسٹ اپ ڈیٹ ہو گئی ہے: اب صرف گولڈ (XAUUSD) اور سلور (XAGUSD) پر اسکیننگ اور آٹو ٹریڈ ہوگی۔" if is_urdu else "Pair whitelist updated: Only Gold (XAUUSD) and Silver (XAGUSD) are now active for scanning and execution."
+    # Check for Gold / Silver / BTC requests
+    if any(k in q for k in ["gold", "silver", "btc", "bitcoin", "گولڈ", "سلور", "چاندی", "سونا", "بٹ کوائن"]):
+        reply = "زیرو فیلور کیپیٹل پریزرویشن رولز کے تحت گولڈ، سلور اور کرپٹو مکمل طور پر بین ہیں تاکہ اکاؤنٹ محفوظ رہے۔ اب صرف EURUSD اور GBPUSD (0.01 لاٹ) پر ٹریڈنگ کی اجازت ہے۔" if is_urdu else "Under Zero-Failure Capital Preservation rules, Gold, Silver, and Crypto are completely disabled to protect equity. Only EURUSD and GBPUSD (0.01 micro lots) are permitted."
         return {
             "reply": reply,
-            "action_taken": "PAIRS_WHITELIST_UPDATED",
-            "active_pairs": new_pairs,
+            "action_taken": "INSTRUMENT_RESTRICTED",
+            "active_pairs": settings_manager.get_active_pairs(),
             "system_state": system_state
         }
 
@@ -56,43 +54,7 @@ def execute_copilot_intent(user_query: str, system_state: dict) -> dict:
     if ("only" in q or "صرف" in q) and ("forex" in q or "currenc" in q or "فاریکس" in q or "کرنسی" in q):
         new_pairs = settings_manager.set_active_pairs(["EURUSD", "GBPUSD"])
         system_state["active_pairs"] = new_pairs
-        reply = "پیئر لسٹ اپ ڈیٹ ہو گئی ہے: اب صرف فاریکس پیئرز (EURUSD, GBPUSD) پر ٹریڈنگ ہوگی۔" if is_urdu else "Pair whitelist updated: Only Forex pairs (EURUSD, GBPUSD) are now active."
-        return {
-            "reply": reply,
-            "action_taken": "PAIRS_WHITELIST_UPDATED",
-            "active_pairs": new_pairs,
-            "system_state": system_state
-        }
-
-    # Check for "Only trade Gold" / "صرف گولڈ"
-    if ("only" in q or "صرف" in q) and ("gold" in q or "گولڈ" in q or "سونا" in q) and not ("silver" in q or "سلور" in q):
-        new_pairs = settings_manager.set_active_pairs(["XAUUSD"])
-        system_state["active_pairs"] = new_pairs
-        reply = "اب صرف گولڈ (XAUUSD) فعال ہے، باقی تمام پیئرز بند کر دیے گئے ہیں۔" if is_urdu else "Gold (XAUUSD) is now the only active trading pair."
-        return {
-            "reply": reply,
-            "action_taken": "PAIRS_WHITELIST_UPDATED",
-            "active_pairs": new_pairs,
-            "system_state": system_state
-        }
-
-    # Check for "Only trade Silver" / "صرف سلور"
-    if ("only" in q or "صرف" in q) and ("silver" in q or "سلور" in q or "چاندی" in q) and not ("gold" in q or "گولڈ" in q):
-        new_pairs = settings_manager.set_active_pairs(["XAGUSD"])
-        system_state["active_pairs"] = new_pairs
-        reply = "اب صرف سلور (XAGUSD) فعال ہے، باقی تمام پیئرز بند کر دیے گئے ہیں۔" if is_urdu else "Silver (XAGUSD) is now the only active trading pair."
-        return {
-            "reply": reply,
-            "action_taken": "PAIRS_WHITELIST_UPDATED",
-            "active_pairs": new_pairs,
-            "system_state": system_state
-        }
-
-    # Check for "Trade all pairs" / "تمام پیئرز فعال کرو"
-    if ("all pairs" in q or "trade all" in q or "enable all" in q or "تمام پیئرز" in q or "تمام پیئر" in q or "سارے پیئرز" in q):
-        new_pairs = settings_manager.set_active_pairs(["XAUUSD", "XAGUSD", "EURUSD", "GBPUSD", "BTCUSD"])
-        system_state["active_pairs"] = new_pairs
-        reply = "تمام 5 پیئرز (Gold, Silver, EURUSD, GBPUSD, Bitcoin) فعال کر دیے گئے ہیں۔" if is_urdu else "All trading pairs (XAUUSD, XAGUSD, EURUSD, GBPUSD, BTCUSD) are now enabled in the whitelist."
+        reply = "پیئر لسٹ اپ ڈیٹ ہو گئی ہے: اب صرف فاریکس پیئرز (EURUSD, GBPUSD) پر ٹریڈنگ ہوگی۔" if is_urdu else "Pair whitelist updated: Only Forex pairs (EURUSD, GBPUSD) are active."
         return {
             "reply": reply,
             "action_taken": "PAIRS_WHITELIST_UPDATED",
@@ -102,16 +64,10 @@ def execute_copilot_intent(user_query: str, system_state: dict) -> dict:
 
     # Check for Single Pair Enable / Disable command
     pair_match = None
-    if "gold" in q or "xau" in q or "گولڈ" in q or "سونا" in q:
-        pair_match = "XAUUSD"
-    elif "silver" in q or "xag" in q or "سلور" in q or "چاندی" in q:
-        pair_match = "XAGUSD"
-    elif "euro" in q or "eur" in q or "یورو" in q:
+    if "euro" in q or "eur" in q or "یورو" in q:
         pair_match = "EURUSD"
     elif "pound" in q or "gbp" in q or "پاؤنڈ" in q:
         pair_match = "GBPUSD"
-    elif "btc" in q or "bitcoin" in q or "بٹ کوائن" in q:
-        pair_match = "BTCUSD"
 
     # Disable specific pair
     if pair_match and any(k in q for k in ["disable", "remove", "turn off", "stop trading", "ہٹاؤ", "بند کرو", "نہیں لگانا", "روکو"]) and not ("position" in q or "trade" in q and "close" in q):

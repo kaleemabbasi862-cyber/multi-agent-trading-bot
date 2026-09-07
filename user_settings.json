@@ -1,9 +1,10 @@
-﻿{
-  active_pairs: [
-    EURUSD,
-    GBPUSD
+{
+  "active_pairs": [
+    "EURUSD",
+    "GBPUSD"
   ],
-  auto_trade_enabled: true,
-  scanner_active: true,
-  max_risk_percent: 1.0
+  "auto_trade_enabled": true,
+  "scanner_active": true,
+  "max_risk_percent": 1.0,
+  "environment_mode": "DEMO_FIRST"
 }
