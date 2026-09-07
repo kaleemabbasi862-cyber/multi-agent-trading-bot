@@ -318,10 +318,18 @@ namespace cAlgo.Robots
                     if (calculatedPips >= 10) tpPips = Math.Round(calculatedPips, 1);
                 }
 
-                Print(string.Format("🎯 [Sniper Order Execution] Sending {0} {1} ({2} Units | SL_Pips: {3} | TP_Pips: {4})...", action, targetSymbol.Name, volumeInUnits, slPips, tpPips));
+                Print(string.Format("🎯 [Order Execution] Dispatching {0} {1} ({2} Units | SL_Pips: {3} | TP_Pips: {4})...", action, targetSymbol.Name, volumeInUnits, slPips, tpPips));
 
-                // Execute with embedded SL and TP in the initial order request
-                TradeResult result = ExecuteMarketOrder(tradeType, targetSymbol.Name, volumeInUnits, "TradeTalk.Sniper", slPips, tpPips);
+                // 1. Attempt market order with embedded SL and TP
+                TradeResult result = ExecuteMarketOrder(tradeType, targetSymbol.Name, volumeInUnits, "TradeTalk.AI", slPips, tpPips);
+                
+                // 2. Auto-Recovery: If broker rejects due to stop distance, immediately retry with clean market order
+                if (!result.IsSuccessful)
+                {
+                    Print("⚠️ Embedded SL/TP order rejected (" + result.Error + ") -> Instant auto-retry with standard Market Order...");
+                    result = ExecuteMarketOrder(tradeType, targetSymbol.Name, volumeInUnits, "TradeTalk.AI");
+                }
+
                 if (result.IsSuccessful && result.Position != null)
                 {
                     Position pos = result.Position;
@@ -329,12 +337,17 @@ namespace cAlgo.Robots
 
                     Print(string.Format("🟢 cTrader Order FILLED! Position ID: #{0} | Entry: {1} | SL: {2} | TP: {3}", pos.Id, pos.EntryPrice, pos.StopLoss, pos.TakeProfit));
 
-                    // Backup secondary modify if needed
-                    if (pos.StopLoss == null && sl > 0)
+                    // 3. Attach or verify SL and TP protection
+                    if (sl > 0 || tp > 0)
                     {
-                        try { ModifyPosition(pos, sl, tp, ProtectionType.Absolute); } catch { }
+                        try 
+                        { 
+                            ModifyPosition(pos, sl > 0 ? (double?)sl : null, tp > 0 ? (double?)tp : null, ProtectionType.Absolute); 
+                        } 
+                        catch {}
                     }
 
+                    // 4. Immediately notify server to update ledger ticket from 'Pending Fill' to real Position #
                     ReportOrderFilled(signalId, pos.Id, pos.EntryPrice, targetSymbol.Name, action);
                 }
                 else

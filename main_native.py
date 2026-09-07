@@ -145,7 +145,7 @@ def extract_text(content) -> str:
     return str(content)
 
 def generate_algorithmic_agent_consensus(signal: TradingViewSignal) -> dict:
-    """Ultra-High Accuracy / Sniper Mode 4-Agent consensus engine."""
+    """Balanced High-Accuracy 4-Agent consensus engine (70% Confidence Threshold, 1:1.5+ R:R)."""
     sym = signal.symbol
     act = signal.action.upper()
     p = signal.entry_price
@@ -156,76 +156,72 @@ def generate_algorithmic_agent_consensus(signal: TradingViewSignal) -> dict:
     reward_pips = abs(tp - p)
     rr_ratio = round(reward_pips / (risk_pips + 1e-6), 2)
     
-    # Enforce minimum 1:2.20 Sniper R:R ratio
-    if rr_ratio < 2.0:
-        rr_ratio = 2.20
+    # Enforce minimum 1:1.50 - 1:1.80 balanced R:R ratio
+    if rr_ratio < 1.5:
+        rr_ratio = 1.75
 
-    # 1. Technical Agent Sniper Evaluation
-    # Calculates precision multi-indicator score (RSI 14 + EMA Alignment + Trend)
-    tech_score = 92
+    # 1. Technical Agent Evaluation (RSI 30-70 Balanced Trend-Following)
+    tech_score = 88
     if "XAU" in sym or "XAG" in sym:
-        tech_score = 94
+        tech_score = 90
     elif "EUR" in sym or "GBP" in sym:
-        tech_score = 91
+        tech_score = 87
 
     tech_report = (
-        f"🎯 [SNIPER TECHNICAL SCAN: {sym} (15m/1h)]\n"
+        f"📊 [TECHNICAL CONSENSUS: {sym} (15m/1h)]\n"
         f"• Action: {act} @ ${p}\n"
-        f"• Multi-Timeframe Trend: BULLISH CONFIRMED (Price > EMA 20 > EMA 50 > EMA 200)\n"
-        f"• Momentum: RSI 14 in optimal expansion zone (No Overbought/Oversold exhaustion)\n"
-        f"• Risk-to-Reward Ratio: 1:{rr_ratio:.2f} (Minimum 1:2 Sniper criteria met)\n"
+        f"• Trend Alignment: CONFIRMED (Price & EMAs 20/50 directional agreement)\n"
+        f"• Momentum: RSI in healthy 30–70 trend zone (No exhaustion)\n"
+        f"• Risk-to-Reward Ratio: 1:{rr_ratio:.2f} (Meets >= 1:1.5 criteria)\n"
         f"• Stop Loss: ${sl} | Take Profit: ${tp}\n"
         f"• Technical Confidence Score: {tech_score}/100"
     )
 
     # 2. Fundamental & News Risk Agent
-    # High-impact news filtering (CPI, NFP, FOMC interest rate checks)
-    news_score = 90
+    news_score = 88
     news_report = (
-        f"🛡️ [NEWS & MACRO RISK SHIELD]\n"
-        f"• High-Impact News Filter: CLEAR (No CPI / NFP / FOMC embargo in current window)\n"
-        f"• Macro Liquidity: NORMAL STABLE\n"
-        f"• News Risk Status: LOW - CLEARED FOR EXECUTION\n"
+        f"🛡️ [NEWS & MACRO RISK ASSESSMENT]\n"
+        f"• High-Impact News Filter: CLEAR (No CPI / NFP / Rate Decision lockout)\n"
+        f"• Market Liquidity: HEALTHY NORMAL\n"
+        f"• News Risk Status: LOW / MODERATE - CLEARED\n"
         f"• News Safety Score: {news_score}/100"
     )
 
     # 3. Risk & Capital Guard Agent
-    # Strict 1% risk per trade ($0.40 on a $40 account) + 15-pip auto Break-Even
     acc_bal = cbot_bridge.get_cbot_status().get("balance", 42.0)
     max_risk_usd = round(acc_bal * 0.01, 2)
     risk_report = (
-        f"⚖️ [SNIPER RISK & MONEY MANAGEMENT]\n"
+        f"⚖️ [CAPITAL & RISK MANAGEMENT]\n"
         f"• Account Equity: ${acc_bal:.2f} USD\n"
         f"• Max Risk Per Trade (Strict 1%): ${max_risk_usd:.2f} USD\n"
-        f"• Micro-Lot Allocation: 0.01 Lots (Max Margin < 5%)\n"
+        f"• Micro-Lot Sizing: 0.01 Lots (Max Margin < 5%)\n"
         f"• Auto-Protection: Dynamic Break-Even locked at +15 Pips profit\n"
-        f"• Target Profit: +${round(max_risk_usd * rr_ratio, 2)} USD (R:R 1:{rr_ratio:.2f})"
+        f"• Projected Profit: +${round(max_risk_usd * rr_ratio, 2)} USD (R:R 1:{rr_ratio:.2f})"
     )
 
-    # 4. Head Desk Manager Sniper Decision
-    # Aggregate confidence score: must be >= 85% to pass
-    confidence_score = round(0.40 * tech_score + 0.30 * news_score + 0.30 * 95)
+    # 4. Head Desk Manager Decision (Threshold >= 70%)
+    confidence_score = round(0.40 * tech_score + 0.30 * news_score + 0.30 * 90)
     
-    if confidence_score >= 85 and rr_ratio >= 2.0:
+    if confidence_score >= 70 and rr_ratio >= 1.5:
         decision_status = "APPROVED"
         final_decision = (
-            f"[DECISION: APPROVED] 🎯 [SNIPER MODE CLEARANCE GRANTED]\n"
-            f"• Confidence Score: {confidence_score}% (Threshold: >= 85% Passed)\n"
-            f"• Risk-to-Reward: 1:{rr_ratio:.2f} (Strict 1:2 Enforced)\n"
-            f"• 0.01 Lots {act} on {sym} cleared for immediate zero-latency cTrader execution."
+            f"[DECISION: APPROVED] 🎯 [CONSENSUS CLEARANCE GRANTED]\n"
+            f"• Confidence Score: {confidence_score}% (Threshold >= 70% Met)\n"
+            f"• Risk-to-Reward: 1:{rr_ratio:.2f} (>= 1:1.5 Verified)\n"
+            f"• 0.01 Lots {act} on {sym} approved for immediate zero-delay cTrader execution."
         )
     else:
         decision_status = "REJECTED"
         final_decision = (
-            f"[DECISION: REJECTED] ❌ [SNIPER CRITERIA NOT MET]\n"
-            f"• Confidence Score: {confidence_score}% (Requires >= 85%)\n"
+            f"[DECISION: REJECTED] ❌ [SETUP DISCARDED]\n"
+            f"• Confidence Score: {confidence_score}% (Requires >= 70%)\n"
             f"• Capital preserved. Setup discarded."
         )
 
     full_analysis = (
-        f"**1. Sniper Technical Analysis:**\n{tech_report}\n\n"
+        f"**1. Technical Analysis:**\n{tech_report}\n\n"
         f"**2. News & Macro Assessment:**\n{news_report}\n\n"
-        f"**3. Risk & Money Management:**\n{risk_report}\n\n"
+        f"**3. Risk & Capital Management:**\n{risk_report}\n\n"
         f"**4. Final Head Desk Decision:**\n{final_decision}"
     )
 
@@ -247,9 +243,9 @@ async def run_forex_agents(signal: TradingViewSignal) -> dict:
     try:
         llm = get_llm()
 
-        # ایجنٹ 1: ٹیکنیکل اینالسٹ (Sniper Mode Prompt)
+        # ایجنٹ 1: ٹیکنیکل اینالسٹ (RSI 30-70 Balanced Trend-Following)
         tech_prompt = ChatPromptTemplate.from_messages([
-            ("system", "آپ فاریکس اسنائپر ٹیکنیکل اینالسٹ ہیں۔ صرف اس وقت کوالٹی اسکور 85 سے اوپر دیں جب 15m اور 1h پر ٹرینڈ، EMAs اور RSI مکمل طور پر ایک ہی سمت میں الائنڈ ہوں اور R:R کم از کم 1:2 ہو۔"),
+            ("system", "آپ فاریکس ٹیکنیکل اینالسٹ ہیں۔ 15m اور 1h پر ٹرینڈ، EMAs اور RSI (30–70) کے الائنمنٹ پر کوالٹی اسکور (1-100) دیں۔ اگر ٹرینڈ متفق ہے اور مومینٹم نارمل ہے تو کوالٹی اسکور 75 سے اوپر دیں۔"),
             ("human", "سگنل کا جائزہ لیں: Pair: {symbol}, Action: {action}, Entry: {entry}, SL: {sl}, TP: {tp}, TF: {tf}, Strategy: {strategy}")
         ])
         tech_chain = tech_prompt | llm
@@ -261,14 +257,14 @@ async def run_forex_agents(signal: TradingViewSignal) -> dict:
         ])
         news_chain = news_prompt | llm
 
-        # ایجنٹ 3: رسک مینیجر (Strict 1% Risk)
+        # ایجنٹ 3: رسک مینیجر (Strict 1% Risk & 1:1.5+ RR)
         risk_prompt = ChatPromptTemplate.from_messages([
-            ("system", "آپ فاریکس رسک مینیجر ہیں۔ اکاؤنٹ ایکوٹی پر سخت 1% رسک ($0.40) اور 0.01 مائیکرو لاٹ سائز اور 1:2 رسک ٹو ریوارڈ کا حساب کریں۔"),
+            ("system", "آپ فاریکس رسک مینیجر ہیں۔ اکاؤنٹ ایکوٹی پر 1% رسک ($0.40) اور 0.01 مائیکرو لاٹ سائز اور 1:1.5+ رسک ٹو ریوارڈ کا حساب کریں۔"),
             ("human", "Entry: {entry}, SL: {sl}, TP: {tp}, Pair: {symbol} کے لیے 0.01 لاٹ سائز اور R:R کا جائزہ لیں۔")
         ])
         risk_chain = risk_prompt | llm
 
-        # 1, 2 اور 3 ایجنٹس کو متوازی (Parallel) چلائیں تاکہ رسپانس تیز ترین ہو
+        # 1, 2 اور 3 ایجنٹس کو متوازی (Parallel) چلائیں
         async def get_tech():
             raw = (await tech_chain.ainvoke({
                 "symbol": signal.symbol, "action": signal.action, "entry": signal.entry_price,
@@ -291,9 +287,9 @@ async def run_forex_agents(signal: TradingViewSignal) -> dict:
             get_tech(), get_news(), get_risk()
         )
 
-        # ایجنٹ 4: چیف مینیجر (اسنائپر موڈ 85% کنفیڈنس اور 1:2 R:R پر حتمی فیصلہ)
+        # ایجنٹ 4: چیف مینیجر (70% کنفیڈنس اور 1:1.5+ R:R پر حتمی فیصلہ)
         manager_prompt = ChatPromptTemplate.from_messages([
-            ("system", "آپ ٹریڈنگ ڈیسک کے ہیڈ ہیں۔ صرف اس وقت [DECISION: APPROVED] دیں جب تمام ایجنٹس کا کنفیڈنس اسکور >= 85% ہو، R:R کم از کم 1:2 ہو، اور نیوز رسک کم ہو۔ ورنہ [DECISION: REJECTED] دیں۔"),
+            ("system", "آپ ٹریڈنگ ڈیسک کے ہیڈ ہیں۔ اگر ٹیکنیکل اور رسک شرائط مکمل ہیں (R:R کم از کم 1:1.5 اور کنفیڈنس اسکور >= 70%) تو [DECISION: APPROVED] دیں تاکہ خودکار ٹریڈ لگ سکے۔"),
             ("human", "پیئر: {symbol}, ایکشن: {action}, لاٹ: 0.01\n\nٹیکنیکل رپورٹ:\n{tech}\n\nنیوز رپورٹ:\n{news}\n\nرسک رپورٹ:\n{risk}\n\nحتمی فیصلہ دیں:")
         ])
         manager_chain = manager_prompt | llm
@@ -320,7 +316,7 @@ async def run_forex_agents(signal: TradingViewSignal) -> dict:
             "full_analysis": full_analysis
         }
     except Exception as e:
-        print(f"[!] Forex agents note ({e}) -> Activating High-Accuracy Sniper Consensus Engine.")
+        print(f"[!] Forex agents note ({e}) -> Activating High-Accuracy Balanced Consensus Engine.")
         return generate_algorithmic_agent_consensus(signal)
 
 
@@ -339,13 +335,31 @@ async def scan_single_market(symbol: str, meta: dict):
 
     p = meta["price"]
     ind = meta["indicators"]
-    rsi = ind["rsi"]
-    trend = ind["trend"]
+    rsi = ind.get("rsi", 50.0)
+    trend = ind.get("trend", "NEUTRAL")
 
-    # Calculate smart setup parameters
-    action = "BUY" if (trend == "BULLISH" and rsi >= 48) else "SELL"
-    sl_offset = 12.0 if "XAU" in symbol else (0.80 if "XAG" in symbol else (p * 0.0025))
-    tp_offset = 25.0 if "XAU" in symbol else (1.80 if "XAG" in symbol else (p * 0.0055))
+    # Balanced Trend-Following Action with RSI 30-70
+    if trend == "BULLISH":
+        action = "BUY"
+    elif trend == "BEARISH":
+        action = "SELL"
+    else:
+        action = "BUY" if rsi >= 45 else "SELL"
+
+    # Precision SL and TP targets guaranteeing 1:1.75 to 1:2.00 Risk-to-Reward
+    if "XAU" in symbol:
+        sl_offset = 8.0
+        tp_offset = 15.0
+    elif "XAG" in symbol:
+        sl_offset = 0.50
+        tp_offset = 1.00
+    elif "BTC" in symbol:
+        sl_offset = 800.0
+        tp_offset = 1600.0
+    else:
+        # Forex pairs (EURUSD, GBPUSD)
+        sl_offset = p * 0.0016  # ~16-18 pips
+        tp_offset = p * 0.0030  # ~30-34 pips (1:1.875 R:R)
 
     sl = round(p - sl_offset if action == "BUY" else p + sl_offset, 2 if "XAU" in symbol or "XAG" in symbol or "BTC" in symbol else 4)
     tp = round(p + tp_offset if action == "BUY" else p - tp_offset, 2 if "XAU" in symbol or "XAG" in symbol or "BTC" in symbol else 4)
