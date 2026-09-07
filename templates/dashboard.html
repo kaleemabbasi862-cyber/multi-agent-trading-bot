@@ -911,10 +911,33 @@
                     this.fetchLivePrices();
                     this.fetchSignals();
                     this.fetchCBotStatus();
+                    this.fetchLiveConsensus();
 
                     setInterval(() => { this.fetchLivePrices(); }, 2500);
                     setInterval(() => { this.fetchCBotStatus(); }, 2000);
                     setInterval(() => { this.fetchSignals(); }, 4000);
+                },
+
+                async fetchLiveConsensus() {
+                    try {
+                        const res = await fetch('/api/consensus');
+                        if (res.ok) {
+                            const data = await res.json();
+                            if (!this.activeSignal && data.consensus) {
+                                const c = data.consensus;
+                                this.activeSignal = {
+                                    id: c.signal_id,
+                                    symbol: c.symbol,
+                                    direction: c.direction,
+                                    entry_price: c.entry_price,
+                                    status: c.decision_status,
+                                    decision_score: c.decision_score,
+                                    agent_decisions: c.agent_decisions,
+                                    rejection_reason: c.full_analysis
+                                };
+                            }
+                        }
+                    } catch (e) {}
                 },
 
                 async fetchLivePrices() {
