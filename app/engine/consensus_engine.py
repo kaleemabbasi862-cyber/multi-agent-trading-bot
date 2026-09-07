@@ -27,7 +27,8 @@ class MultiAgentConsensusEngine:
         signal: SignalPayload,
         market_data: Dict[str, Any],
         macro_data: Dict[str, Any],
-        account_status: Dict[str, Any]
+        account_status: Dict[str, Any],
+        save_to_db: bool = True
     ) -> ConsensusResult:
         if not signal.id:
             signal.id = f"SIG_{uuid.uuid4().hex[:8].upper()}"
@@ -69,66 +70,67 @@ class MultiAgentConsensusEngine:
             guardian_reason=guard_reason
         )
 
-        _PROCESSED_SIGNAL_IDS.add(signal.id)
+        if save_to_db:
+            _PROCESSED_SIGNAL_IDS.add(signal.id)
 
-        # 4. Generate Immutable Decision DNA Snapshot
-        decision_dna_snapshot = {
-            "signal_id": signal.id,
-            "created_at": now_iso,
-            "signal": signal.dict(),
-            "status": status,
-            "decision_score": score,
-            "explanation": explanation,
-            "market_snapshot": market_data,
-            "macro_snapshot": macro_data,
-            "account_snapshot": account_status,
-            "agent_evaluations": [d.dict() for d in all_agent_decisions],
-            "risk_check": risk_check_res.dict(),
-            "guardian": {
-                "blocked": is_guarded,
-                "reason": guard_reason
+            # 4. Generate Immutable Decision DNA Snapshot
+            decision_dna_snapshot = {
+                "signal_id": signal.id,
+                "created_at": now_iso,
+                "signal": signal.dict(),
+                "status": status,
+                "decision_score": score,
+                "explanation": explanation,
+                "market_snapshot": market_data,
+                "macro_snapshot": macro_data,
+                "account_snapshot": account_status,
+                "agent_evaluations": [d.dict() for d in all_agent_decisions],
+                "risk_check": risk_check_res.dict(),
+                "guardian": {
+                    "blocked": is_guarded,
+                    "reason": guard_reason
+                }
             }
-        }
 
-        # 5. Persist to SQLite Database
-        db.save_signal({
-            "id": signal.id,
-            "timestamp": signal.timestamp,
-            "symbol": signal.symbol,
-            "direction": signal.action,
-            "source": signal.source,
-            "entry_price": signal.entry_price,
-            "stop_loss": signal.stop_loss,
-            "take_profit": signal.take_profit,
-            "rr_ratio": risk_check_res.rr_ratio,
-            "timeframe": signal.timeframe,
-            "status": status,
-            "decision_score": score,
-            "rejection_reason": guard_reason if is_guarded else (risk_check_res.veto_reason if not risk_check_res.passed else None)
-        })
+            # 5. Persist to SQLite Database
+            db.save_signal({
+                "id": signal.id,
+                "timestamp": signal.timestamp,
+                "symbol": signal.symbol,
+                "direction": signal.action,
+                "source": signal.source,
+                "entry_price": signal.entry_price,
+                "stop_loss": signal.stop_loss,
+                "take_profit": signal.take_profit,
+                "rr_ratio": risk_check_res.rr_ratio,
+                "timeframe": signal.timeframe,
+                "status": status,
+                "decision_score": score,
+                "rejection_reason": guard_reason if is_guarded else (risk_check_res.veto_reason if not risk_check_res.passed else None)
+            })
 
-        db.save_agent_decisions(signal.id, [d.dict() for d in all_agent_decisions])
-        db.save_risk_check({
-            "signal_id": signal.id,
-            "account_balance": risk_check_res.account_balance,
-            "account_equity": risk_check_res.account_equity,
-            "risk_amount": risk_check_res.risk_amount,
-            "calculated_volume": risk_check_res.calculated_volume,
-            "sl_distance": risk_check_res.sl_distance,
-            "tp_distance": risk_check_res.tp_distance,
-            "rr_ratio": risk_check_res.rr_ratio,
-            "spread": risk_check_res.spread,
-            "passed": risk_check_res.passed,
-            "veto_reason": risk_check_res.veto_reason
-        })
+            db.save_agent_decisions(signal.id, [d.dict() for d in all_agent_decisions])
+            db.save_risk_check({
+                "signal_id": signal.id,
+                "account_balance": risk_check_res.account_balance,
+                "account_equity": risk_check_res.account_equity,
+                "risk_amount": risk_check_res.risk_amount,
+                "calculated_volume": risk_check_res.calculated_volume,
+                "sl_distance": risk_check_res.sl_distance,
+                "tp_distance": risk_check_res.tp_distance,
+                "rr_ratio": risk_check_res.rr_ratio,
+                "spread": risk_check_res.spread,
+                "passed": risk_check_res.passed,
+                "veto_reason": risk_check_res.veto_reason
+            })
 
-        db.save_decision_dna(signal.id, decision_dna_snapshot)
+            db.save_decision_dna(signal.id, decision_dna_snapshot)
 
-        db.log_audit(
-            event_type="SIGNAL_PROCESSED",
-            actor="MultiAgentConsensusEngine",
-            details=f"Signal {signal.id} ({signal.symbol} {signal.action} @ {signal.entry_price}) -> {status} (Score: {score}%)"
-        )
+            db.log_audit(
+                event_type="SIGNAL_PROCESSED",
+                actor="MultiAgentConsensusEngine",
+                details=f"Signal {signal.id} ({signal.symbol} {signal.action} @ {signal.entry_price}) -> {status} (Score: {score}%)"
+            )
 
         return ConsensusResult(
             signal_id=signal.id,

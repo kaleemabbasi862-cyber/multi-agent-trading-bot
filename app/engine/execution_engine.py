@@ -53,102 +53,61 @@ class ExecutionEngine:
         now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
         vol = signal.dict().get("volume", settings.DEFAULT_LOT_SIZE)
 
-        # 1. PAPER TRADING MODE (High-Fidelity Virtual Execution)
-        if self.mode == "PAPER":
-            paper_trade = {
-                "id": trade_id,
-                "signal_id": consensus_res.signal_id,
-                "mode": "PAPER",
-                "broker_order_id": f"PAPER_ORD_{trade_id}",
-                "ticket_id": f"PT_{trade_id}",
-                "symbol": signal.symbol,
-                "direction": signal.action.upper(),
-                "entry_price": signal.entry_price,
-                "stop_loss": signal.stop_loss,
-                "take_profit": signal.take_profit,
-                "volume": vol,
-                "profit_loss": 0.0,
-                "pips": 0.0,
-                "status": "OPEN",
-                "opened_at": now_iso
-            }
-            db.save_trade(paper_trade)
-            db.log_audit(
-                event_type="PAPER_TRADE_EXECUTED",
-                actor="ExecutionEngine",
-                details=f"Opened Paper Trade {trade_id}: {signal.action} {vol} lots of {signal.symbol} @ ${signal.entry_price:.2f}"
-            )
-            return {
-                "status": "EXECUTED_PAPER",
-                "mode": "PAPER",
-                "trade_id": trade_id,
-                "ticket": paper_trade["ticket_id"],
-                "symbol": signal.symbol,
-                "action": signal.action,
-                "entry_price": signal.entry_price,
-                "sl": signal.stop_loss,
-                "tp": signal.take_profit,
-                "volume": vol,
-                "executed_at": now_iso
-            }
+        # Server-Side cTrader & Gateway Execution
+        cbot_sig_id = f"CT_{trade_id}"
+        exec_res = cbot_bridge.queue_trade_for_cbot(
+            symbol=signal.symbol,
+            action=signal.action,
+            lot_size=vol,
+            sl_price=signal.stop_loss,
+            tp_price=signal.take_profit,
+            signal_id=cbot_sig_id
+        )
 
-        # 2. DEMO OR LIVE TRADING MODE (Direct Server-Side cTrader Open API Execution)
-        elif self.mode in ("DEMO", "LIVE"):
-            cbot_sig_id = f"CT_{trade_id}"
-            exec_res = cbot_bridge.queue_trade_for_cbot(
-                symbol=signal.symbol,
-                action=signal.action,
-                lot_size=vol,
-                sl_price=signal.stop_loss,
-                tp_price=signal.take_profit,
-                signal_id=cbot_sig_id
-            )
+        if exec_res.get("status", "").startswith("REJECTED"):
+            logger.warning(f"Trade dispatch rejected by gateway: {exec_res}")
+            return exec_res
 
-            if exec_res.get("status", "").startswith("REJECTED"):
-                return exec_res
+        ticket_num = exec_res.get("ticket") or exec_res.get("ticket_id") or cbot_sig_id
+        fill_p = exec_res.get("fill_price", signal.entry_price)
 
-            ticket_num = exec_res.get("ticket") or exec_res.get("ticket_id") or cbot_sig_id
-            fill_p = exec_res.get("fill_price", signal.entry_price)
-
-            live_trade = {
-                "id": trade_id,
-                "signal_id": consensus_res.signal_id,
-                "mode": self.mode,
-                "broker_order_id": f"cTrader Cloud Fill (#{ticket_num})",
-                "ticket_id": str(ticket_num),
-                "symbol": signal.symbol,
-                "direction": signal.action.upper(),
-                "entry_price": fill_p,
-                "stop_loss": signal.stop_loss,
-                "take_profit": signal.take_profit,
-                "volume": vol,
-                "profit_loss": 0.0,
-                "pips": 0.0,
-                "status": "OPEN",
-                "opened_at": now_iso
-            }
-            db.save_trade(live_trade)
-            db.log_audit(
-                event_type=f"{self.mode}_TRADE_EXECUTED",
-                actor="ExecutionEngine",
-                details=f"Direct Server Execution #{ticket_num} on cTrader: {signal.action} {vol} lots of {signal.symbol} @ ${fill_p:.2f} (SL: ${signal.stop_loss:.2f}, TP: ${signal.take_profit:.2f})"
-            )
-            return {
-                "status": f"EXECUTED_{self.mode}_OPEN_API",
-                "mode": self.mode,
-                "trade_id": trade_id,
-                "ticket": ticket_num,
-                "ticket_id": str(ticket_num),
-                "symbol": signal.symbol,
-                "action": signal.action,
-                "entry_price": fill_p,
-                "sl": signal.stop_loss,
-                "tp": signal.take_profit,
-                "volume": vol,
-                "executed_at": now_iso,
-                "receipt": exec_res
-            }
-
-        return {"status": "UNKNOWN_MODE"}
+        executed_trade = {
+            "id": trade_id,
+            "signal_id": consensus_res.signal_id,
+            "mode": self.mode,
+            "broker_order_id": f"cTrader Cloud Fill (#{ticket_num})",
+            "ticket_id": str(ticket_num),
+            "symbol": signal.symbol,
+            "direction": signal.action.upper(),
+            "entry_price": fill_p,
+            "stop_loss": signal.stop_loss,
+            "take_profit": signal.take_profit,
+            "volume": vol,
+            "profit_loss": 0.0,
+            "pips": 0.0,
+            "status": "OPEN",
+            "opened_at": now_iso
+        }
+        db.save_trade(executed_trade)
+        db.log_audit(
+            event_type=f"{self.mode}_TRADE_EXECUTED",
+            actor="ExecutionEngine",
+            details=f"Direct Execution #{ticket_num} on cTrader Account #{settings.CTRADER_ACCOUNT_ID}: {signal.action} {vol} lots of {signal.symbol} @ ${fill_p:.2f} (SL: ${signal.stop_loss:.2f}, TP: ${signal.take_profit:.2f})"
+        )
+        return {
+            "status": f"EXECUTED_{self.mode}",
+            "mode": self.mode,
+            "trade_id": trade_id,
+            "ticket": ticket_num,
+            "ticket_id": str(ticket_num),
+            "symbol": signal.symbol,
+            "action": signal.action,
+            "entry_price": fill_p,
+            "sl": signal.stop_loss,
+            "tp": signal.take_profit,
+            "volume": vol,
+            "executed_at": now_iso,
+            "receipt": exec_res
+        }
 
 execution_engine = ExecutionEngine()

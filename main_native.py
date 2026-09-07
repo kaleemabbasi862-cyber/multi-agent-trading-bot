@@ -86,9 +86,79 @@ async def cloud_gateway_background_sync():
             pass
         await asyncio.sleep(2.5)
 
+async def autonomous_market_scanner_loop():
+    """
+    Autonomous Quantitative Market Scanner:
+    Continuously scans the active pair and dispatches approved signals directly to cTrader.
+    """
+    await asyncio.sleep(5)
+    last_scan_ts = 0.0
+    while True:
+        try:
+            now = time.time()
+            if now - last_scan_ts >= 15.0:
+                last_scan_ts = now
+                cur_settings = settings_manager.load_settings()
+                if cur_settings.get("auto_trade_enabled", True):
+                    gateway_status = ctrader_cloud_gateway.get_gateway_status()
+                    open_positions = gateway_status.get("open_positions", [])
+                    
+                    if len(open_positions) < ctrader_cloud_gateway.MAX_ACTIVE_OPEN_POSITIONS:
+                        cur_sym = cur_settings.get("active_symbol", "XAUUSD")
+                        cur_lot = cur_settings.get("active_lot_size", 0.01)
+                        
+                        market_data = get_market_snapshot(cur_sym, force_refresh=False)
+                        if market_data and market_data.get("price"):
+                            p = float(market_data["price"])
+                            trend = market_data.get("indicators", {}).get("trend", "BULLISH")
+                            act = "BUY" if trend == "BULLISH" else "SELL"
+                            
+                            if "XAU" in cur_sym or "GOLD" in cur_sym:
+                                sl_dist, tp_dist = 6.0, 12.0
+                            elif "XAG" in cur_sym or "SILVER" in cur_sym:
+                                sl_dist, tp_dist = 0.35, 0.75
+                            elif "JPY" in cur_sym:
+                                sl_dist, tp_dist = 0.40, 0.85
+                            else:
+                                sl_dist, tp_dist = 0.0035, 0.0075
+                            
+                            sl = round(p - sl_dist, 5) if act == "BUY" else round(p + sl_dist, 5)
+                            tp = round(p + tp_dist, 5) if act == "BUY" else round(p - tp_dist, 5)
+                            
+                            sig = SignalPayload(
+                                symbol=cur_sym,
+                                action=act,
+                                entry_price=p,
+                                stop_loss=sl,
+                                take_profit=tp,
+                                volume=cur_lot,
+                                timeframe="15m & 1H",
+                                strategy_name=f"{cur_sym}_Autonomous_Scan",
+                                source="AUTONOMOUS_SCANNER"
+                            )
+                            
+                            macro_data = economic_calendar.get_macro_status()
+                            acc_status = cbot_bridge.get_cbot_status()
+                            
+                            consensus_res = consensus_engine.process_signal(
+                                signal=sig,
+                                market_data=market_data,
+                                macro_data=macro_data,
+                                account_status=acc_status,
+                                save_to_db=True
+                            )
+                            
+                            if consensus_res.decision_status == "APPROVED":
+                                exec_res = execution_engine.dispatch_trade(consensus_res, sig)
+                                print(f"[Autonomous Engine] [+] 🟢 Approved Signal Dispatched: {exec_res}")
+        except Exception as e:
+            logger.error(f"[Autonomous Scanner Error]: {e}")
+        await asyncio.sleep(4)
+
 @app.on_event("startup")
 async def on_startup():
     asyncio.create_task(cloud_gateway_background_sync())
+    asyncio.create_task(autonomous_market_scanner_loop())
 
 # Include Modular V2 Routers
 from app.routers import market, signals, trading, backtest, cbot, system

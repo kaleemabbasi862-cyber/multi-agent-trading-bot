@@ -13,7 +13,7 @@ class Settings:
     VERSION: str = "2.0.0"
     
     # Execution & Trading Modes: 'PAPER', 'DEMO', 'LIVE'
-    TRADING_MODE: str = os.getenv("TRADING_MODE", "PAPER").upper()
+    TRADING_MODE: str = os.getenv("TRADING_MODE", "LIVE").upper()
     
     # Target Instrument Defaults (Strictly Gold XAUUSD)
     DEFAULT_SYMBOL: str = os.getenv("DEFAULT_SYMBOL", "XAUUSD")
@@ -39,7 +39,7 @@ class Settings:
     TRAILING_STOP_MODE: str = os.getenv("TRAILING_STOP_MODE", "DISABLED").upper()
     
     # Multi-Agent Scoring Thresholds
-    MIN_DECISION_SCORE: float = float(os.getenv("MIN_DECISION_SCORE", "85.0"))
+    MIN_DECISION_SCORE: float = float(os.getenv("MIN_DECISION_SCORE", "75.0"))
     HIGH_QUALITY_SCORE: float = float(os.getenv("HIGH_QUALITY_SCORE", "90.0"))
     
     # News & Macro Risk Windows

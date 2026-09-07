@@ -5,9 +5,10 @@ from app.database.models import SignalPayload, ConsensusResult
 from app.database.db import db
 from app.engine.consensus_engine import consensus_engine
 from app.engine.execution_engine import execution_engine
-from app.services.market_feed_v2 import get_gold_market_snapshot
+from app.services.market_feed_v2 import get_gold_market_snapshot, get_market_snapshot
 from app.services.economic_calendar import economic_calendar
 import cbot_bridge
+import settings_manager
 
 router = APIRouter(prefix="/api", tags=["Signals"])
 
@@ -25,29 +26,48 @@ async def get_pending_signals_queue():
 @router.get("/consensus")
 async def get_live_consensus():
     """
-    Returns live quantitative consensus data across all 7 agents for Gold (XAUUSD).
+    Returns live quantitative consensus data across all 7 agents for active instrument.
     """
-    market_data = get_gold_market_snapshot()
+    cur_sym = settings_manager.get_active_symbol()
+    cur_lot = settings_manager.get_active_lot_size()
+    market_data = get_market_snapshot(cur_sym, force_refresh=False)
     macro_data = economic_calendar.get_macro_status()
     acc_status = cbot_bridge.get_cbot_status()
     
     current_price = market_data.get("price", 2750.0)
+    trend = market_data.get("indicators", {}).get("trend", market_data.get("trend_1h", "BULLISH"))
+    act = "BUY" if trend == "BULLISH" else "SELL"
+
+    if "XAU" in cur_sym or "GOLD" in cur_sym:
+        sl_dist, tp_dist = 6.0, 12.0
+    elif "XAG" in cur_sym or "SILVER" in cur_sym:
+        sl_dist, tp_dist = 0.35, 0.75
+    elif "JPY" in cur_sym:
+        sl_dist, tp_dist = 0.40, 0.85
+    else:
+        sl_dist, tp_dist = 0.0035, 0.0075
+
+    sl = round(current_price - sl_dist, 5) if act == "BUY" else round(current_price + sl_dist, 5)
+    tp = round(current_price + tp_dist, 5) if act == "BUY" else round(current_price - tp_dist, 5)
+
     sim_signal = SignalPayload(
-        id=f"LIVE_SCAN_{uuid.uuid4().hex[:6].upper()}",
-        symbol="XAUUSD",
-        action="BUY" if market_data.get("trend_1h", "BULLISH") == "BULLISH" else "SELL",
+        id=f"TELEMETRY_{uuid.uuid4().hex[:6].upper()}",
+        symbol=cur_sym,
+        action=act,
         entry_price=current_price,
-        stop_loss=round(current_price - 6.0 if market_data.get("trend_1h", "BULLISH") == "BULLISH" else current_price + 6.0, 2),
-        take_profit=round(current_price + 12.0 if market_data.get("trend_1h", "BULLISH") == "BULLISH" else current_price - 12.0, 2),
-        timeframe="15m",
-        strategy_name="Gold_MultiAgent_SMC_v2"
+        stop_loss=sl,
+        take_profit=tp,
+        volume=cur_lot,
+        timeframe="15m & 1H",
+        strategy_name=f"{cur_sym}_MultiAgent_Consensus_v2"
     )
     
     consensus_res = consensus_engine.process_signal(
         signal=sim_signal,
         market_data=market_data,
         macro_data=macro_data,
-        account_status=acc_status
+        account_status=acc_status,
+        save_to_db=False
     )
     
     dec_map = {d.agent_name: d for d in consensus_res.agent_decisions}
@@ -144,7 +164,8 @@ async def simulate_signal(signal: SignalPayload):
     """
     Simulates a signal through all 7 agents without executing a live order.
     """
-    market_data = get_gold_market_snapshot()
+    sym = signal.symbol or settings_manager.get_active_symbol()
+    market_data = get_market_snapshot(sym, force_refresh=False)
     macro_data = economic_calendar.get_macro_status()
     acc_status = cbot_bridge.get_cbot_status()
     
@@ -152,7 +173,8 @@ async def simulate_signal(signal: SignalPayload):
         signal=signal,
         market_data=market_data,
         macro_data=macro_data,
-        account_status=acc_status
+        account_status=acc_status,
+        save_to_db=False
     )
     return consensus_res
 
@@ -161,7 +183,8 @@ async def execute_approved_signal(signal: SignalPayload):
     """
     Runs consensus engine and dispatches trade if approved.
     """
-    market_data = get_gold_market_snapshot()
+    sym = signal.symbol or settings_manager.get_active_symbol()
+    market_data = get_market_snapshot(sym, force_refresh=True)
     macro_data = economic_calendar.get_macro_status()
     acc_status = cbot_bridge.get_cbot_status()
     
@@ -169,7 +192,8 @@ async def execute_approved_signal(signal: SignalPayload):
         signal=signal,
         market_data=market_data,
         macro_data=macro_data,
-        account_status=acc_status
+        account_status=acc_status,
+        save_to_db=True
     )
     
     if consensus_res.decision_status == "APPROVED":
@@ -177,3 +201,4 @@ async def execute_approved_signal(signal: SignalPayload):
         consensus_res.execution_result = exec_res
         
     return consensus_res
+
