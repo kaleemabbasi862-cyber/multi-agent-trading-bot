@@ -15,6 +15,13 @@ router = APIRouter(prefix="/api", tags=["Signals"])
 async def get_signals_history():
     return db.get_recent_signals(limit=50)
 
+@router.get("/signals/pending")
+@router.get("/pending")
+@router.get("/pending-orders")
+async def get_pending_signals_queue():
+    """Returns currently pending approved orders for cBot on Account #5908018."""
+    return cbot_bridge.get_pending_orders_for_cbot()
+
 @router.get("/consensus")
 async def get_live_consensus():
     """

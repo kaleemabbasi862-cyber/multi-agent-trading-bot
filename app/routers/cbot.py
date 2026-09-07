@@ -22,6 +22,8 @@ async def get_cbot_status():
     return cbot_bridge.get_cbot_status()
 
 @router.get("/orders")
+@router.get("/pending")
+@router.get("/pending-orders")
 async def get_cbot_pending_orders():
     return cbot_bridge.get_pending_orders_for_cbot()
 

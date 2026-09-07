@@ -23,6 +23,8 @@ DEFAULT_SETTINGS = {
     "scanner_active": True,
     "max_risk_percent": 1.0,
     "min_confidence_threshold": 75,
+    "trading_mode": "LIVE",
+    "account_id": "5908018",
     "environment_mode": "MULTI_ASSET_QUANT"
 }
 
