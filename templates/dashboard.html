@@ -909,6 +909,7 @@
                 marketPrices: {},
                 priceFlashes: {},
                 cbotCode: `using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Http;
@@ -923,100 +924,229 @@ namespace cAlgo.Robots
     [Robot(TimeZone = TimeZones.UTC, AccessRights = AccessRights.FullAccess)]
     public class TradeTalkBridge : Robot
     {
-        [Parameter("TradeTalk Server URL", DefaultValue = "https://multi-agent-trading-bot.onrender.com")]
+        [Parameter("Server URL", DefaultValue = "https://multi-agent-trading-bot.onrender.com")]
         public string ServerUrl { get; set; }
 
-        [Parameter("Poll Interval (Seconds)", DefaultValue = 2, MinValue = 1, MaxValue = 10)]
-        public int PollIntervalSeconds { get; set; }
+        [Parameter("Sync Interval (Sec)", DefaultValue = 2, MinValue = 1, MaxValue = 10)]
+        public int SyncInterval { get; set; }
 
         [Parameter("Enable Auto Execution", DefaultValue = true)]
         public bool EnableAutoExecution { get; set; }
 
+        [Parameter("Auto Break-Even Pips", DefaultValue = 15.0, MinValue = 5.0, MaxValue = 50.0)]
+        public double AutoBreakEvenPips { get; set; }
+
         private static readonly HttpClient httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+        private readonly HashSet<string> _executedTickets = new HashSet<string>();
 
         protected override void OnStart()
         {
-            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
-            string currency = Account.Asset != null ? Account.Asset.Name : Account.CurrencyName;
-            Print("TradeTalk Bridge Started on Account " + Account.Number + " (" + currency + ")");
-            SendAccountHeartbeat();
-            Timer.Start(PollIntervalSeconds);
+            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12 | SecurityProtocolType.Tls11 | SecurityProtocolType.Tls;
+            EnsureAllPositionsProtected();
+            SendTelemetry();
+            Timer.Start(SyncInterval);
         }
 
         protected override void OnTimer()
         {
-            SendAccountHeartbeat();
-            if (EnableAutoExecution) PollAndExecutePendingOrders();
-        }
-
-        private async void SendAccountHeartbeat()
-        {
             try
             {
-                string endpoint = ServerUrl.TrimEnd('/') + "/api/cbot/heartbeat";
-                string currency = Account.Asset != null ? Account.Asset.Name : (Account.CurrencyName ?? "USD");
-                string json = string.Format(CultureInfo.InvariantCulture,
-                    "{{\\"account_id\\":\\"{0}\\",\\"balance\\":{1},\\"equity\\":{2},\\"margin\\":{3},\\"free_margin\\":{4},\\"currency\\":\\"{5}\\",\\"broker\\":\\"{6}\\"}}",
-                    Account.Number, Account.Balance, Account.Equity, Account.Margin, Account.FreeMargin, currency, Account.BrokerName ?? "cTrader");
-                var content = new StringContent(json, Encoding.UTF8, "application/json");
-                await httpClient.PostAsync(endpoint, content);
+                EnsureAllPositionsProtected();
+                ApplyAutoBreakEvenProtection();
+                SendTelemetry();
+                if (EnableAutoExecution) PollOrders();
             }
             catch {}
         }
 
-        private async void PollAndExecutePendingOrders()
+        private void EnsureAllPositionsProtected()
         {
             try
             {
-                string endpoint = ServerUrl.TrimEnd('/') + "/api/cbot/orders";
-                var response = await httpClient.GetAsync(endpoint);
+                foreach (var pos in Positions)
+                {
+                    if (pos.StopLoss == null || pos.TakeProfit == null)
+                    {
+                        Symbol sym = Symbols.GetSymbol(pos.SymbolName) ?? Symbol;
+                        int digits = sym.Digits;
+                        double pipSize = sym.PipSize > 0 ? sym.PipSize : Math.Pow(10, -digits);
+                        if (pos.SymbolName.Contains("XAG") || pos.SymbolName.Contains("SILVER")) pipSize = Math.Pow(10, -digits);
+
+                        double minDistance = Math.Max(pipSize * 25, Math.Max(sym.Spread * 2.5, (sym.StopLevel > 0 ? sym.StopLevel * pipSize * 2.0 : pipSize * 20)));
+                        double? targetSl = pos.StopLoss;
+                        double? targetTp = pos.TakeProfit;
+
+                        if (pos.TradeType == TradeType.Buy)
+                        {
+                            if (targetSl == null) targetSl = Math.Round(pos.EntryPrice - Math.Max(minDistance, pipSize * 50), digits);
+                            if (targetTp == null) targetTp = Math.Round(pos.EntryPrice + Math.Max(minDistance * 1.8, pipSize * 100), digits);
+                        }
+                        else
+                        {
+                            if (targetSl == null) targetSl = Math.Round(pos.EntryPrice + Math.Max(minDistance, pipSize * 50), digits);
+                            if (targetTp == null) targetTp = Math.Round(pos.EntryPrice - Math.Max(minDistance * 1.8, pipSize * 100), digits);
+                        }
+                        ModifyPosition(pos, targetSl, targetTp);
+                    }
+                }
+            }
+            catch {}
+        }
+
+        private void ApplyAutoBreakEvenProtection()
+        {
+            try
+            {
+                foreach (var pos in Positions)
+                {
+                    if (pos.Pips >= AutoBreakEvenPips)
+                    {
+                        Symbol posSym = Symbols.GetSymbol(pos.SymbolName) ?? Symbol;
+                        double pipSize = posSym.PipSize > 0 ? posSym.PipSize : Math.Pow(10, -posSym.Digits);
+                        if (pos.TradeType == TradeType.Buy)
+                        {
+                            double targetBe = Math.Round(pos.EntryPrice + (1.0 * pipSize), posSym.Digits);
+                            if (pos.StopLoss == null || pos.StopLoss < pos.EntryPrice) ModifyPosition(pos, targetBe, pos.TakeProfit);
+                        }
+                        else
+                        {
+                            double targetBe = Math.Round(pos.EntryPrice - (1.0 * pipSize), posSym.Digits);
+                            if (pos.StopLoss == null || pos.StopLoss > pos.EntryPrice) ModifyPosition(pos, targetBe, pos.TakeProfit);
+                        }
+                    }
+                }
+            }
+            catch {}
+        }
+
+        private async void SendTelemetry()
+        {
+            try
+            {
+                string url = ServerUrl.TrimEnd('/') + "/api/cbot/stream";
+                string assetName = (Account.Asset != null && !string.IsNullOrEmpty(Account.Asset.Name)) ? Account.Asset.Name : "USD";
+                string symClean = Symbol.Name.Replace("m", "").Replace(".pro", "").ToUpperInvariant();
+
+                StringBuilder positionsJson = new StringBuilder("[");
+                int count = 0;
+                foreach (var pos in Positions)
+                {
+                    if (count > 0) positionsJson.Append(",");
+                    positionsJson.Append(string.Format(CultureInfo.InvariantCulture,
+                        "{{\\"id\\":{0},\\"symbol\\":\\"{1}\\",\\"trade_type\\":\\"{2}\\",\\"volume\\":{3},\\"entry_price\\":{4},\\"net_profit\\":{5},\\"pips\\":{6},\\"sl\\":{7},\\"tp\\":{8}}}",
+                        pos.Id, pos.SymbolName, pos.TradeType, pos.VolumeInUnits, pos.EntryPrice, pos.NetProfit, pos.Pips, pos.StopLoss ?? 0, pos.TakeProfit ?? 0));
+                    count++;
+                }
+                positionsJson.Append("]");
+
+                string json = string.Format(CultureInfo.InvariantCulture,
+                    "{{\\"account_id\\":\\"{0}\\",\\"balance\\":{1},\\"equity\\":{2},\\"margin\\":{3},\\"freeMargin\\":{4},\\"currency\\":\\"{5}\\",\\"broker\\":\\"{6}\\",\\"symbol\\":\\"{7}\\",\\"bid\\":{8},\\"ask\\":{9},\\"open_positions\\":{10}}}",
+                    Account.Number, Account.Balance, Account.Equity, Account.Margin, Account.FreeMargin, assetName, Account.BrokerName ?? "cTrader", symClean, Symbol.Bid, Symbol.Ask, positionsJson.ToString());
+
+                var res = await httpClient.PostAsync(url, new StringContent(json, Encoding.UTF8, "application/json"));
+                if (res.IsSuccessStatusCode && EnableAutoExecution)
+                {
+                    string replyJson = await res.Content.ReadAsStringAsync();
+                    if (!string.IsNullOrEmpty(replyJson) && (replyJson.Contains("\\"signal\\"") || replyJson.Contains("\\"pending_orders\\"")))
+                    {
+                        BeginInvokeOnMainThread(() => ProcessOrders(replyJson));
+                    }
+                }
+            }
+            catch {}
+        }
+
+        private async void PollOrders()
+        {
+            try
+            {
+                string url = ServerUrl.TrimEnd('/') + "/api/cbot/orders";
+                var response = await httpClient.GetAsync(url);
                 if (response.IsSuccessStatusCode)
                 {
                     string json = await response.Content.ReadAsStringAsync();
                     if (!string.IsNullOrEmpty(json) && json != "[]" && json.Contains("symbol"))
                     {
-                        ProcessOrdersJson(json);
+                        BeginInvokeOnMainThread(() => ProcessOrders(json));
                     }
                 }
             }
             catch {}
         }
 
-        private void ProcessOrdersJson(string json)
+        private void ProcessOrders(string json)
         {
             try
             {
-                string symbol = ExtractJsonValue(json, "symbol");
-                string action = ExtractJsonValue(json, "action").ToUpperInvariant();
-                string signalId = ExtractJsonValue(json, "id");
+                string symbolStr = ExtractJsonValue(json, "symbol");
+                string action = ExtractJsonValue(json, "signal");
+                if (string.IsNullOrEmpty(action)) action = ExtractJsonValue(json, "action");
+                action = action.ToUpperInvariant();
+                string signalId = ExtractJsonValue(json, "ticket_id");
+                if (string.IsNullOrEmpty(signalId)) signalId = ExtractJsonValue(json, "id");
+
+                if (string.IsNullOrEmpty(symbolStr) || (action != "BUY" && action != "SELL") || (!string.IsNullOrEmpty(signalId) && _executedTickets.Contains(signalId))) return;
 
                 double lotSize = 0.01;
-                double.TryParse(ExtractJsonValue(json, "lot_size"), NumberStyles.Any, CultureInfo.InvariantCulture, out lotSize);
-                if (lotSize <= 0) lotSize = 0.01;
+                double rawSl = 0, rawTp = 0;
+                double.TryParse(ExtractJsonValue(json, "sl"), NumberStyles.Any, CultureInfo.InvariantCulture, out rawSl);
+                double.TryParse(ExtractJsonValue(json, "tp"), NumberStyles.Any, CultureInfo.InvariantCulture, out rawTp);
 
-                double sl = 0;
-                double.TryParse(ExtractJsonValue(json, "sl"), NumberStyles.Any, CultureInfo.InvariantCulture, out sl);
-
-                double tp = 0;
-                double.TryParse(ExtractJsonValue(json, "tp"), NumberStyles.Any, CultureInfo.InvariantCulture, out tp);
-
-                Symbol targetSymbol = Symbols.GetSymbol(symbol) ?? Symbols.GetSymbol(symbol + "m") ?? Symbol;
+                Symbol targetSymbol = Symbols.GetSymbol(symbolStr) ?? Symbols.GetSymbol(symbolStr + "m") ?? Symbol;
                 TradeType tradeType = action == "BUY" ? TradeType.Buy : TradeType.Sell;
 
                 double volumeInUnits = targetSymbol.NormalizeVolumeInUnits(lotSize * 100000);
-                if (targetSymbol.Name.Contains("XAU") || targetSymbol.Name.Contains("GOLD"))
+                if (targetSymbol.Name.Contains("XAU") || targetSymbol.Name.Contains("GOLD")) volumeInUnits = targetSymbol.NormalizeVolumeInUnits(lotSize * 100);
+                else if (targetSymbol.Name.Contains("XAG") || targetSymbol.Name.Contains("SILVER")) volumeInUnits = targetSymbol.NormalizeVolumeInUnits(lotSize * 1000);
+
+                int digits = targetSymbol.Digits;
+                double pipSize = targetSymbol.PipSize > 0 ? targetSymbol.PipSize : Math.Pow(10, -digits);
+                if (targetSymbol.Name.Contains("XAG") || targetSymbol.Name.Contains("SILVER")) pipSize = Math.Pow(10, -digits);
+
+                double minDistance = Math.Max(pipSize * 25, Math.Max(targetSymbol.Spread * 2.5, (targetSymbol.StopLevel > 0 ? targetSymbol.StopLevel * pipSize * 2.0 : pipSize * 20)));
+                double currentRefPrice = tradeType == TradeType.Buy ? targetSymbol.Ask : targetSymbol.Bid;
+                double validSl = rawSl, validTp = rawTp;
+
+                if (tradeType == TradeType.Buy)
                 {
-                    volumeInUnits = targetSymbol.NormalizeVolumeInUnits(lotSize * 100);
+                    if (validSl <= 0 || validSl >= (currentRefPrice - minDistance)) validSl = currentRefPrice - Math.Max(minDistance, pipSize * 50);
+                    if (validTp <= 0 || validTp <= (currentRefPrice + minDistance)) validTp = currentRefPrice + Math.Max(minDistance * 1.8, pipSize * 100);
+                }
+                else
+                {
+                    if (validSl <= 0 || validSl <= (currentRefPrice + minDistance)) validSl = currentRefPrice + Math.Max(minDistance, pipSize * 50);
+                    if (validTp <= 0 || validTp >= (currentRefPrice - minDistance)) validTp = currentRefPrice - Math.Max(minDistance * 1.8, pipSize * 100);
                 }
 
-                TradeResult result = ExecuteMarketOrder(tradeType, targetSymbol.Name, volumeInUnits, "TradeTalk.AI");
+                validSl = Math.Round(validSl, digits);
+                validTp = Math.Round(validTp, digits);
+
+                double slPips = Math.Round(Math.Abs(currentRefPrice - validSl) / pipSize, 1);
+                double tpPips = Math.Round(Math.Abs(validTp - currentRefPrice) / pipSize, 1);
+
+                TradeResult result = ExecuteMarketOrder(tradeType, targetSymbol.Name, volumeInUnits, "TradeTalk.AI", slPips, tpPips);
+                if (!result.IsSuccessful) result = ExecuteMarketOrder(tradeType, targetSymbol.Name, volumeInUnits, "TradeTalk.AI");
+
                 if (result.IsSuccessful && result.Position != null)
                 {
-                    if (sl > 0 || tp > 0)
-                    {
-                        ModifyPosition(result.Position, sl > 0 ? (double?)sl : null, tp > 0 ? (double?)tp : null);
-                    }
+                    Position pos = result.Position;
+                    if (!string.IsNullOrEmpty(signalId)) _executedTickets.Add(signalId);
+                    if (pos.StopLoss == null || pos.TakeProfit == null) ModifyPosition(pos, validSl, validTp);
+                    ReportOrderFilled(signalId, pos.Id, pos.EntryPrice, targetSymbol.Name, action);
                 }
+            }
+            catch {}
+        }
+
+        private async void ReportOrderFilled(string signalId, long posId, double fillPrice, string symbol, string action)
+        {
+            try
+            {
+                string url = ServerUrl.TrimEnd('/') + "/api/cbot/order-filled";
+                string json = string.Format(CultureInfo.InvariantCulture,
+                    "{{\\"id\\":\\"{0}\\",\\"ticket_id\\":\\"CT_{1}\\",\\"position_id\\":\\"{1}\\",\\"fill_price\\":{2},\\"symbol\\":\\"{3}\\",\\"action\\":\\"{4}\\",\\"status\\":\\"FILLED\\"}}",
+                    signalId, posId, fillPrice, symbol, action);
+                await httpClient.PostAsync(url, new StringContent(json, Encoding.UTF8, "application/json"));
             }
             catch {}
         }

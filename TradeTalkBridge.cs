@@ -47,13 +47,14 @@ namespace cAlgo.Robots
             }
 
             Print("=================================================");
-            Print("TradeTalk.AI Ultra-High Accuracy / Sniper Bridge Started");
+            Print("TradeTalk.AI Autonomous Trading & Protection Bridge Started");
             Print("Account Number: " + Account.Number);
             Print("Live Balance: " + Account.Balance + " " + assetName);
             Print("Target Server: " + ServerUrl);
             Print("Sniper Auto Break-Even Guard: +" + AutoBreakEvenPips + " Pips");
             Print("=================================================");
 
+            EnsureAllPositionsProtected();
             SendTelemetry();
             Timer.Start(SyncInterval);
         }
@@ -62,13 +63,16 @@ namespace cAlgo.Robots
         {
             try
             {
-                // 1. Dynamic Auto-Protection: Lock in profit to Break-Even at +15 Pips
+                // 1. Post-Execution & Open Trade Guard: Ensure every open position has valid SL and TP
+                EnsureAllPositionsProtected();
+
+                // 2. Dynamic Auto-Protection: Lock in profit to Break-Even at +15 Pips
                 ApplyAutoBreakEvenProtection();
 
-                // 2. Send live telemetry (Balance, Equity, Live Prices, Open Positions)
+                // 3. Send live telemetry (Balance, Equity, Live Prices, Open Positions)
                 SendTelemetry();
 
-                // 3. Poll & Execute pending approved orders
+                // 4. Poll & Execute pending approved orders
                 if (EnableAutoExecution)
                 {
                     PollOrders();
@@ -77,6 +81,55 @@ namespace cAlgo.Robots
             catch (Exception ex)
             {
                 Print("Timer exception: " + ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Scans all open positions and attaches safe SL and TP if currently unprotected (-- / --).
+        /// Specifically handles XAGUSD and XAUUSD minimum stop levels.
+        /// </summary>
+        private void EnsureAllPositionsProtected()
+        {
+            try
+            {
+                foreach (var pos in Positions)
+                {
+                    if (pos.StopLoss == null || pos.TakeProfit == null)
+                    {
+                        Symbol sym = Symbols.GetSymbol(pos.SymbolName) ?? Symbol;
+                        int digits = sym.Digits;
+                        double pipSize = sym.PipSize > 0 ? sym.PipSize : Math.Pow(10, -digits);
+                        if (pos.SymbolName.Contains("XAG") || pos.SymbolName.Contains("SILVER"))
+                        {
+                            pipSize = Math.Pow(10, -digits);
+                        }
+
+                        double minDistance = Math.Max(pipSize * 25, Math.Max(sym.Spread * 2.5, (sym.StopLevel > 0 ? sym.StopLevel * pipSize * 2.0 : pipSize * 20)));
+
+                        double? targetSl = pos.StopLoss;
+                        double? targetTp = pos.TakeProfit;
+
+                        if (pos.TradeType == TradeType.Buy)
+                        {
+                            if (targetSl == null) targetSl = Math.Round(pos.EntryPrice - Math.Max(minDistance, pipSize * 50), digits);
+                            if (targetTp == null) targetTp = Math.Round(pos.EntryPrice + Math.Max(minDistance * 1.8, pipSize * 100), digits);
+                        }
+                        else
+                        {
+                            if (targetSl == null) targetSl = Math.Round(pos.EntryPrice + Math.Max(minDistance, pipSize * 50), digits);
+                            if (targetTp == null) targetTp = Math.Round(pos.EntryPrice - Math.Max(minDistance * 1.8, pipSize * 100), digits);
+                        }
+
+                        Print(string.Format("🛡️ [Auto-Protection Guard] Securing position #{0} ({1} {2}): Setting SL={3}, TP={4}", 
+                            pos.Id, pos.SymbolName, pos.TradeType, targetSl, targetTp));
+                        
+                        ModifyPosition(pos, targetSl, targetTp);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Print("Position protection guard note: " + ex.Message);
             }
         }
 
@@ -89,24 +142,24 @@ namespace cAlgo.Robots
                     if (pos.Pips >= AutoBreakEvenPips)
                     {
                         Symbol posSym = Symbols.GetSymbol(pos.SymbolName) ?? Symbol;
-                        double pipSize = posSym.PipSize;
+                        double pipSize = posSym.PipSize > 0 ? posSym.PipSize : Math.Pow(10, -posSym.Digits);
 
                         if (pos.TradeType == TradeType.Buy)
                         {
-                            double targetBe = pos.EntryPrice + (1.0 * pipSize);
+                            double targetBe = Math.Round(pos.EntryPrice + (1.0 * pipSize), posSym.Digits);
                             if (pos.StopLoss == null || pos.StopLoss < pos.EntryPrice)
                             {
-                                Print(string.Format("🛡️ [Sniper Auto-BE] Locking Profit for #{0} ({1} +{2:F1} Pips)! Moving SL to Break-Even @ {3:F5}", pos.Id, pos.SymbolName, pos.Pips, targetBe));
-                                ModifyPosition(pos, targetBe, pos.TakeProfit, ProtectionType.Absolute);
+                                Print(string.Format("🛡️ [Auto Break-Even] Locking Profit for #{0} ({1} +{2:F1} Pips)! Moving SL to Break-Even @ {3:F5}", pos.Id, pos.SymbolName, pos.Pips, targetBe));
+                                ModifyPosition(pos, targetBe, pos.TakeProfit);
                             }
                         }
                         else if (pos.TradeType == TradeType.Sell)
                         {
-                            double targetBe = pos.EntryPrice - (1.0 * pipSize);
+                            double targetBe = Math.Round(pos.EntryPrice - (1.0 * pipSize), posSym.Digits);
                             if (pos.StopLoss == null || pos.StopLoss > pos.EntryPrice)
                             {
-                                Print(string.Format("🛡️ [Sniper Auto-BE] Locking Profit for #{0} ({1} +{2:F1} Pips)! Moving SL to Break-Even @ {3:F5}", pos.Id, pos.SymbolName, pos.Pips, targetBe));
-                                ModifyPosition(pos, targetBe, pos.TakeProfit, ProtectionType.Absolute);
+                                Print(string.Format("🛡️ [Auto Break-Even] Locking Profit for #{0} ({1} +{2:F1} Pips)! Moving SL to Break-Even @ {3:F5}", pos.Id, pos.SymbolName, pos.Pips, targetBe));
+                                ModifyPosition(pos, targetBe, pos.TakeProfit);
                             }
                         }
                     }
@@ -274,11 +327,11 @@ namespace cAlgo.Robots
                 if (lotSize <= 0) double.TryParse(ExtractJsonValue(json, "lot_size"), NumberStyles.Any, CultureInfo.InvariantCulture, out lotSize);
                 if (lotSize <= 0) lotSize = 0.01;
 
-                double sl = 0;
-                double.TryParse(ExtractJsonValue(json, "sl"), NumberStyles.Any, CultureInfo.InvariantCulture, out sl);
+                double rawSl = 0;
+                double.TryParse(ExtractJsonValue(json, "sl"), NumberStyles.Any, CultureInfo.InvariantCulture, out rawSl);
 
-                double tp = 0;
-                double.TryParse(ExtractJsonValue(json, "tp"), NumberStyles.Any, CultureInfo.InvariantCulture, out tp);
+                double rawTp = 0;
+                double.TryParse(ExtractJsonValue(json, "tp"), NumberStyles.Any, CultureInfo.InvariantCulture, out rawTp);
 
                 Symbol targetSymbol = ResolveBrokerSymbol(symbolStr);
                 if (targetSymbol == null)
@@ -299,34 +352,60 @@ namespace cAlgo.Robots
                     volumeInUnits = targetSymbol.NormalizeVolumeInUnits(lotSize * 1000);
                 }
 
-                // Calculate exact Stop Loss and Take Profit in Pips to embed in initial execution
-                double? slPips = null;
-                double? tpPips = null;
+                // 1. Commodity & Metal Precision Pip Size Normalization
+                int digits = targetSymbol.Digits;
+                double pipSize = targetSymbol.PipSize > 0 ? targetSymbol.PipSize : Math.Pow(10, -digits);
+                if (targetSymbol.Name.Contains("XAG") || targetSymbol.Name.Contains("SILVER"))
+                {
+                    pipSize = Math.Pow(10, -digits);
+                }
+
+                // 2. Dynamic Stop-Level Enforcement (Minimum 2.5x Spread / StopLevel)
+                double minDistance = Math.Max(pipSize * 25, Math.Max(targetSymbol.Spread * 2.5, (targetSymbol.StopLevel > 0 ? targetSymbol.StopLevel * pipSize * 2.0 : pipSize * 20)));
 
                 double currentRefPrice = (tradeType == TradeType.Buy) ? targetSymbol.Ask : targetSymbol.Bid;
-                if (sl > 0 && targetSymbol.PipSize > 0)
+                double validSl = rawSl;
+                double validTp = rawTp;
+
+                if (tradeType == TradeType.Buy)
                 {
-                    double diff = Math.Abs(currentRefPrice - sl);
-                    double calculatedPips = diff / targetSymbol.PipSize;
-                    if (calculatedPips >= 5) slPips = Math.Round(calculatedPips, 1);
+                    if (validSl <= 0 || validSl >= (currentRefPrice - minDistance))
+                    {
+                        validSl = currentRefPrice - Math.Max(minDistance, pipSize * 50);
+                    }
+                    if (validTp <= 0 || validTp <= (currentRefPrice + minDistance))
+                    {
+                        validTp = currentRefPrice + Math.Max(minDistance * 1.8, pipSize * 100);
+                    }
+                }
+                else
+                {
+                    if (validSl <= 0 || validSl <= (currentRefPrice + minDistance))
+                    {
+                        validSl = currentRefPrice + Math.Max(minDistance, pipSize * 50);
+                    }
+                    if (validTp <= 0 || validTp >= (currentRefPrice - minDistance))
+                    {
+                        validTp = currentRefPrice - Math.Max(minDistance * 1.8, pipSize * 100);
+                    }
                 }
 
-                if (tp > 0 && targetSymbol.PipSize > 0)
-                {
-                    double diff = Math.Abs(tp - currentRefPrice);
-                    double calculatedPips = diff / targetSymbol.PipSize;
-                    if (calculatedPips >= 10) tpPips = Math.Round(calculatedPips, 1);
-                }
+                validSl = Math.Round(validSl, digits);
+                validTp = Math.Round(validTp, digits);
 
-                Print(string.Format("🎯 [Order Execution] Dispatching {0} {1} ({2} Units | SL_Pips: {3} | TP_Pips: {4})...", action, targetSymbol.Name, volumeInUnits, slPips, tpPips));
+                double slPips = Math.Round(Math.Abs(currentRefPrice - validSl) / pipSize, 1);
+                double tpPips = Math.Round(Math.Abs(validTp - currentRefPrice) / pipSize, 1);
 
-                // 1. Attempt market order with embedded SL and TP
+                Print(string.Format("🎯 [Dynamic Protection Execution] Dispatching {0} {1} ({2} Units | SL: {3} ({4} Pips) | TP: {5} ({6} Pips))...", 
+                    action, targetSymbol.Name, volumeInUnits, validSl, slPips, validTp, tpPips));
+
+                // 3. Attempt market execution with embedded SL/TP pips
                 TradeResult result = ExecuteMarketOrder(tradeType, targetSymbol.Name, volumeInUnits, "TradeTalk.AI", slPips, tpPips);
                 
-                // 2. Auto-Recovery: If broker rejects due to stop distance, immediately retry with clean market order
+                // 4. Auto-Recovery Fallback: If broker rejects embedded SL/TP, execute clean market order and modify immediately
                 if (!result.IsSuccessful)
                 {
-                    Print("⚠️ Embedded SL/TP order rejected (" + result.Error + ") -> Instant auto-retry with standard Market Order...");
+                    Print("⚠️ Embedded SL/TP rejected by broker (" + result.Error + ") -> Instant clean Market Order fallback...");
                     result = ExecuteMarketOrder(tradeType, targetSymbol.Name, volumeInUnits, "TradeTalk.AI");
                 }
 
@@ -335,19 +414,24 @@ namespace cAlgo.Robots
                     Position pos = result.Position;
                     if (!string.IsNullOrEmpty(signalId)) _executedTickets.Add(signalId);
 
-                    Print(string.Format("🟢 cTrader Order FILLED! Position ID: #{0} | Entry: {1} | SL: {2} | TP: {3}", pos.Id, pos.EntryPrice, pos.StopLoss, pos.TakeProfit));
+                    Print(string.Format("🟢 cTrader Order FILLED! Position ID: #{0} | Entry: {1} | Initial SL: {2} | Initial TP: {3}", 
+                        pos.Id, pos.EntryPrice, pos.StopLoss, pos.TakeProfit));
 
-                    // 3. Attach or verify SL and TP protection
-                    if (sl > 0 || tp > 0)
+                    // 5. Fallback Post-Execution Protection: Ensure SL and TP are 100% attached
+                    if (pos.StopLoss == null || pos.TakeProfit == null)
                     {
                         try 
                         { 
-                            ModifyPosition(pos, sl > 0 ? (double?)sl : null, tp > 0 ? (double?)tp : null, ProtectionType.Absolute); 
+                            Print(string.Format("🛡️ Attaching guaranteed protection to #{0}: SL={1}, TP={2}", pos.Id, validSl, validTp));
+                            ModifyPosition(pos, validSl, validTp); 
                         } 
-                        catch {}
+                        catch (Exception modEx)
+                        {
+                            Print("Secondary ModifyPosition note: " + modEx.Message);
+                        }
                     }
 
-                    // 4. Immediately notify server to update ledger ticket from 'Pending Fill' to real Position #
+                    // 6. Notify TradeTalk server with authentic cTrader Position ID
                     ReportOrderFilled(signalId, pos.Id, pos.EntryPrice, targetSymbol.Name, action);
                 }
                 else
