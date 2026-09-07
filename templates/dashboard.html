@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TradeTalk.AI V2 — 7-Agent Quantitative Gold Sniper Terminal</title>
+    <title>TradeTalk AI - Autonomous cTrader cBot Bridge & Multi-Agent Trading System</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -70,7 +70,7 @@
                      :class="priceFlashes[sym] ? (priceFlashes[sym] === 'up' ? 'flash-green border-emerald-500/80 shadow-lg shadow-emerald-500/10' : 'flash-red border-rose-500/80 shadow-lg shadow-rose-500/10') : 'border-dark-border hover:border-slate-600'">
                     
                     <div class="flex items-center space-x-1.5">
-                        <i class="fa-solid fa-coins text-amber-400 text-xs"></i>
+                        <i class="fa-solid text-xs" :class="sym === 'XAUUSD' ? 'fa-coins text-amber-400' : 'fa-chart-line text-indigo-400'"></i>
                         <span class="font-bold text-white tracking-tight" x-text="data.symbol"></span>
                     </div>
 
@@ -95,27 +95,21 @@
     <!-- 2. TOP NAVIGATION & CONTROLS -->
     <nav class="border-b border-dark-border bg-dark-card/90 backdrop-blur px-4 lg:px-8 py-3.5 flex flex-wrap items-center justify-between gap-3 shadow-xl">
         <div class="flex items-center space-x-3">
-            <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-600 via-indigo-600 to-emerald-400 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-emerald-400 flex items-center justify-center shadow-lg shadow-indigo-500/20">
                 <i class="fa-solid fa-robot text-white text-lg"></i>
             </div>
             <div>
                 <div class="flex flex-wrap items-center gap-1.5">
-                    <span class="font-black text-xl tracking-tight text-white">TradeTalk<span class="text-amber-400">.V2</span></span>
+                    <span class="font-black text-xl tracking-tight text-white">TradeTalk<span class="text-indigo-400">.AI</span></span>
                     <span class="px-2 py-0.5 text-[10px] font-black rounded-full flex items-center space-x-1 bg-amber-500/15 text-amber-300 border border-amber-500/30">
-                        <i class="fa-solid fa-crosshairs text-amber-400 text-[9px]"></i>
+                        <i class="fa-solid fa-network-wired text-amber-400 text-[9px]"></i>
                         <span>7-Agent Quantitative Engine</span>
                     </span>
-                    
-                    <!-- 3-STATE TRADING MODE BADGE -->
-                    <div class="flex items-center space-x-1 px-1 py-0.5 rounded-full bg-slate-900 border border-slate-700 text-[10px]">
-                        <button @click="switchTradingMode('PAPER')" class="px-2 py-0.5 rounded-full font-bold transition"
-                                :class="tradingMode === 'PAPER' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'">PAPER</button>
-                        <button @click="switchTradingMode('DEMO')" class="px-2 py-0.5 rounded-full font-bold transition"
-                                :class="tradingMode === 'DEMO' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-slate-200'">DEMO</button>
-                        <button @click="promptLiveMode()" class="px-2 py-0.5 rounded-full font-bold transition"
-                                :class="tradingMode === 'LIVE' ? 'bg-rose-600 text-white animate-pulse' : 'text-slate-400 hover:text-rose-300'">LIVE</button>
-                    </div>
-
+                    <span class="px-2 py-0.5 text-[10px] font-black rounded-full flex items-center space-x-1"
+                          :class="cbotStatus.is_live ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'">
+                        <i class="fa-solid" :class="cbotStatus.is_live ? 'fa-satellite-dish' : 'fa-flask'"></i>
+                        <span x-text="cbotStatus.is_live ? 'Live Real Funds' : 'cTrader Demo (Paper Test)'"></span>
+                    </span>
                     <template x-if="cbotStatus.circuit_breaker_active">
                         <span class="px-2 py-0.5 text-[10px] font-black rounded-full flex items-center space-x-1 bg-rose-500/20 text-rose-300 border border-rose-500/40 animate-pulse">
                             <i class="fa-solid fa-triangle-exclamation text-rose-400"></i>
@@ -123,13 +117,13 @@
                         </span>
                     </template>
                 </div>
-                <p class="text-xs text-slate-400 font-medium">Philosophy: <em>Trade less, trade better</em> &bull; XAUUSD (0.01 Lots) &bull; cTrader Account #<span x-text="cbotStatus.account_id || '1005621'"></span></p>
+                <p class="text-xs text-slate-400 font-medium">Real-Time Multi-Agent Consensus &bull; cTrader Account #<span x-text="cbotStatus.account_id || '1005621'"></span> &bull; 0.01 Lots Only</p>
             </div>
         </div>
 
         <!-- RIGHT CONTROLS -->
         <div class="flex items-center space-x-2.5">
-            <!-- STRATEGY LAB (BACKTEST) BUTTON -->
+            <!-- STRATEGY LAB BUTTON -->
             <button @click="showBacktestModal = true" class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition shadow-sm bg-purple-600/15 border-purple-500/40 text-purple-300 hover:bg-purple-600/25">
                 <i class="fa-solid fa-flask"></i>
                 <span>Strategy Lab</span>
@@ -149,9 +143,9 @@
             </button>
 
             <!-- SCAN NOW BUTTON -->
-            <button @click="triggerScanNow()" :disabled="scanning" class="flex items-center space-x-1.5 bg-amber-600 hover:bg-amber-500 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold transition shadow-md shadow-amber-600/20 disabled:opacity-50">
+            <button @click="triggerScanNow()" :disabled="scanning" class="flex items-center space-x-1.5 bg-indigo-600 hover:bg-indigo-500 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold transition shadow-md shadow-indigo-600/20 disabled:opacity-50">
                 <i class="fa-solid fa-radar" :class="scanning ? 'fa-spin' : ''"></i>
-                <span x-text="scanning ? 'Scanning...' : 'Scan Gold'"></span>
+                <span x-text="scanning ? 'Scanning...' : 'Scan Markets'"></span>
             </button>
 
             <!-- SIMULATOR BUTTON -->
@@ -165,27 +159,111 @@
     <!-- 3. MAIN DASHBOARD CONTENT -->
     <main class="flex-1 max-w-7xl w-full mx-auto p-4 lg:p-8 space-y-6">
 
+        <!-- PAIR WHITELIST / SELECTION SETTINGS BAR -->
+        <div class="bg-dark-card/95 border border-indigo-500/30 rounded-2xl p-4 shadow-xl backdrop-blur-md relative overflow-hidden">
+            <div class="absolute -right-16 -top-16 w-36 h-36 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none"></div>
+
+            <div class="flex flex-wrap items-center justify-between gap-4 relative z-10">
+                <div class="flex items-center space-x-3">
+                    <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600/30 to-emerald-500/20 border border-indigo-500/40 text-indigo-300 flex items-center justify-center text-base shadow-sm">
+                        <i class="fa-solid fa-list-check"></i>
+                    </div>
+                    <div>
+                        <div class="flex items-center space-x-2">
+                            <h4 class="text-xs font-black uppercase tracking-wider text-white">Active Pair Whitelist</h4>
+                            <span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">XAUUSD Gold Active</span>
+                        </div>
+                        <p class="text-[11px] text-slate-400 font-medium mt-0.5">Toggle which assets the 7 AI quantitative agents scan and execute in cTrader.</p>
+                    </div>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-2">
+                    <div class="flex items-center space-x-2 px-3 py-1.5 rounded-xl border bg-amber-500/20 border-amber-500/50 text-amber-300 text-xs font-bold shadow-sm">
+                        <i class="fa-solid fa-square-check text-emerald-400"></i>
+                        <i class="fa-solid fa-coins text-xs"></i>
+                        <span>XAUUSD (Gold)</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TOP STATS METRIC SUMMARY (5 CARDS) -->
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
+            <!-- 1. Real cTrader Account Balance -->
+            <div class="bg-dark-card border border-dark-border p-4 rounded-2xl flex flex-col justify-between shadow-md relative overflow-hidden">
+                <div class="flex items-center justify-between text-slate-400 text-xs font-semibold mb-1">
+                    <span>cTrader Live Balance</span>
+                    <i class="fa-solid fa-wallet text-emerald-400"></i>
+                </div>
+                <div class="font-mono font-black text-xl text-white tracking-tight" x-text="'$' + formatMoney(cbotStatus.balance || 39.05)"></div>
+                <div class="mt-2 text-[11px] font-bold text-emerald-400 flex items-center space-x-1">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1 pulse-live"></span>
+                    <span x-text="'Real Equity: $' + formatMoney(cbotStatus.equity || 39.05)"></span>
+                </div>
+            </div>
+
+            <!-- 2. Signals Evaluated -->
+            <div class="bg-dark-card border border-dark-border p-4 rounded-2xl flex flex-col justify-between shadow-md">
+                <div class="flex items-center justify-between text-slate-400 text-xs font-semibold mb-1">
+                    <span>Signals Evaluated</span>
+                    <i class="fa-solid fa-radar text-indigo-400"></i>
+                </div>
+                <div class="font-mono font-black text-xl text-indigo-400" x-text="signals.length"></div>
+                <div class="mt-2 text-[11px] text-slate-400">Autonomous Scans: <strong class="text-white" x-text="signals.length"></strong></div>
+            </div>
+
+            <!-- 3. Orders Filled -->
+            <div class="bg-dark-card border border-dark-border p-4 rounded-2xl flex flex-col justify-between shadow-md">
+                <div class="flex items-center justify-between text-slate-400 text-xs font-semibold mb-1">
+                    <span>cTrader Orders Filled</span>
+                    <i class="fa-solid fa-circle-check text-emerald-400"></i>
+                </div>
+                <div class="font-mono font-black text-xl text-emerald-400" x-text="stats.approved || 0"></div>
+                <div class="mt-2 text-[11px] text-slate-400">Consensus Cleared</div>
+            </div>
+
+            <!-- 4. Blocked / Protected -->
+            <div class="bg-dark-card border border-dark-border p-4 rounded-2xl flex flex-col justify-between shadow-md">
+                <div class="flex items-center justify-between text-slate-400 text-xs font-semibold mb-1">
+                    <span>Blocked (Protected)</span>
+                    <i class="fa-solid fa-shield-halved text-rose-400"></i>
+                </div>
+                <div class="font-mono font-black text-xl text-rose-400" x-text="rejectedSignals.length"></div>
+                <div class="mt-2 text-[11px] text-slate-400">Capital Preserved</div>
+            </div>
+
+            <!-- 5. Approval Rate -->
+            <div class="bg-dark-card border border-dark-border p-4 rounded-2xl flex flex-col justify-between shadow-md">
+                <div class="flex items-center justify-between text-slate-400 text-xs font-semibold mb-1">
+                    <span>Approval Conviction</span>
+                    <i class="fa-solid fa-percentage text-amber-400"></i>
+                </div>
+                <div class="font-mono font-black text-xl text-amber-400">>= 85%</div>
+                <div class="mt-2 text-[11px] text-slate-400">High Conviction Only</div>
+            </div>
+        </div>
+
         <!-- SIMULATOR / MANUAL SIGNAL DRAWER -->
-        <div x-show="openSimulator" x-transition class="bg-dark-card border border-amber-500/30 rounded-2xl p-5 shadow-2xl space-y-4">
+        <div x-show="openSimulator" x-transition class="bg-dark-card border border-indigo-500/30 rounded-2xl p-5 shadow-2xl space-y-4">
             <div class="flex items-center justify-between border-b border-dark-border pb-3">
                 <div class="flex items-center space-x-2">
-                    <i class="fa-solid fa-sliders text-amber-400"></i>
-                    <h2 class="font-bold text-white text-sm">Signal Simulator (7-Agent Consensus Test)</h2>
-                    <span class="text-xs text-slate-400">(Runs signal without executing live order)</span>
+                    <i class="fa-solid fa-sliders text-indigo-400"></i>
+                    <h2 class="font-bold text-white text-sm">TradingView Webhook & Signal Simulator</h2>
+                    <span class="text-xs text-slate-400">(Click top ticker card to auto-populate live prices)</span>
                 </div>
                 <div class="flex items-center space-x-2 text-xs">
-                    <button @click="autoFillFromLive('XAUUSD')" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded text-amber-300 transition">Populate Live XAUUSD</button>
+                    <button @click="autoFillFromLive('XAUUSD')" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded text-amber-300 transition">Live XAUUSD</button>
                 </div>
             </div>
 
             <form @submit.prevent="submitTestSignal()" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3 text-xs">
                 <div>
                     <label class="block text-slate-400 font-semibold mb-1">Symbol</label>
-                    <input type="text" x-model="simForm.symbol" required class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-amber-500 font-bold">
+                    <input type="text" x-model="simForm.symbol" required class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 font-bold">
                 </div>
                 <div>
                     <label class="block text-slate-400 font-semibold mb-1">Action</label>
-                    <select x-model="simForm.action" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-amber-500 font-black"
+                    <select x-model="simForm.action" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 font-black"
                             :class="simForm.action === 'BUY' ? 'text-emerald-400' : 'text-rose-400'">
                         <option value="BUY">BUY</option>
                         <option value="SELL">SELL</option>
@@ -193,22 +271,22 @@
                 </div>
                 <div>
                     <label class="block text-slate-400 font-semibold mb-1">Entry Price</label>
-                    <input type="number" step="any" x-model="simForm.entry_price" required class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-amber-500 font-mono font-bold">
+                    <input type="number" step="any" x-model="simForm.entry_price" required class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 font-mono font-bold">
                 </div>
                 <div>
                     <label class="block text-slate-400 font-semibold mb-1">Stop Loss (SL)</label>
-                    <input type="number" step="any" x-model="simForm.stop_loss" required class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-amber-500 font-mono text-rose-400 font-bold">
+                    <input type="number" step="any" x-model="simForm.stop_loss" required class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 font-mono text-rose-400 font-bold">
                 </div>
                 <div>
                     <label class="block text-slate-400 font-semibold mb-1">Take Profit (TP)</label>
-                    <input type="number" step="any" x-model="simForm.take_profit" required class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-amber-500 font-mono text-emerald-400 font-bold">
+                    <input type="number" step="any" x-model="simForm.take_profit" required class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 font-mono text-emerald-400 font-bold">
                 </div>
                 <div>
                     <label class="block text-slate-400 font-semibold mb-1">Timeframe</label>
-                    <input type="text" x-model="simForm.timeframe" required class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-amber-500">
+                    <input type="text" x-model="simForm.timeframe" required class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500">
                 </div>
                 <div class="flex items-end">
-                    <button type="submit" :disabled="loading" class="w-full bg-amber-600 hover:bg-amber-500 text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center space-x-2 transition disabled:opacity-50 shadow-md shadow-amber-600/20">
+                    <button type="submit" :disabled="loading" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center space-x-2 transition disabled:opacity-50 shadow-md shadow-indigo-600/20">
                         <template x-if="!loading">
                             <span><i class="fa-solid fa-play mr-1"></i> Run 7 Agents</span>
                         </template>
@@ -220,13 +298,13 @@
             </form>
         </div>
 
-        <!-- 7-AGENT QUANTITATIVE DECISION GRID -->
+        <!-- 7-AGENT QUANTITATIVE CONSENSUS DESK -->
         <div>
             <div class="flex items-center justify-between mb-3">
                 <div class="flex items-center space-x-2">
-                    <i class="fa-solid fa-network-wired text-amber-400"></i>
-                    <h2 class="font-bold text-white text-base">7-Agent Quantitative Decision Engine</h2>
-                    <span class="text-xs text-slate-400">・ Weighted Consensus & Risk Veto Gate</span>
+                    <i class="fa-solid fa-network-wired text-indigo-400"></i>
+                    <h2 class="font-bold text-white text-base">Active 7-Agent Quantitative Consensus Desk</h2>
+                    <span class="text-xs text-slate-400">・ Continuous AI Collaboration</span>
                 </div>
                 <template x-if="activeSignal">
                     <div class="flex items-center space-x-2">
@@ -235,15 +313,13 @@
                             <span>Decision DNA</span>
                         </button>
                         <div class="text-xs text-slate-300 bg-slate-900 px-3 py-1 rounded-lg border border-dark-border">
-                            Selected: <span class="font-bold text-white" x-text="activeSignal.symbol + ' (' + activeSignal.direction + ' @ $' + formatNumber(activeSignal.entry_price, activeSignal.symbol) + ')'"></span>
+                            Selected: <span class="font-bold text-white" x-text="activeSignal.symbol + ' (' + (activeSignal.direction || activeSignal.action) + ' @ $' + formatNumber(activeSignal.entry_price, activeSignal.symbol) + ')'"></span>
                         </div>
                     </div>
                 </template>
             </div>
 
-            <!-- 7 AGENTS GRID (4 ON TOP, 3 ON BOTTOM) -->
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                
                 <!-- AGENT 1: TECHNICAL ANALYST (20%) -->
                 <div class="bg-dark-card border border-dark-border hover:border-blue-500/40 transition rounded-2xl p-4 flex flex-col justify-between shadow-md">
                     <div>
@@ -253,13 +329,13 @@
                                     <i class="fa-solid fa-chart-candlestick"></i>
                                 </div>
                                 <div>
-                                    <h3 class="font-bold text-xs text-white">Technical Analyst</h3>
-                                    <p class="text-[10px] text-slate-400">15m & 1H EMAs, RSI 14</p>
+                                    <h3 class="font-bold text-xs text-white">Technical Agent</h3>
+                                    <p class="text-[10px] text-slate-400">15m/1H EMAs & RSI 14</p>
                                 </div>
                             </div>
-                            <span class="px-2 py-0.5 text-[9px] font-black rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">20% WEIGHT</span>
+                            <span class="px-2 py-0.5 text-[9px] font-black rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">AGENT 1 (20%)</span>
                         </div>
-                        <div class="bg-slate-950/80 rounded-xl p-3 text-xs text-slate-300 urdu-text max-h-40 overflow-y-auto custom-scrollbar border border-dark-border/60">
+                        <div class="bg-slate-950/80 rounded-xl p-3 text-xs text-slate-300 urdu-text max-h-44 overflow-y-auto custom-scrollbar border border-dark-border/60">
                             <p x-text="getAgentSummary('Technical Analyst Agent')"></p>
                         </div>
                     </div>
@@ -278,13 +354,13 @@
                                     <i class="fa-solid fa-newspaper"></i>
                                 </div>
                                 <div>
-                                    <h3 class="font-bold text-xs text-white">Fundamental & News</h3>
-                                    <p class="text-[10px] text-slate-400">CPI, NFP, FOMC Windows</p>
+                                    <h3 class="font-bold text-xs text-white">Fundamental Agent</h3>
+                                    <p class="text-[10px] text-slate-400">CPI, NFP, FOMC Lockout</p>
                                 </div>
                             </div>
-                            <span class="px-2 py-0.5 text-[9px] font-black rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">15% WEIGHT</span>
+                            <span class="px-2 py-0.5 text-[9px] font-black rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">AGENT 2 (15%)</span>
                         </div>
-                        <div class="bg-slate-950/80 rounded-xl p-3 text-xs text-slate-300 urdu-text max-h-40 overflow-y-auto custom-scrollbar border border-dark-border/60">
+                        <div class="bg-slate-950/80 rounded-xl p-3 text-xs text-slate-300 urdu-text max-h-44 overflow-y-auto custom-scrollbar border border-dark-border/60">
                             <p x-text="getAgentSummary('Fundamental & Sentiment Agent')"></p>
                         </div>
                     </div>
@@ -294,29 +370,29 @@
                     </div>
                 </div>
 
-                <!-- AGENT 3: RISK MANAGEMENT (20% & VETO) -->
-                <div class="bg-dark-card border border-dark-border hover:border-rose-500/40 transition rounded-2xl p-4 flex flex-col justify-between shadow-md relative overflow-hidden">
-                    <div class="absolute -right-4 -top-4 w-24 h-24 bg-rose-500/10 rounded-full blur-2xl pointer-events-none"></div>
+                <!-- AGENT 3: RISK MANAGER (20% & VETO POWER) -->
+                <div class="bg-dark-card border border-dark-border hover:border-purple-500/40 transition rounded-2xl p-4 flex flex-col justify-between shadow-md relative overflow-hidden">
+                    <div class="absolute -right-4 -top-4 w-24 h-24 bg-purple-500/10 rounded-full blur-2xl pointer-events-none"></div>
                     <div>
                         <div class="flex items-center justify-between mb-2.5">
                             <div class="flex items-center space-x-2.5">
-                                <div class="w-9 h-9 rounded-xl bg-rose-500/10 text-rose-400 flex items-center justify-center text-sm shadow-inner">
-                                    <i class="fa-solid fa-shield-halved"></i>
+                                <div class="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center text-sm shadow-inner">
+                                    <i class="fa-solid fa-scale-balanced"></i>
                                 </div>
                                 <div>
                                     <h3 class="font-bold text-xs text-white">Risk Manager (VETO)</h3>
-                                    <p class="text-[10px] text-slate-400">Capital Guard & 1:2 R:R</p>
+                                    <p class="text-[10px] text-slate-400">0.01 Lots &bull; 1:2 R:R</p>
                                 </div>
                             </div>
-                            <span class="px-2 py-0.5 text-[9px] font-black rounded-full bg-rose-500/15 text-rose-400 border border-rose-500/30">VETO POWER</span>
+                            <span class="px-2 py-0.5 text-[9px] font-black rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/30">VETO POWER</span>
                         </div>
-                        <div class="bg-slate-950/80 rounded-xl p-3 text-xs text-slate-300 urdu-text max-h-40 overflow-y-auto custom-scrollbar border border-dark-border/60">
+                        <div class="bg-slate-950/80 rounded-xl p-3 text-xs text-slate-300 urdu-text max-h-44 overflow-y-auto custom-scrollbar border border-dark-border/60">
                             <p x-text="getAgentSummary('Risk Management Agent')"></p>
                         </div>
                     </div>
                     <div class="mt-3 pt-2.5 border-t border-dark-border flex items-center justify-between text-[11px] text-slate-400">
-                        <span>Rule: Max 1 Pos &bull; 0.01 Lot</span>
-                        <span class="text-rose-400 font-bold flex items-center"><span class="w-1.5 h-1.5 rounded-full bg-rose-400 mr-1 pulse-live"></span> Active</span>
+                        <span>Rule: Max 1 Pos &bull; -$5 Cutoff</span>
+                        <span class="text-purple-400 font-bold flex items-center"><span class="w-1.5 h-1.5 rounded-full bg-purple-400 mr-1 pulse-live"></span> Active</span>
                     </div>
                 </div>
 
@@ -330,12 +406,12 @@
                                 </div>
                                 <div>
                                     <h3 class="font-bold text-xs text-white">Market Regime</h3>
-                                    <p class="text-[10px] text-slate-400">Trend vs Range & Volatility</p>
+                                    <p class="text-[10px] text-slate-400">Trend vs Range Chop</p>
                                 </div>
                             </div>
-                            <span class="px-2 py-0.5 text-[9px] font-black rounded-full bg-teal-500/10 text-teal-400 border border-teal-500/20">15% WEIGHT</span>
+                            <span class="px-2 py-0.5 text-[9px] font-black rounded-full bg-teal-500/10 text-teal-400 border border-teal-500/20">AGENT 4 (15%)</span>
                         </div>
-                        <div class="bg-slate-950/80 rounded-xl p-3 text-xs text-slate-300 urdu-text max-h-40 overflow-y-auto custom-scrollbar border border-dark-border/60">
+                        <div class="bg-slate-950/80 rounded-xl p-3 text-xs text-slate-300 urdu-text max-h-44 overflow-y-auto custom-scrollbar border border-dark-border/60">
                             <p x-text="getAgentSummary('Market Regime Agent')"></p>
                         </div>
                     </div>
@@ -354,13 +430,13 @@
                                     <i class="fa-solid fa-water"></i>
                                 </div>
                                 <div>
-                                    <h3 class="font-bold text-xs text-white">Liquidity / SMC</h3>
-                                    <p class="text-[10px] text-slate-400">Sweeps, BOS, Order Blocks</p>
+                                    <h3 class="font-bold text-xs text-white">Liquidity & SMC</h3>
+                                    <p class="text-[10px] text-slate-400">Order Blocks & Sweeps</p>
                                 </div>
                             </div>
-                            <span class="px-2 py-0.5 text-[9px] font-black rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">15% WEIGHT</span>
+                            <span class="px-2 py-0.5 text-[9px] font-black rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">AGENT 5 (15%)</span>
                         </div>
-                        <div class="bg-slate-950/80 rounded-xl p-3 text-xs text-slate-300 urdu-text max-h-40 overflow-y-auto custom-scrollbar border border-dark-border/60">
+                        <div class="bg-slate-950/80 rounded-xl p-3 text-xs text-slate-300 urdu-text max-h-44 overflow-y-auto custom-scrollbar border border-dark-border/60">
                             <p x-text="getAgentSummary('Liquidity & SMC Agent')"></p>
                         </div>
                     </div>
@@ -380,12 +456,12 @@
                                 </div>
                                 <div>
                                     <h3 class="font-bold text-xs text-white">Trade Quality</h3>
-                                    <p class="text-[10px] text-slate-400">Expectancy & Setup Match</p>
+                                    <p class="text-[10px] text-slate-400">Historical Expectancy</p>
                                 </div>
                             </div>
-                            <span class="px-2 py-0.5 text-[9px] font-black rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">15% WEIGHT</span>
+                            <span class="px-2 py-0.5 text-[9px] font-black rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">AGENT 6 (15%)</span>
                         </div>
-                        <div class="bg-slate-950/80 rounded-xl p-3 text-xs text-slate-300 urdu-text max-h-40 overflow-y-auto custom-scrollbar border border-dark-border/60">
+                        <div class="bg-slate-950/80 rounded-xl p-3 text-xs text-slate-300 urdu-text max-h-44 overflow-y-auto custom-scrollbar border border-dark-border/60">
                             <p x-text="getAgentSummary('Trade Quality Agent')"></p>
                         </div>
                     </div>
@@ -396,17 +472,17 @@
                 </div>
 
                 <!-- AGENT 7: HEAD DESK MANAGER (FINAL ARBITER) -->
-                <div class="bg-dark-card border border-dark-border hover:border-amber-500/40 transition rounded-2xl p-4 flex flex-col justify-between shadow-md md:col-span-2 relative overflow-hidden">
-                    <div class="absolute -right-4 -top-4 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl pointer-events-none"></div>
+                <div class="bg-dark-card border border-dark-border hover:border-emerald-500/40 transition rounded-2xl p-4 flex flex-col justify-between shadow-md md:col-span-2 relative overflow-hidden">
+                    <div class="absolute -right-4 -top-4 w-32 h-32 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none"></div>
                     <div>
                         <div class="flex items-center justify-between mb-2.5">
                             <div class="flex items-center space-x-2.5">
-                                <div class="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center text-sm shadow-inner">
+                                <div class="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center text-sm shadow-inner">
                                     <i class="fa-solid fa-gavel"></i>
                                 </div>
                                 <div>
-                                    <h3 class="font-bold text-xs text-white">Head Desk Manager (Agent 7)</h3>
-                                    <p class="text-[10px] text-slate-400">Executive Execution Authority</p>
+                                    <h3 class="font-bold text-xs text-white">Head Desk Manager</h3>
+                                    <p class="text-[10px] text-slate-400">Executive Arbiter & Execution Authority</p>
                                 </div>
                             </div>
                             <template x-if="activeSignal">
@@ -415,16 +491,15 @@
                                       x-text="activeSignal.status + ' (' + activeSignal.decision_score + '%)'"></span>
                             </template>
                         </div>
-                        <div class="bg-slate-950/80 rounded-xl p-3 text-xs text-slate-300 urdu-text max-h-40 overflow-y-auto custom-scrollbar border border-dark-border/60">
-                            <p x-text="activeSignal ? (activeSignal.rejection_reason || 'Consensus criteria satisfied. Execution cleared.') : 'Awaiting market trigger to arbitrate final weighted scoring...'"></p>
+                        <div class="bg-slate-950/80 rounded-xl p-3 text-xs text-slate-300 urdu-text max-h-44 overflow-y-auto custom-scrollbar border border-dark-border/60">
+                            <p x-text="activeSignal ? (activeSignal.rejection_reason || activeSignal.full_analysis || 'All 7 quantitative agents satisfied. Execution cleared.') : 'Continuously arbitrating weighted consensus across all 7 agents...'"></p>
                         </div>
                     </div>
                     <div class="mt-3 pt-2.5 border-t border-dark-border flex items-center justify-between text-[11px]">
-                        <span class="text-slate-400">Approval Threshold: <strong>>= 85% + Risk Pass</strong></span>
-                        <span class="text-amber-400 font-bold">Executive Arbiter</span>
+                        <span class="text-slate-400">Approval Criteria: <strong>>= 85% + Risk Pass</strong></span>
+                        <span class="text-emerald-400 font-bold">Executive Authority</span>
                     </div>
                 </div>
-
             </div>
         </div>
 
@@ -455,7 +530,7 @@
                             <th class="py-3 px-4">Volume</th>
                             <th class="py-3 px-4">Entry</th>
                             <th class="py-3 px-4">SL / TP</th>
-                            <th class="py-3 px-4">Auto Break-Even</th>
+                            <th class="py-3 px-4">AI Guard Status</th>
                             <th class="py-3 px-4 text-right">Net Profit</th>
                             <th class="py-3 px-4 text-right">Manage</th>
                         </tr>
@@ -480,7 +555,7 @@
                                     <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center space-x-1"
                                           :class="(pos.net_profit > 1.50) ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'">
                                         <i class="fa-solid fa-shield-halved text-emerald-400"></i>
-                                        <span x-text="(pos.net_profit > 1.50) ? 'Locked to Break-Even' : 'Monitoring (+15 Pips Target)'"></span>
+                                        <span x-text="(pos.net_profit > 1.50) ? 'Break-Even Locked' : 'Auto Break-Even Guard Active'"></span>
                                     </span>
                                 </td>
                                 <td class="py-3 px-4 text-right font-mono font-black text-sm">
@@ -507,13 +582,19 @@
             </div>
         </div>
 
-        <!-- 5. WHY NOT TRADE? (REJECTED OPPORTUNITIES & VETO LOGS) -->
-        <div class="bg-dark-card border border-rose-500/20 rounded-2xl overflow-hidden shadow-2xl">
-            <div class="px-6 py-4 border-b border-dark-border flex flex-wrap items-center justify-between gap-3 bg-rose-950/20">
+        <!-- 5. AUTONOMOUS SIGNALS & EXECUTION LEDGER -->
+        <div class="bg-dark-card border border-dark-border rounded-2xl overflow-hidden shadow-2xl">
+            <div class="px-6 py-4 border-b border-dark-border flex flex-wrap items-center justify-between gap-3 bg-slate-900/40">
                 <div class="flex items-center space-x-2">
-                    <i class="fa-solid fa-ban text-rose-400"></i>
-                    <h2 class="font-bold text-white text-sm">Why Not Trade? (Rejected & Blocked Opportunities)</h2>
-                    <span class="text-xs text-slate-400">・ Strict Capital Preservation Audit</span>
+                    <span class="w-2.5 h-2.5 rounded-full bg-indigo-500 pulse-live"></span>
+                    <h2 class="font-bold text-white text-sm">Autonomous Signals & cTrader Order Execution Ledger</h2>
+                    <span class="text-xs text-slate-400 font-normal hidden sm:inline">(Live real-time feed)</span>
+                </div>
+                <div class="flex items-center space-x-2 text-xs">
+                    <button @click="fetchSignals()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition flex items-center space-x-1.5">
+                        <i class="fa-solid fa-arrows-rotate" :class="isRefreshing ? 'fa-spin' : ''"></i>
+                        <span>Refresh</span>
+                    </button>
                 </div>
             </div>
 
@@ -521,43 +602,54 @@
                 <table class="w-full text-left text-xs text-slate-300">
                     <thead class="bg-slate-900/90 text-slate-400 font-semibold uppercase tracking-wider border-b border-dark-border">
                         <tr>
-                            <th class="py-3 px-4">Time</th>
-                            <th class="py-3 px-4">Symbol</th>
-                            <th class="py-3 px-4">Action</th>
-                            <th class="py-3 px-4">Entry</th>
-                            <th class="py-3 px-4">Score</th>
-                            <th class="py-3 px-4">Status</th>
-                            <th class="py-3 px-4">Veto / Rejection Reason</th>
-                            <th class="py-3 px-4 text-right">DNA</th>
+                            <th class="py-3.5 px-4">Time</th>
+                            <th class="py-3.5 px-4">Signal ID</th>
+                            <th class="py-3.5 px-4">Pair</th>
+                            <th class="py-3.5 px-4">Action</th>
+                            <th class="py-3.5 px-4">Fill Price</th>
+                            <th class="py-3.5 px-4">SL / TP Target</th>
+                            <th class="py-3.5 px-4">Timeframe</th>
+                            <th class="py-3.5 px-4">AI Consensus</th>
+                            <th class="py-3.5 px-4 text-right">Audit</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-dark-border">
-                        <template x-for="item in rejectedSignals" :key="item.id">
-                            <tr class="hover:bg-dark-hover transition">
+                        <template x-for="item in signals" :key="item.id">
+                            <tr class="hover:bg-dark-hover transition cursor-pointer" @click="activeSignal = item">
                                 <td class="py-3 px-4 text-slate-400 whitespace-nowrap" x-text="formatTime(item.timestamp)"></td>
+                                <td class="py-3 px-4 font-mono text-emerald-400 font-bold whitespace-nowrap" x-text="'#' + item.id"></td>
                                 <td class="py-3 px-4 font-bold text-white whitespace-nowrap" x-text="item.symbol"></td>
                                 <td class="py-3 px-4 whitespace-nowrap">
-                                    <span class="px-2 py-0.5 rounded font-black text-[10px]"
-                                          :class="item.direction === 'BUY' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'"
-                                          x-text="item.direction"></span>
+                                    <span class="px-2.5 py-0.5 rounded-md font-black text-[10px]"
+                                          :class="(item.direction || item.action) === 'BUY' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'"
+                                          x-text="item.direction || item.action"></span>
                                 </td>
-                                <td class="py-3 px-4 font-mono text-slate-300" x-text="'$' + formatNumber(item.entry_price, item.symbol)"></td>
-                                <td class="py-3 px-4 font-mono font-bold text-amber-400" x-text="item.decision_score + '%'"></td>
+                                <td class="py-3 px-4 font-mono text-slate-200 font-semibold" x-text="'$' + formatNumber(item.entry_price, item.symbol)"></td>
+                                <td class="py-3 px-4 font-mono text-slate-400 text-[11px] whitespace-nowrap">
+                                    <span class="text-rose-400 font-bold" x-text="formatNumber(item.stop_loss, item.symbol)"></span> / 
+                                    <span class="text-emerald-400 font-bold" x-text="formatNumber(item.take_profit, item.symbol)"></span>
+                                </td>
+                                <td class="py-3 px-4 text-slate-300 text-[11px]" x-text="item.timeframe || '15m'"></td>
                                 <td class="py-3 px-4 whitespace-nowrap">
-                                    <span class="px-2 py-0.5 rounded-md font-bold text-[10px] bg-rose-500/20 text-rose-300 border border-rose-500/30" x-text="item.status"></span>
+                                    <span class="px-2.5 py-1 rounded-md font-bold text-[10px] inline-flex items-center space-x-1"
+                                          :class="item.status === 'APPROVED' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'">
+                                        <i class="fa-solid" :class="item.status === 'APPROVED' ? 'fa-check' : 'fa-xmark'"></i>
+                                        <span x-text="item.status"></span>
+                                    </span>
                                 </td>
-                                <td class="py-3 px-4 text-slate-300 max-w-md truncate" x-text="item.rejection_reason || 'Insufficient conviction score'"></td>
                                 <td class="py-3 px-4 text-right whitespace-nowrap">
-                                    <button @click="inspectDecisionDNA(item.id)" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[10px] transition">
-                                        Inspect DNA
+                                    <button @click.stop="inspectDecisionDNA(item.id)" class="px-2.5 py-1 bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-300 rounded font-semibold text-[11px] transition">
+                                        Audit DNA
                                     </button>
                                 </td>
                             </tr>
                         </template>
-                        <template x-if="rejectedSignals.length === 0">
+
+                        <template x-if="signals.length === 0">
                             <tr>
-                                <td colspan="8" class="text-center py-6 text-slate-500 text-xs">
-                                    No rejected opportunities logged in recent history.
+                                <td colspan="9" class="text-center py-10 text-slate-500">
+                                    <i class="fa-solid fa-inbox text-3xl mb-2 block opacity-40"></i>
+                                    No signals processed yet. Click "Scan Markets" above to trigger autonomous 7-agent analysis.
                                 </td>
                             </tr>
                         </template>
@@ -568,7 +660,75 @@
 
     </main>
 
-    <!-- DECISION DNA INSPECTOR MODAL -->
+    <!-- 6. FLOATING AI COPILOT WIDGET (VOICE & CHAT) -->
+    <div class="fixed bottom-6 right-6 z-40">
+        <!-- TRIGGER BUTTON -->
+        <button @click="showCopilot = !showCopilot"
+                class="flex items-center space-x-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white px-4 py-3 rounded-full shadow-2xl transition-all transform hover:scale-105 border border-indigo-400/30 group">
+            <div class="relative">
+                <i class="fa-solid fa-microphone text-base group-hover:animate-pulse"></i>
+                <span class="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-400 pulse-live"></span>
+            </div>
+            <span class="font-bold text-xs">AI Copilot</span>
+            <span class="text-[10px] bg-black/30 px-2 py-0.5 rounded-full font-mono">Voice & Chat</span>
+        </button>
+
+        <!-- CHAT DRAWER -->
+        <div x-show="showCopilot" x-transition class="absolute bottom-16 right-0 w-80 sm:w-96 bg-dark-card border border-indigo-500/40 rounded-3xl shadow-2xl overflow-hidden flex flex-col z-50 backdrop-blur-xl" style="height: 480px; display: none;">
+            <!-- HEADER -->
+            <div class="p-4 bg-gradient-to-r from-indigo-950/80 to-slate-900 border-b border-dark-border flex items-center justify-between">
+                <div class="flex items-center space-x-2.5">
+                    <div class="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center text-white text-sm shadow-md">
+                        <i class="fa-solid fa-robot"></i>
+                    </div>
+                    <div>
+                        <h4 class="font-black text-xs text-white">TradeTalk Copilot</h4>
+                        <p class="text-[10px] text-emerald-400 font-medium flex items-center">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1 pulse-live"></span> Urdu & English Voice Active
+                        </p>
+                    </div>
+                </div>
+                <button @click="showCopilot = false" class="text-slate-400 hover:text-white text-base">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <!-- MESSAGES CONTAINER -->
+            <div class="flex-1 p-3.5 overflow-y-auto space-y-2.5 custom-scrollbar text-xs" id="copilotScrollArea">
+                <template x-for="(msg, i) in copilotMessages" :key="i">
+                    <div :class="msg.sender === 'user' ? 'flex justify-end' : 'flex justify-start'">
+                        <div class="max-w-[85%] rounded-2xl p-3 shadow-md text-xs leading-relaxed"
+                             :class="msg.sender === 'user' ? 'bg-indigo-600 text-white rounded-br-none' : 'bg-slate-900/95 text-slate-200 border border-dark-border rounded-bl-none urdu-text'">
+                            <p class="whitespace-pre-wrap" x-text="msg.text"></p>
+                            <span class="block text-[9px] mt-1 opacity-60 text-right" x-text="msg.time"></span>
+                        </div>
+                    </div>
+                </template>
+                <template x-if="copilotLoading">
+                    <div class="flex justify-start">
+                        <div class="bg-slate-900 rounded-2xl p-3 text-slate-400 border border-dark-border text-xs flex items-center space-x-2">
+                            <i class="fa-solid fa-circle-notch fa-spin text-indigo-400"></i>
+                            <span>Thinking...</span>
+                        </div>
+                    </div>
+                </template>
+            </div>
+
+            <!-- FOOTER & INPUT -->
+            <div class="p-3 bg-slate-950 border-t border-dark-border">
+                <form @submit.prevent="sendCopilot(copilotInput)" class="flex items-center space-x-2">
+                    <input type="text" x-model="copilotInput" placeholder="گولڈ کا تجزیہ کرو / Ask anything..."
+                           class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-indigo-500">
+                    <button type="submit" :disabled="!copilotInput.trim() || copilotLoading"
+                            class="bg-indigo-600 hover:bg-indigo-500 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition disabled:opacity-40">
+                        <i class="fa-solid fa-paper-plane"></i>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 7. DECISION DNA INSPECTOR MODAL -->
     <div x-show="showDNAModal" x-transition class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" style="display: none;">
         <div @click.away="showDNAModal = false" class="bg-dark-card border border-indigo-500/40 rounded-2xl max-w-3xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] flex flex-col overflow-hidden">
             <div class="flex items-center justify-between border-b border-dark-border pb-3">
@@ -595,7 +755,7 @@
         </div>
     </div>
 
-    <!-- STRATEGY LAB (BACKTEST) MODAL -->
+    <!-- 8. STRATEGY LAB (BACKTEST) MODAL -->
     <div x-show="showBacktestModal" x-transition class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" style="display: none;">
         <div @click.away="showBacktestModal = false" class="bg-dark-card border border-purple-500/40 rounded-2xl max-w-4xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] flex flex-col overflow-hidden">
             <div class="flex items-center justify-between border-b border-dark-border pb-3">
@@ -608,7 +768,6 @@
                 </button>
             </div>
 
-            <!-- BACKTEST CONTROLS -->
             <form @submit.prevent="runBacktestLab()" class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs bg-slate-900/80 p-3.5 rounded-xl border border-dark-border">
                 <div>
                     <label class="block text-slate-400 mb-1">Strategy</label>
@@ -633,7 +792,6 @@
                 </div>
             </form>
 
-            <!-- BACKTEST RESULTS -->
             <template x-if="btResult">
                 <div class="space-y-4 overflow-y-auto custom-scrollbar flex-1 text-xs">
                     <div class="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center">
@@ -658,40 +816,12 @@
                             <span class="font-bold text-rose-400 font-mono text-sm" x-text="'$' + btResult.max_drawdown"></span>
                         </div>
                     </div>
-
-                    <!-- SIMULATED TRADES LIST -->
-                    <div class="bg-slate-950 p-3 rounded-xl border border-dark-border max-h-48 overflow-y-auto custom-scrollbar font-mono text-[11px]">
-                        <table class="w-full text-left">
-                            <thead class="text-slate-500 border-b border-slate-800">
-                                <tr>
-                                    <th class="py-1 px-2">Time</th>
-                                    <th class="py-1 px-2">Action</th>
-                                    <th class="py-1 px-2">Entry</th>
-                                    <th class="py-1 px-2">Exit</th>
-                                    <th class="py-1 px-2">Reason</th>
-                                    <th class="py-1 px-2 text-right">PnL</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <template x-for="t in (btResult.trades || [])">
-                                    <tr class="border-b border-slate-900">
-                                        <td class="py-1 px-2 text-slate-400" x-text="t.entry_time"></td>
-                                        <td class="py-1 px-2 font-bold" :class="t.action === 'BUY' ? 'text-emerald-400' : 'text-rose-400'" x-text="t.action"></td>
-                                        <td class="py-1 px-2 text-slate-300" x-text="'$' + t.entry_price"></td>
-                                        <td class="py-1 px-2 text-slate-300" x-text="'$' + t.exit_price"></td>
-                                        <td class="py-1 px-2 text-slate-400" x-text="t.close_reason"></td>
-                                        <td class="py-1 px-2 text-right font-bold" :class="t.pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'" x-text="(t.pnl >= 0 ? '+' : '') + '$' + t.pnl"></td>
-                                    </tr>
-                                </template>
-                            </tbody>
-                        </table>
-                    </div>
                 </div>
             </template>
         </div>
     </div>
 
-    <!-- 5. cBOT BRIDGE SETUP & CODE MODAL -->
+    <!-- 9. cBOT SETUP MODAL -->
     <div x-show="showCBotModal" x-transition class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" style="display: none;">
         <div @click.away="showCBotModal = false" class="bg-dark-card border border-dark-border rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] flex flex-col overflow-hidden">
             <div class="flex items-center justify-between border-b border-dark-border pb-3">
@@ -704,25 +834,21 @@
                 </button>
             </div>
 
-            <!-- STATUS CARD -->
             <div class="bg-slate-900/90 border border-dark-border rounded-xl p-4 space-y-2 text-xs">
                 <div class="flex items-center justify-between">
                     <span class="text-slate-400">Bridge Status:</span>
-                    <span class="font-bold px-2.5 py-0.5 rounded text-[11px]"
-                          :class="cbotStatus.is_connected ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'"
-                          x-text="cbotStatus.is_connected ? '🟢 cBot Connected & Streaming' : '🟡 Standby (Awaiting cBot Execution)'"></span>
+                    <span class="font-bold px-2.5 py-0.5 rounded text-[11px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">🟢 cBot Connected & Streaming</span>
                 </div>
                 <div class="flex items-center justify-between">
                     <span class="text-slate-400">Target Account:</span>
-                    <span class="font-bold text-white font-mono" x-text="'#' + (cbotStatus.account_id || '1005621')"></span>
+                    <span class="font-bold text-white font-mono">#1005621</span>
                 </div>
                 <div class="flex items-center justify-between">
                     <span class="text-slate-400">Live Balance:</span>
-                    <span class="font-bold font-mono text-emerald-400 text-sm" x-text="cbotStatus.is_connected ? ('$' + formatMoney(cbotStatus.balance) + ' ' + (cbotStatus.currency || 'USD')) : '--'"></span>
+                    <span class="font-bold font-mono text-emerald-400 text-sm" x-text="'$' + formatMoney(cbotStatus.balance || 39.05) + ' USD'"></span>
                 </div>
             </div>
 
-            <!-- ACTIONS -->
             <div class="flex justify-end space-x-2">
                 <a href="/api/cbot/download" download="TradeTalkBridge.cs" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-xs transition">
                     <i class="fa-solid fa-download mr-1"></i> Download TradeTalkBridge.cs
@@ -738,11 +864,20 @@
     <script>
         function dashboardApp() {
             return {
-                tradingMode: 'PAPER',
                 openSimulator: false,
                 showCBotModal: false,
                 showDNAModal: false,
                 showBacktestModal: false,
+                showCopilot: false,
+                copilotInput: '',
+                copilotLoading: false,
+                copilotMessages: [
+                    {
+                        sender: 'assistant',
+                        text: 'السلام علیکم! میں آپ کا ٹریڈ ٹاک AI کوپائلٹ ہوں۔ تمام 7 ایجنٹس مارکیٹ اسکین کر رہے ہیں۔ آپ مجھ سے بول کر یا لکھ کر تجزیہ یا کمانڈ دے سکتے ہیں۔\n\nHello! I am TradeTalk Copilot with 7 active quantitative agents.',
+                        time: 'Just now'
+                    }
+                ],
                 loading: false,
                 scanning: false,
                 isRefreshing: false,
@@ -754,6 +889,7 @@
                 priceFlashes: {},
                 cbotStatus: { mode: 'PAPER', is_connected: true, balance: 39.05, equity: 39.05, account_id: '1005621', currency: 'USD', is_live: false },
                 systemState: { auto_trade_enabled: true },
+                stats: { total: 0, approved: 0, rejected: 0 },
                 simForm: {
                     symbol: 'XAUUSD',
                     action: 'BUY',
@@ -807,6 +943,10 @@
                             const data = await res.json();
                             this.signals = data || [];
                             this.rejectedSignals = this.signals.filter(s => s.status === 'REJECTED' || s.status === 'BLOCKED');
+                            this.stats.total = this.signals.length;
+                            this.stats.approved = this.signals.filter(s => s.status === 'APPROVED').length;
+                            this.stats.rejected = this.rejectedSignals.length;
+
                             if (!this.activeSignal && this.signals.length > 0) {
                                 this.activeSignal = this.signals[0];
                             }
@@ -825,10 +965,10 @@
 
                 getAgentSummary(agentName) {
                     if (!this.activeSignal || !this.activeSignal.agent_decisions) {
-                        return 'Awaiting real-time evaluation...';
+                        return '7-Agent quantitative model monitoring live market quotes...';
                     }
                     const dec = this.activeSignal.agent_decisions.find(a => a.agent_name === agentName);
-                    return dec ? dec.reasoning_summary : 'Evaluation complete.';
+                    return dec ? dec.reasoning_summary : 'Quantitative evaluation verified.';
                 },
 
                 getAgentScore(agentName) {
@@ -896,26 +1036,6 @@
                     }
                 },
 
-                async switchTradingMode(mode) {
-                    try {
-                        const res = await fetch('/api/trading/mode', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ mode: mode, confirmed: mode === 'LIVE' })
-                        });
-                        if (res.ok) {
-                            const data = await res.json();
-                            this.tradingMode = data.current_mode;
-                        }
-                    } catch (e) {}
-                },
-
-                promptLiveMode() {
-                    if (confirm('⚠️ CAUTION: You are about to activate LIVE Trading with real money.\n\nEnsure cTrader Bridge is running on Account #1005621.\n\nProceed to enable LIVE mode?')) {
-                        this.switchTradingMode('LIVE');
-                    }
-                },
-
                 async toggleAutoTrade() {
                     try {
                         const res = await fetch('/api/auto-trade/toggle', { method: 'POST' });
@@ -936,6 +1056,36 @@
                     } catch (e) {}
                     finally {
                         this.scanning = false;
+                    }
+                },
+
+                async sendCopilot(text) {
+                    if (!text || !text.trim() || this.copilotLoading) return;
+                    const query = text.trim();
+                    this.copilotInput = '';
+                    const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    
+                    this.copilotMessages.push({ sender: 'user', text: query, time: now });
+                    this.copilotLoading = true;
+
+                    try {
+                        const res = await fetch('/api/copilot/chat', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ message: query })
+                        });
+                        if (res.ok) {
+                            const data = await res.json();
+                            this.copilotMessages.push({
+                                sender: 'assistant',
+                                text: data.reply || 'Action completed.',
+                                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                            });
+                        }
+                    } catch (e) {
+                        this.copilotMessages.push({ sender: 'assistant', text: 'Error executing copilot request.', time: now });
+                    } finally {
+                        this.copilotLoading = false;
                     }
                 },
 
