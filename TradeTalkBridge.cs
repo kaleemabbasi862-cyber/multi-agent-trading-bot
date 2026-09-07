@@ -305,9 +305,9 @@ namespace cAlgo.Robots
                 if (string.IsNullOrEmpty(action)) action = ExtractJsonValue(json, "action");
                 action = action.ToUpperInvariant();
                 string signalId = ExtractJsonValue(json, "ticket_id");
-                if (string.IsNullOrEmpty(signalId)) signalId = ExtractJsonValue(json, "id");
+                if (string.IsNullOrEmpty(symbolStr) || (action != "BUY" && action != "SELL")) return;
 
-                if (string.IsNullOrEmpty(symbolStr) || (action != "BUY" && action !                // 1. Strict Instrument Whitelist (Metals & Major FX)
+                // 1. Strict Instrument Whitelist (Metals & Major FX)
                 string symClean = symbolStr.ToUpperInvariant().Replace("M", "").Replace(".PRO", "").Replace("_I", "");
                 bool isAllowed = symClean.Contains("XAU") || symClean.Contains("GOLD") ||
                                  symClean.Contains("XAG") || symClean.Contains("SILVER") ||
@@ -393,7 +393,6 @@ namespace cAlgo.Robots
                 if (!result.IsSuccessful)
                 {
                     result = ExecuteMarketOrder(tradeType, targetSymbol.Name, volumeInUnits, "TradeTalk.AI.V2");
-                }eTalk.AI.V2");
                 }
 
                 if (result.IsSuccessful && result.Position != null)

@@ -509,10 +509,13 @@
                         <div class="w-full h-full rounded-full bg-slate-950/90 flex items-center justify-center text-purple-400 text-sm sm:text-base">
                             <i class="fa-solid fa-shield-halved"></i>
                         </div>
-                        <span class="absolute -top-1 -right-1 px-1 py-0.2 rounded-full bg-rose-500 text-[8px] font-black text-white uppercase tracking-tighter shadow-sm">VETO</span>
+                        <span class="absolute -top-1 -right-1 px-1 py-0.2 rounded-full text-[8px] font-black text-white uppercase tracking-tighter shadow-sm"
+                              :class="(activeSignal && activeSignal.risk_check && !activeSignal.risk_check.passed) ? 'bg-rose-500' : 'bg-purple-600/80'"
+                              x-text="(activeSignal && activeSignal.risk_check && !activeSignal.risk_check.passed) ? 'VETO' : 'GUARD'"></span>
                     </div>
                     <span class="mt-1 text-[11px] font-bold text-purple-300 tracking-tight whitespace-nowrap">Shield Guard</span>
-                    <span class="text-[9px] px-1.5 py-0.2 rounded-full font-extrabold bg-purple-500/20 text-purple-300 border border-purple-500/40">0.01 Lots</span>
+                    <span class="text-[9px] px-1.5 py-0.2 rounded-full font-extrabold bg-purple-500/20 text-purple-300 border border-purple-500/40"
+                          x-text="getAgentScore('Risk Management Agent')"></span>
 
                     <!-- CYBERPUNK HUD POPOVER -->
                     <div class="absolute bottom-full mb-3.5 left-1/2 -translate-x-1/2 z-50 transition-all duration-200 ease-out text-left"
@@ -1396,6 +1399,8 @@
                         const res = await fetch('/api/scan-now', { method: 'POST' });
                         if (res.ok) {
                             await this.fetchSignals();
+                            await this.fetchCBotStatus();
+                            await this.fetchLivePrices();
                         }
                     } catch (e) {}
                     finally {
