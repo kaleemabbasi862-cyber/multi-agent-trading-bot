@@ -9,10 +9,10 @@ def trigger():
         req = urllib.request.Request(URL, method='POST')
         with urllib.request.urlopen(req) as response:
             res = response.read().decode()
-            print('[Render Deploy Hook] 🚀 Triggered successfully! Response:', res)
+            print('[Render Deploy Hook] [+] Triggered successfully! Response:', res)
             return True
     except Exception as e:
-        print('[Render Deploy Hook] ❌ Error triggering deploy hook:', e)
+        print('[Render Deploy Hook] [!] Error triggering deploy hook:', e)
         return False
 
 if __name__ == '__main__':
