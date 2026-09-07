@@ -12,7 +12,7 @@ ALL_SUPPORTED_PAIRS = [
 ]
 
 DEFAULT_SETTINGS = {
-    "active_pairs": ["XAUUSD", "XAGUSD", "EURUSD", "GBPUSD", "BTCUSD"],
+    "active_pairs": ["EURUSD", "GBPUSD"],
     "auto_trade_enabled": True,
     "scanner_active": True,
     "max_risk_percent": 1.0

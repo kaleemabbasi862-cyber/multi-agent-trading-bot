@@ -13,6 +13,11 @@ if sys.platform == "win32":
 
 load_dotenv()
 
+# --- HARD RISK SAFETY LIMITS ---
+HARD_DRAWDOWN_LIMIT_USD = -5.00     # Maximum allowable unrealized loss in USD
+MIN_BALANCE_FOR_METALS_USD = 200.00 # Minimum account balance required to trade metals/crypto
+MAX_ACTIVE_OPEN_POSITIONS = 1       # Maximum simultaneous open positions
+
 # Real-Time Price Stream from cTrader
 CBOT_LIVE_PRICES = {}
 
@@ -21,13 +26,16 @@ CBOT_STATE = {
     "is_connected": True,
     "mode": "CBOT_BRIDGE_ACTIVE",
     "account_id": "1005621",
-    "balance": 39.61,
-    "equity": 39.61,
+    "balance": 39.05,
+    "equity": 39.05,
     "margin": 0.0,
-    "free_margin": 39.61,
+    "free_margin": 39.05,
     "currency": "USD",
-    "broker": "IC Markets cTrader Live",
+    "broker": "Qartal Markets",
     "open_positions": [],
+    "total_unrealized_pnl": 0.0,
+    "drawdown_halt": False,
+    "is_micro_account": True,
     "last_heartbeat": datetime.datetime.now(datetime.timezone.utc).strftime("%H:%M:%S UTC"),
     "last_heartbeat_timestamp": time.time(),
     "live_prices": {}
@@ -57,7 +65,7 @@ def update_heartbeat(data: dict) -> dict:
     ask = data.get("ask")
     live_p = data.get("live_price") or bid
     if sym and (bid or live_p):
-        sym_clean = str(sym).upper().replace("M", "").replace(".PRO", "")
+        sym_clean = str(sym).upper().replace("M", "").replace(".PRO", "").replace("_I", "")
         p_val = float(live_p or bid)
         bid_val = float(bid or p_val)
         ask_val = float(ask or (bid_val + 0.25))
@@ -69,6 +77,12 @@ def update_heartbeat(data: dict) -> dict:
             "updated_at": now_ts
         }
 
+    open_pos = data.get("open_positions", data.get("positions", []))
+    total_unrealized_pnl = sum(float(p.get("net_profit", 0.0)) for p in open_pos)
+
+    is_drawdown_halt = total_unrealized_pnl <= HARD_DRAWDOWN_LIMIT_USD or (eq - bal) <= HARD_DRAWDOWN_LIMIT_USD
+    is_micro_account = bal < MIN_BALANCE_FOR_METALS_USD
+
     CBOT_STATE["is_connected"] = True
     CBOT_STATE["mode"] = "CBOT_BRIDGE_ACTIVE"
     CBOT_STATE["account_id"] = acc_id
@@ -78,10 +92,17 @@ def update_heartbeat(data: dict) -> dict:
     CBOT_STATE["free_margin"] = round(f_marg, 2)
     CBOT_STATE["currency"] = curr
     CBOT_STATE["broker"] = broker
-    CBOT_STATE["open_positions"] = data.get("open_positions", data.get("positions", []))
+    CBOT_STATE["open_positions"] = open_pos
+    CBOT_STATE["total_unrealized_pnl"] = round(total_unrealized_pnl, 2)
+    CBOT_STATE["drawdown_halt"] = is_drawdown_halt
+    CBOT_STATE["is_micro_account"] = is_micro_account
     CBOT_STATE["last_heartbeat"] = now_str
     CBOT_STATE["last_heartbeat_timestamp"] = now_ts
     CBOT_STATE["live_prices"] = CBOT_LIVE_PRICES
+
+    # If in hard drawdown halt, purge any queued buy/sell orders
+    if is_drawdown_halt:
+        PENDING_CBOT_ORDERS = [o for o in PENDING_CBOT_ORDERS if o.get("action") == "CLOSE"]
 
     # Return state with immediate pending orders for zero-latency dispatch
     state_res = dict(CBOT_STATE)
@@ -101,8 +122,8 @@ def update_heartbeat(data: dict) -> dict:
     return state_res
 
 def get_cbot_live_price(symbol: str) -> dict:
-    """Returns live broker price streamed by cBot if fresh (< 30s)."""
-    sym_clean = symbol.upper().replace("M", "")
+    """Returns live broker price streamed by cBot if fresh."""
+    sym_clean = symbol.upper().replace("M", "").replace(".PRO", "").replace("_I", "")
     item = CBOT_LIVE_PRICES.get(sym_clean)
     if item and (time.time() - item.get("updated_at", 0) < 30):
         return item
@@ -117,7 +138,37 @@ def get_cbot_status() -> dict:
     return CBOT_STATE
 
 def queue_trade_for_cbot(symbol: str, action: str, lot_size: float, sl_price: float, tp_price: float, signal_id: str) -> dict:
-    """Queues an approved trade for the cBot to poll and execute immediately."""
+    """Queues an approved trade for the cBot to poll and execute with strict hard risk validation."""
+    global PENDING_CBOT_ORDERS
+    sym_upper = symbol.upper()
+
+    # Constraint 1: Hard Drawdown Cutoff
+    if CBOT_STATE.get("drawdown_halt") or CBOT_STATE.get("total_unrealized_pnl", 0.0) <= HARD_DRAWDOWN_LIMIT_USD:
+        print(f"[cBot Bridge] [!] REJECTED: Hard Drawdown Cutoff active (${CBOT_STATE.get('total_unrealized_pnl', 0.0)} <= ${HARD_DRAWDOWN_LIMIT_USD}).")
+        return {"status": "REJECTED_HARD_DRAWDOWN_CUTOFF", "error": "Drawdown limit reached"}
+
+    # Constraint 2: Ban Metals/Commodities/Crypto on Micro Balances
+    is_metal_or_crypto = any(m in sym_upper for m in ["XAU", "GOLD", "XAG", "SILVER", "BTC", "OIL", "US30", "ETH"])
+    if is_metal_or_crypto and CBOT_STATE.get("balance", 0.0) < MIN_BALANCE_FOR_METALS_USD:
+        print(f"[cBot Bridge] [!] REJECTED: {symbol} is banned on micro account (${CBOT_STATE.get('balance', 0.0):.2f} < ${MIN_BALANCE_FOR_METALS_USD}).")
+        return {"status": "REJECTED_METALS_BANNED_ON_MICRO_BALANCE", "error": "Metals banned on balance < $200"}
+
+    # Constraint 3: Strict Max 1 Open Position Hard Cap
+    open_positions = CBOT_STATE.get("open_positions", [])
+    if len(open_positions) >= MAX_ACTIVE_OPEN_POSITIONS:
+        print(f"[cBot Bridge] [!] REJECTED: Max open positions ({MAX_ACTIVE_OPEN_POSITIONS}) reached. Currently open: {len(open_positions)}")
+        return {"status": "REJECTED_MAX_OPEN_POSITIONS_REACHED", "error": "Max 1 position allowed"}
+
+    # Constraint 3B: Anti-Hedging / Opposing Trades Check
+    for pos in open_positions:
+        if pos.get("symbol", "").upper() == sym_upper or sym_upper.startswith(pos.get("symbol", "").upper().replace("USD", "")):
+            print(f"[cBot Bridge] [!] REJECTED: Active position already exists on {symbol}. Opposing/hedging prohibited.")
+            return {"status": "REJECTED_OPPOSING_TRADE_EXISTS", "error": "Position already exists on symbol"}
+
+    # Micro account lot size cap
+    if CBOT_STATE.get("balance", 0.0) < MIN_BALANCE_FOR_METALS_USD:
+        lot_size = 0.01
+
     order_item = {
         "id": signal_id,
         "symbol": symbol,

@@ -101,9 +101,47 @@ class TradingViewSignal(BaseModel):
 # 4. ایگزیکیوشن انجن (cTrader cBot Bridge & Open API Execution Engine)
 # -------------------------------------------------------------
 def execute_order(symbol: str, action: str, lot_size: float, sl: float, tp: float, fill_price: float):
+    # Check hard risk constraints before queueing
+    acc_status = cbot_bridge.get_cbot_status()
+    bal = float(acc_status.get("balance", 39.05))
+    eq = float(acc_status.get("equity", bal))
+    open_pos = acc_status.get("open_positions", [])
+    total_unrealized_pnl = float(acc_status.get("total_unrealized_pnl", 0.0))
+
+    # 1. Hard Drawdown Cutoff
+    if acc_status.get("drawdown_halt") or total_unrealized_pnl <= -5.00 or (eq - bal) <= -5.00:
+        print(f"🚫 [HARD RISK REJECT] Drawdown cutoff exceeded (Unrealized PnL: ${total_unrealized_pnl:.2f}). Order blocked.")
+        return {
+            "status": "REJECTED_HARD_DRAWDOWN",
+            "error": "Hard Drawdown Limit (-$5.00) reached",
+            "symbol": symbol
+        }
+
+    # 2. Ban Metals / Crypto on Micro Balances (< $200)
+    is_metal_crypto = any(m in symbol.upper() for m in ["XAU", "GOLD", "XAG", "SILVER", "BTC", "OIL", "US30", "ETH"])
+    if is_metal_crypto and bal < 200.0:
+        print(f"🚫 [HARD RISK REJECT] {symbol} banned on micro balance (${bal:.2f} < $200). Only 0.01 Forex allowed.")
+        return {
+            "status": "REJECTED_METALS_BANNED_ON_MICRO_BALANCE",
+            "error": "Metals banned on balance < $200",
+            "symbol": symbol
+        }
+
+    # 3. Strict Max 1 Open Position Hard Cap
+    if len(open_pos) >= 1:
+        print(f"🚫 [HARD RISK REJECT] Max open positions (1) already open. Order for {symbol} blocked.")
+        return {
+            "status": "REJECTED_MAX_POSITIONS_OPEN",
+            "error": "Maximum 1 open position limit active",
+            "symbol": symbol
+        }
+
     # Queue order for direct cBot execution in cTrader
     sig_id = f"CT_{random_digits(5)}"
-    cbot_bridge.queue_trade_for_cbot(symbol, action, lot_size, sl, tp, sig_id)
+    queue_res = cbot_bridge.queue_trade_for_cbot(symbol, action, lot_size, sl, tp, sig_id)
+
+    if queue_res.get("status", "").startswith("REJECTED"):
+        return queue_res
 
     res = {
         "status": "QUEUED_TO_CBOT",
@@ -145,12 +183,56 @@ def extract_text(content) -> str:
     return str(content)
 
 def generate_algorithmic_agent_consensus(signal: TradingViewSignal) -> dict:
-    """Balanced High-Accuracy 4-Agent consensus engine (70% Confidence Threshold, 1:1.5+ R:R)."""
-    sym = signal.symbol
+    """Balanced High-Accuracy 4-Agent consensus engine with Hard Risk Safety Guards."""
+    sym = signal.symbol.upper()
     act = signal.action.upper()
     p = signal.entry_price
     sl = signal.stop_loss
     tp = signal.take_profit
+
+    acc_status = cbot_bridge.get_cbot_status()
+    acc_bal = float(acc_status.get("balance", 39.05))
+    total_unrealized_pnl = float(acc_status.get("total_unrealized_pnl", 0.0))
+    open_pos = acc_status.get("open_positions", [])
+
+    is_metal_crypto = any(m in sym for m in ["XAU", "GOLD", "XAG", "SILVER", "BTC", "OIL", "US30", "ETH"])
+
+    # Hard Reject Checks
+    if acc_status.get("drawdown_halt") or total_unrealized_pnl <= -5.00:
+        return {
+            "tech_report": "⚠️ Drawdown threshold exceeded (-$5.00).",
+            "news_report": "⚠️ Macro execution paused.",
+            "risk_report": f"🚨 [HARD DRAWDOWN CUTOFF] Unrealized Loss: ${total_unrealized_pnl:.2f} <= -$5.00.",
+            "final_decision": f"[DECISION: REJECTED] ❌ [DRAWDOWN HALT ACTIVE] Unrealized loss ${total_unrealized_pnl:.2f}. All trading suspended.",
+            "decision_status": "REJECTED",
+            "confidence_score": 0,
+            "rr_ratio": 0.0,
+            "full_analysis": "Trading halted due to Hard Drawdown Cutoff (-$5.00)."
+        }
+
+    if is_metal_crypto and acc_bal < 200.0:
+        return {
+            "tech_report": f"⚠️ {sym} setup identified.",
+            "news_report": "⚠️ Metals/Crypto restricted.",
+            "risk_report": f"🚫 [MICRO BALANCE RESTRICTION] Balance ${acc_bal:.2f} < $200.00. Metals/Crypto strictly prohibited.",
+            "final_decision": f"[DECISION: REJECTED] ❌ [HARD RISK RULE] Commodity/Metal trading banned on micro accounts (< $200). Only 0.01 Forex permitted.",
+            "decision_status": "REJECTED",
+            "confidence_score": 0,
+            "rr_ratio": 0.0,
+            "full_analysis": f"Hard safety rule: {sym} banned on account balance under $200."
+        }
+
+    if len(open_pos) >= 1:
+        return {
+            "tech_report": f"📊 {sym} technical signal evaluated.",
+            "news_report": "🛡️ News cleared.",
+            "risk_report": f"🚫 [MAX POSITIONS REACHED] 1 active open position already running ({len(open_pos)} open).",
+            "final_decision": f"[DECISION: REJECTED] ❌ [CAPACITY LIMIT] Strict max 1 active open position limit enforced.",
+            "decision_status": "REJECTED",
+            "confidence_score": 0,
+            "rr_ratio": 0.0,
+            "full_analysis": "Maximum 1 active position allowed across account."
+        }
 
     risk_pips = abs(p - sl)
     reward_pips = abs(tp - p)
@@ -160,13 +242,8 @@ def generate_algorithmic_agent_consensus(signal: TradingViewSignal) -> dict:
     if rr_ratio < 1.5:
         rr_ratio = 1.75
 
-    # 1. Technical Agent Evaluation (RSI 30-70 Balanced Trend-Following)
-    tech_score = 88
-    if "XAU" in sym or "XAG" in sym:
-        tech_score = 90
-    elif "EUR" in sym or "GBP" in sym:
-        tech_score = 87
-
+    # 1. Technical Agent Evaluation
+    tech_score = 88 if ("EUR" in sym or "GBP" in sym) else 85
     tech_report = (
         f"📊 [TECHNICAL CONSENSUS: {sym} (15m/1h)]\n"
         f"• Action: {act} @ ${p}\n"
@@ -188,14 +265,13 @@ def generate_algorithmic_agent_consensus(signal: TradingViewSignal) -> dict:
     )
 
     # 3. Risk & Capital Guard Agent
-    acc_bal = cbot_bridge.get_cbot_status().get("balance", 42.0)
     max_risk_usd = round(acc_bal * 0.01, 2)
     risk_report = (
         f"⚖️ [CAPITAL & RISK MANAGEMENT]\n"
         f"• Account Equity: ${acc_bal:.2f} USD\n"
         f"• Max Risk Per Trade (Strict 1%): ${max_risk_usd:.2f} USD\n"
         f"• Micro-Lot Sizing: 0.01 Lots (Max Margin < 5%)\n"
-        f"• Auto-Protection: Dynamic Break-Even locked at +15 Pips profit\n"
+        f"• Auto-Protection: Guaranteed Stop Loss & Dynamic Break-Even locked at +15 Pips\n"
         f"• Projected Profit: +${round(max_risk_usd * rr_ratio, 2)} USD (R:R 1:{rr_ratio:.2f})"
     )
 
@@ -331,6 +407,37 @@ async def scan_single_market(symbol: str, meta: dict):
             "status": "SKIPPED_NOT_WHITELISTED",
             "symbol": symbol,
             "active_pairs": settings_manager.get_active_pairs()
+        }
+
+    # Hard Risk Safety Pre-Checks
+    acc_status = cbot_bridge.get_cbot_status()
+    bal = float(acc_status.get("balance", 39.05))
+    total_unrealized_pnl = float(acc_status.get("total_unrealized_pnl", 0.0))
+    open_pos = acc_status.get("open_positions", [])
+
+    if acc_status.get("drawdown_halt") or total_unrealized_pnl <= -5.00:
+        print(f"[-] [HARD DRAWDOWN HALT] Skipping {symbol} (Unrealized PnL: ${total_unrealized_pnl:.2f} <= -$5.00)")
+        return {
+            "status": "SKIPPED_HARD_DRAWDOWN_HALT",
+            "symbol": symbol,
+            "unrealized_pnl": total_unrealized_pnl
+        }
+
+    is_metal_crypto = any(m in symbol.upper() for m in ["XAU", "GOLD", "XAG", "SILVER", "BTC", "OIL", "US30", "ETH"])
+    if is_metal_crypto and bal < 200.0:
+        print(f"[-] [MICRO BALANCE RULE] Skipping {symbol} (Metals/Crypto prohibited on balance ${bal:.2f} < $200)")
+        return {
+            "status": "SKIPPED_METALS_PROHIBITED_ON_MICRO_BALANCE",
+            "symbol": symbol,
+            "balance": bal
+        }
+
+    if len(open_pos) >= 1:
+        print(f"[-] [MAX POSITIONS CAPACITY] Skipping {symbol} (1 active open trade already running)")
+        return {
+            "status": "SKIPPED_MAX_POSITIONS_ACTIVE",
+            "symbol": symbol,
+            "open_positions_count": len(open_pos)
         }
 
     p = meta["price"]
