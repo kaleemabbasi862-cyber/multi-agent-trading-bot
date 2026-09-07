@@ -104,7 +104,7 @@ namespace cAlgo.Robots
                             pipSize = Math.Pow(10, -digits);
                         }
 
-                        double minDistance = Math.Max(pipSize * 25, Math.Max(sym.Spread * 2.5, (sym.StopLevel > 0 ? sym.StopLevel * pipSize * 2.0 : pipSize * 20)));
+                        double minDistance = Math.Max(sym.Spread * 2.0, pipSize * 20);
 
                         double? targetSl = pos.StopLoss;
                         double? targetTp = pos.TakeProfit;
@@ -360,8 +360,8 @@ namespace cAlgo.Robots
                     pipSize = Math.Pow(10, -digits);
                 }
 
-                // 2. Dynamic Stop-Level Enforcement (Minimum 2.5x Spread / StopLevel)
-                double minDistance = Math.Max(pipSize * 25, Math.Max(targetSymbol.Spread * 2.5, (targetSymbol.StopLevel > 0 ? targetSymbol.StopLevel * pipSize * 2.0 : pipSize * 20)));
+                // 2. Dynamic Stop-Level Enforcement (Minimum 2.0x Spread / PipSize buffer)
+                double minDistance = Math.Max(targetSymbol.Spread * 2.0, pipSize * 20);
 
                 double currentRefPrice = (tradeType == TradeType.Buy) ? targetSymbol.Ask : targetSymbol.Bid;
                 double validSl = rawSl;

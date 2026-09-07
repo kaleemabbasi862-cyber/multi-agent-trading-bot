@@ -972,7 +972,7 @@ namespace cAlgo.Robots
                         double pipSize = sym.PipSize > 0 ? sym.PipSize : Math.Pow(10, -digits);
                         if (pos.SymbolName.Contains("XAG") || pos.SymbolName.Contains("SILVER")) pipSize = Math.Pow(10, -digits);
 
-                        double minDistance = Math.Max(pipSize * 25, Math.Max(sym.Spread * 2.5, (sym.StopLevel > 0 ? sym.StopLevel * pipSize * 2.0 : pipSize * 20)));
+                        double minDistance = Math.Max(sym.Spread * 2.0, pipSize * 20);
                         double? targetSl = pos.StopLoss;
                         double? targetTp = pos.TakeProfit;
 
@@ -1103,7 +1103,7 @@ namespace cAlgo.Robots
                 double pipSize = targetSymbol.PipSize > 0 ? targetSymbol.PipSize : Math.Pow(10, -digits);
                 if (targetSymbol.Name.Contains("XAG") || targetSymbol.Name.Contains("SILVER")) pipSize = Math.Pow(10, -digits);
 
-                double minDistance = Math.Max(pipSize * 25, Math.Max(targetSymbol.Spread * 2.5, (targetSymbol.StopLevel > 0 ? targetSymbol.StopLevel * pipSize * 2.0 : pipSize * 20)));
+                double minDistance = Math.Max(targetSymbol.Spread * 2.0, pipSize * 20);
                 double currentRefPrice = tradeType == TradeType.Buy ? targetSymbol.Ask : targetSymbol.Bid;
                 double validSl = rawSl, validTp = rawTp;
 
