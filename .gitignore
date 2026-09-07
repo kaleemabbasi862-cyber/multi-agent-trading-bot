@@ -7,4 +7,5 @@ env/
 venv/
 cloudflared.exe
 *.log
+*.db
 .DS_Store

@@ -6,16 +6,11 @@ import datetime
 import traceback
 from pathlib import Path
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Header
 from fastapi.responses import HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.prompts import ChatPromptTemplate
 import uvicorn
-import market_feed
-import mt5_executor
-import ctrader_executor
-import cbot_bridge
 
 if sys.platform == "win32":
     try:
@@ -24,37 +19,26 @@ if sys.platform == "win32":
     except Exception:
         pass
 
-# -------------------------------------------------------------
-# 1. API اور سسٹم کنفیگریشن
-# -------------------------------------------------------------
 load_dotenv()
 
-def get_llm():
-    api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY") or ""
-    if not api_key:
-        api_key = "placeholder"
-    
-    primary = ChatGoogleGenerativeAI(
-        model="gemini-3.5-flash",
-        google_api_key=api_key,
-        temperature=0.2
-    )
-    fallback_lite = ChatGoogleGenerativeAI(
-        model="gemini-3.5-flash-lite",
-        google_api_key=api_key,
-        temperature=0.2
-    )
-    fallback_flash = ChatGoogleGenerativeAI(
-        model="gemini-3.6-flash",
-        google_api_key=api_key,
-        temperature=0.2
-    )
-    
-    return primary.with_fallbacks([fallback_lite, fallback_flash])
+# TradeTalk V2 Modules
+from app.config import settings
+from app.database.models import SignalPayload
+from app.database.db import db
+from app.engine.consensus_engine import consensus_engine
+from app.engine.execution_engine import execution_engine
+from app.services.market_feed_v2 import get_gold_market_snapshot
+from app.services.economic_calendar import economic_calendar
+from app.services.webhook_security import webhook_security
+import cbot_bridge
+import settings_manager
+import copilot_agent
 
-app = FastAPI(title="TradeTalk AI - Autonomous Multi-Agent Trading System")
-
-from fastapi.middleware.cors import CORSMiddleware
+# Initialize FastAPI App
+app = FastAPI(
+    title="TradeTalk AI V2 - Autonomous Multi-Agent Gold Trading System",
+    version=settings.VERSION
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -64,831 +48,188 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-import settings_manager
+# Include Modular V2 Routers
+from app.routers import market, signals, trading, backtest, cbot, system
 
-# Load saved user preferences
-saved_cfg = settings_manager.load_settings()
-
-# -------------------------------------------------------------
-# 2. سسٹم اسٹیٹ اور سگنل ہسٹری (State & History Store)
-# -------------------------------------------------------------
-SYSTEM_STATE = {
-    "auto_trade_enabled": saved_cfg.get("auto_trade_enabled", True),
-    "scanner_active": saved_cfg.get("scanner_active", True),
-    "active_pairs": saved_cfg.get("active_pairs", ["XAUUSD", "XAGUSD", "EURUSD", "GBPUSD", "BTCUSD"]),
-    "paper_balance": 10000.00,
-    "equity": 10000.00,
-    "last_scan_time": None,
-    "total_scans": 0,
-    "total_executed": 0
-}
-
-SIGNALS_HISTORY = []
+app.include_router(market.router)
+app.include_router(signals.router)
+app.include_router(trading.router)
+app.include_router(backtest.router)
+app.include_router(cbot.router)
+app.include_router(system.router)
 
 # -------------------------------------------------------------
-# 3. ڈیٹا ماڈلز
+# Webhook Gateway (TradingView with HMAC & Replay Security)
 # -------------------------------------------------------------
-class TradingViewSignal(BaseModel):
-    symbol: str              # e.g., "EURUSD" or "XAUUSD"
-    action: str              # e.g., "BUY" or "SELL"
-    entry_price: float       # e.g., 1.0850
-    stop_loss: float         # e.g., 1.0820
-    take_profit: float       # e.g., 1.0920
-    timeframe: str           # e.g., "15m"
-    strategy_name: str       # e.g., "Trend_Crossover_v1"
-
-# -------------------------------------------------------------
-# 4. ایگزیکیوشن انجن (Gold-Only Ultra-Safe Execution Engine)
-# -------------------------------------------------------------
-def execute_order(symbol: str, action: str, lot_size: float, sl: float, tp: float, fill_price: float):
-    sym_clean = symbol.upper().replace("M", "").replace(".PRO", "").replace("_I", "")
-    acc_status = cbot_bridge.get_cbot_status()
-    open_pos = acc_status.get("open_positions", [])
-
-    # 1. Strict Instrument Whitelist (XAUUSD / Gold exclusively)
-    if "XAU" not in sym_clean and "GOLD" not in sym_clean:
-        print(f"🚫 [HARD REJECT] {symbol} is rejected. Directive strictly enforces GOLD-ONLY (XAUUSD).")
-        return {
-            "status": "REJECTED_INSTRUMENT_NOT_PERMITTED",
-            "error": "Only XAUUSD (Gold) is permitted per critical directive",
-            "symbol": symbol
-        }
-
-    # 2. Strict Max 1 Concurrent Position Hard Cap
-    if len(open_pos) >= 1:
-        print(f"🚫 [HARD REJECT] Max open positions (1) limit reached. Order for {symbol} blocked.")
-        return {
-            "status": "REJECTED_MAX_POSITIONS_OPEN",
-            "error": "Maximum 1 active position allowed across entire bot",
-            "symbol": symbol
-        }
-
-    # 3. Mandatory Stop Loss & Take Profit Pre-Validation
-    if sl <= 0 or tp <= 0:
-        print(f"🚫 [HARD REJECT] Unprotected order blocked (SL={sl}, TP={tp}).")
-        return {
-            "status": "REJECTED_UNPROTECTED_ORDER",
-            "error": "Orders must have verified broker-compliant SL and TP",
-            "symbol": symbol
-        }
-
-    # 4. Force Exactly 0.01 Micro-Lot
-    lot_size = 0.01
-
-    # Queue order for direct cBot execution in cTrader
-    sig_id = f"CT_{random_digits(5)}"
-    queue_res = cbot_bridge.queue_trade_for_cbot("XAUUSD", action, lot_size, sl, tp, sig_id)
-
-    if queue_res.get("status", "").startswith("REJECTED"):
-        return queue_res
-
-    res = {
-        "status": "QUEUED_TO_CBOT",
-        "broker": "cTrader Bridge (" + acc_status.get("account_type", "DEMO") + ")",
-        "account_id": acc_status.get("account_id", "1005621"),
-        "account_type": acc_status.get("account_type", "DEMO"),
-        "order_id": f"Pending Fill ({sig_id})",
-        "ticket": sig_id,
-        "symbol": "XAUUSD",
-        "action": action.upper(),
-        "lot_size": lot_size,
-        "fill_price": fill_price,
-        "sl": sl,
-        "tp": tp,
-        "executed_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-    }
-    SYSTEM_STATE["total_executed"] += 1
-    return res
-
-def random_digits(n=5):
-    import random
-    return "".join([str(random.randint(0, 9)) for _ in range(n)])
-
-def send_telegram_alert(message: str):
-    print(f"\n[Telegram Notification Sent]:\n{message}")
-
-def extract_text(content) -> str:
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        texts = []
-        for item in content:
-            if isinstance(item, dict) and "text" in item:
-                texts.append(item["text"])
-            elif isinstance(item, str):
-                texts.append(item)
-            else:
-                texts.append(str(item))
-        return "\n".join(texts)
-    return str(content)
-
-def generate_algorithmic_agent_consensus(signal: TradingViewSignal) -> dict:
+@app.post("/webhook/tradingview")
+async def receive_tradingview_webhook(
+    request: Request,
+    x_tradetalk_signature: str = Header(None),
+    x_tradetalk_token: str = Header(None),
+    x_tradetalk_timestamp: str = Header(None)
+):
     """
-    Gold-Only (XAUUSD) Ultra-Safe Consensus Engine:
-    - Minimum Quality / Conviction Score: >= 85%.
-    - Multi-Timeframe Alignment: 15m Signal MUST agree with 1H Trend (EMA 20 > EMA 50 for Buy, EMA 20 < EMA 50 for Sell).
-    - Minimum 1:2.00 Risk-to-Reward Ratio strictly.
-    - High-Impact News & Volatility Filter.
-    - Fixed 0.01 Micro-Lot sizing.
+    Ingests TradingView alerts and runs through 7-Agent Consensus & Risk Veto Gate.
     """
-    sym = signal.symbol.upper().replace("M", "").replace(".PRO", "").replace("_I", "")
-    act = signal.action.upper()
-    p = signal.entry_price
-    sl = signal.stop_loss
-    tp = signal.take_profit
-
-    acc_status = cbot_bridge.get_cbot_status()
-    open_pos = acc_status.get("open_positions", [])
-
-    # 1. Hard Reject: Restricted Non-Gold Instruments
-    if "XAU" not in sym and "GOLD" not in sym:
-        return {
-            "tech_report": f"⚠️ {sym} setup ignored.",
-            "news_report": "⚠️ Instrument restricted.",
-            "risk_report": "🚫 [GOLD DIRECTIVE] Only XAUUSD (Gold) is permitted for trading.",
-            "final_decision": f"[DECISION: REJECTED] ❌ [NON-GOLD BANNED] {sym} rejected. Bot is locked exclusively to XAUUSD.",
-            "decision_status": "REJECTED",
-            "confidence_score": 0,
-            "rr_ratio": 0.0,
-            "full_analysis": f"Gold Directive: {sym} rejected. Trading exclusively on XAUUSD."
-        }
-
-    # 2. Hard Reject: Max 1 Open Position
-    if len(open_pos) >= 1:
-        return {
-            "tech_report": "📊 Gold setup observed.",
-            "news_report": "🛡️ News filter checked.",
-            "risk_report": f"🚫 [CAPACITY LIMIT] 1 active trade already running on Gold ({len(open_pos)} open).",
-            "final_decision": "[DECISION: REJECTED] ❌ [MAX 1 POSITION LIMIT] Strict 1 concurrent open position limit enforced.",
-            "decision_status": "REJECTED",
-            "confidence_score": 0,
-            "rr_ratio": 0.0,
-            "full_analysis": "Maximum 1 active Gold position allowed across account."
-        }
-
-    # 3. Multi-Timeframe Trend Alignment (1H vs 15m)
-    market_feed_data = market_feed.get_live_market_data()
-    pair_meta = market_feed_data.get("XAUUSD", {})
-    ind = pair_meta.get("indicators", {})
-    trend_1h = ind.get("trend_1h", "BULLISH")
-    ema_20_1h = ind.get("ema_20_1h", p)
-    ema_50_1h = ind.get("ema_50_1h", p)
-    rsi_15m = ind.get("rsi", 52.0)
-
-    # Verify 1H EMA Alignment
-    is_1h_bullish = (trend_1h == "BULLISH" or ema_20_1h >= ema_50_1h)
-    is_1h_bearish = (trend_1h == "BEARISH" or ema_20_1h <= ema_50_1h)
-
-    alignment_verified = False
-    if act == "BUY" and is_1h_bullish:
-        alignment_verified = True
-    elif act == "SELL" and is_1h_bearish:
-        alignment_verified = True
-
-    if not alignment_verified:
-        return {
-            "tech_report": f"⚠️ [1H MTF MISALIGNMENT] 15m signal ({act}) opposes 1H Trend ({trend_1h} | EMA20: {ema_20_1h:.2f} vs EMA50: {ema_50_1h:.2f}).",
-            "news_report": "🛡️ News cleared.",
-            "risk_report": "🚫 [MULTI-TIMEFRAME VETO] Trend misalignment between 15m and 1H.",
-            "final_decision": f"[DECISION: REJECTED] ❌ [1H MISALIGNMENT] Head Desk rejected {act} on XAUUSD: 1H Trend is {trend_1h}. Must align EMA 20/50 across 1H & 15m.",
-            "decision_status": "REJECTED",
-            "confidence_score": 50,
-            "rr_ratio": 2.0,
-            "full_analysis": f"Multi-timeframe check failed: 15m {act} contradicts 1H {trend_1h} trend on Gold."
-        }
-
-    # 4. Strict 1:2.00 Risk-to-Reward Hardcoded for Gold
-    risk_pips = abs(p - sl)
-    reward_pips = abs(tp - p)
-    rr_ratio = round(reward_pips / (risk_pips + 1e-6), 2)
-    if rr_ratio < 2.0:
-        rr_ratio = 2.00
-
-    # 5. Conviction Scoring (Threshold >= 85%)
-    tech_score = 90
-    news_score = 88
-    risk_score = 92
-    confidence_score = round(0.40 * tech_score + 0.30 * news_score + 0.30 * risk_score) # 89%
-
-    # Technical Analyst Report
-    tech_report = (
-        f"📊 [GOLD TECHNICAL CONSENSUS: XAUUSD (15m & 1H ALIGNED)]\n"
-        f"• Action: {act} @ ${p:.2f}\n"
-        f"• 1H Multi-Timeframe Trend: VERIFIED ({trend_1h} | EMA 20: ${ema_20_1h:.2f} / EMA 50: ${ema_50_1h:.2f})\n"
-        f"• 15m Momentum: RSI {rsi_15m:.1f} in high-conviction alignment\n"
-        f"• Risk-to-Reward Ratio: 1:{rr_ratio:.2f} (Strict 1:2 Criteria Met)\n"
-        f"• Stop Loss: ${sl:.2f} | Take Profit: ${tp:.2f}\n"
-        f"• Technical Conviction Score: {tech_score}/100"
-    )
-
-    # Fundamental & News Agent
-    news_report = (
-        f"🛡️ [NEWS & MACRO VOLATILITY CLEARANCE]\n"
-        f"• High-Impact News Filter: CLEAR (No CPI / NFP / FOMC lockout within 45m)\n"
-        f"• Gold Liquidity Flow: INSTITUTIONAL NORMAL\n"
-        f"• News Safety Score: {news_score}/100"
-    )
-
-    # Risk & Capital Preserver Agent
-    risk_report = (
-        f"⚖️ [ULTRA-SAFE CAPITAL PRESERVER]\n"
-        f"• Position Sizing: EXACTLY 0.01 Lots (No scaling)\n"
-        f"• Guaranteed Stop Loss: Verified broker distance (>= 3.0x Spread)\n"
-        f"• Dynamic Break-Even: Triggers automatically at +15 Pips (+$1.50)\n"
-        f"• Max Open Positions: 1 (Strictly Enforced)\n"
-        f"• Risk Conviction Score: {risk_score}/100"
-    )
-
-    if confidence_score >= 85 and rr_ratio >= 2.0:
-        decision_status = "APPROVED"
-        final_decision = (
-            f"[DECISION: APPROVED] 🎯 [HIGH-ACCURACY CLEARANCE GRANTED]\n"
-            f"• Confidence Score: {confidence_score}% (Threshold >= 85% Verified)\n"
-            f"• Multi-Timeframe Alignment: 15m {act} aligns with 1H {trend_1h}\n"
-            f"• 0.01 Lots {act} on XAUUSD approved for immediate cTrader execution."
-        )
-    else:
-        decision_status = "REJECTED"
-        final_decision = (
-            f"[DECISION: REJECTED] ❌ [INSUFFICIENT CONVICTION]\n"
-            f"• Confidence Score: {confidence_score}% (Requires >= 85%)\n"
-            f"• Setup discarded to preserve capital."
-        )
-
-    full_analysis = (
-        f"**1. Multi-Timeframe Technical Analysis:**\n{tech_report}\n\n"
-        f"**2. News & Volatility Assessment:**\n{news_report}\n\n"
-        f"**3. Risk & Capital Protection:**\n{risk_report}\n\n"
-        f"**4. Final Head Desk Decision:**\n{final_decision}"
-    )
-
-    return {
-        "tech_report": tech_report,
-        "news_report": news_report,
-        "risk_report": risk_report,
-        "final_decision": final_decision,
-        "decision_status": decision_status,
-        "confidence_score": confidence_score,
-        "rr_ratio": rr_ratio,
-        "full_analysis": full_analysis
-    }
-
-    return {
-        "tech_report": tech_report,
-        "news_report": news_report,
-        "risk_report": risk_report,
-        "final_decision": final_decision,
-        "decision_status": decision_status,
-        "confidence_score": confidence_score,
-        "rr_ratio": rr_ratio,
-        "full_analysis": full_analysis
-    }
-
-# -------------------------------------------------------------
-# 5. ملٹی ایجنٹ متوازی پائپ لائن (Multi-Agent Parallel Pipeline)
-# -------------------------------------------------------------
-async def run_forex_agents(signal: TradingViewSignal) -> dict:
+    raw_body = await request.body()
     try:
-        llm = get_llm()
+        payload_json = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
 
-        # ایجنٹ 1: ٹیکنیکل اینالسٹ (RSI 30-70 Balanced Trend-Following)
-        tech_prompt = ChatPromptTemplate.from_messages([
-            ("system", "آپ فاریکس ٹیکنیکل اینالسٹ ہیں۔ 15m اور 1h پر ٹرینڈ، EMAs اور RSI (30–70) کے الائنمنٹ پر کوالٹی اسکور (1-100) دیں۔ اگر ٹرینڈ متفق ہے اور مومینٹم نارمل ہے تو کوالٹی اسکور 75 سے اوپر دیں۔"),
-            ("human", "سگنل کا جائزہ لیں: Pair: {symbol}, Action: {action}, Entry: {entry}, SL: {sl}, TP: {tp}, TF: {tf}, Strategy: {strategy}")
-        ])
-        tech_chain = tech_prompt | llm
-
-        # ایجنٹ 2: فنڈامنٹل اور نیوز اینالسٹ
-        news_prompt = ChatPromptTemplate.from_messages([
-            ("system", "آپ فاریکس فنڈامنٹل اینالسٹ ہیں۔ ہائی امپیکٹ نیوز (CPI, NFP, Interest Rates) کے اوقات میں ہائی رسک ڈیکلیئر کریں ورنہ کلیئرنس دیں۔"),
-            ("human", "کرنسی پیئر {symbol} کے لیے نیوز رسک کا جائزہ لیں اور کلیئرنس رپورٹ دیں۔")
-        ])
-        news_chain = news_prompt | llm
-
-        # ایجنٹ 3: رسک مینیجر (Strict 1% Risk & 1:1.5+ RR)
-        risk_prompt = ChatPromptTemplate.from_messages([
-            ("system", "آپ فاریکس رسک مینیجر ہیں۔ اکاؤنٹ ایکوٹی پر 1% رسک ($0.40) اور 0.01 مائیکرو لاٹ سائز اور 1:1.5+ رسک ٹو ریوارڈ کا حساب کریں۔"),
-            ("human", "Entry: {entry}, SL: {sl}, TP: {tp}, Pair: {symbol} کے لیے 0.01 لاٹ سائز اور R:R کا جائزہ لیں۔")
-        ])
-        risk_chain = risk_prompt | llm
-
-        # 1, 2 اور 3 ایجنٹس کو متوازی (Parallel) چلائیں
-        async def get_tech():
-            raw = (await tech_chain.ainvoke({
-                "symbol": signal.symbol, "action": signal.action, "entry": signal.entry_price,
-                "sl": signal.stop_loss, "tp": signal.take_profit, "tf": signal.timeframe,
-                "strategy": signal.strategy_name
-            })).content
-            return extract_text(raw)
-
-        async def get_news():
-            raw = (await news_chain.ainvoke({"symbol": signal.symbol})).content
-            return extract_text(raw)
-
-        async def get_risk():
-            raw = (await risk_chain.ainvoke({
-                "symbol": signal.symbol, "entry": signal.entry_price, "sl": signal.stop_loss, "tp": signal.take_profit
-            })).content
-            return extract_text(raw)
-
-        tech_report, news_report, risk_report = await asyncio.gather(
-            get_tech(), get_news(), get_risk()
+    # Security Verification
+    token = x_tradetalk_token or payload_json.get("token") or payload_json.get("secret")
+    is_valid, sec_err = webhook_security.verify_request(
+        raw_body=raw_body,
+        signature=x_tradetalk_signature,
+        token=token,
+        timestamp_header=x_tradetalk_timestamp
+    )
+    if not is_valid:
+        db.log_audit(
+            event_type="WEBHOOK_SECURITY_REJECT",
+            actor="TradingViewWebhook",
+            details=f"Security verification failed: {sec_err}"
         )
+        raise HTTPException(status_code=401, detail=sec_err)
 
-        # ایجنٹ 4: چیف مینیجر (70% کنفیڈنس اور 1:1.5+ R:R پر حتمی فیصلہ)
-        manager_prompt = ChatPromptTemplate.from_messages([
-            ("system", "آپ ٹریڈنگ ڈیسک کے ہیڈ ہیں۔ اگر ٹیکنیکل اور رسک شرائط مکمل ہیں (R:R کم از کم 1:1.5 اور کنفیڈنس اسکور >= 70%) تو [DECISION: APPROVED] دیں تاکہ خودکار ٹریڈ لگ سکے۔"),
-            ("human", "پیئر: {symbol}, ایکشن: {action}, لاٹ: 0.01\n\nٹیکنیکل رپورٹ:\n{tech}\n\nنیوز رپورٹ:\n{news}\n\nرسک رپورٹ:\n{risk}\n\nحتمی فیصلہ دیں:")
-        ])
-        manager_chain = manager_prompt | llm
-        manager_raw = (await manager_chain.ainvoke({
-            "symbol": signal.symbol, "action": signal.action, "tech": tech_report, "news": news_report, "risk": risk_report
-        })).content
-        final_decision = extract_text(manager_raw)
+    # Normalize Payload
+    symbol = payload_json.get("symbol", "XAUUSD")
+    action = payload_json.get("action") or payload_json.get("signal") or "BUY"
+    action = action.upper()
+    entry = float(payload_json.get("entry_price") or payload_json.get("price") or 2750.0)
+    sl = float(payload_json.get("stop_loss") or payload_json.get("sl") or (entry - 6.0 if action == "BUY" else entry + 6.0))
+    tp = float(payload_json.get("take_profit") or payload_json.get("tp") or (entry + 12.0 if action == "BUY" else entry - 12.0))
+    tf = payload_json.get("timeframe", "15m")
+    strat = payload_json.get("strategy_name", "TradingView_Webhook_v2")
 
-        decision_status = "APPROVED" if "APPROVED" in final_decision.upper() else "REJECTED"
-
-        full_analysis = (
-            f"**1. Technical Analysis:**\n{tech_report}\n\n"
-            f"**2. News Analysis:**\n{news_report}\n\n"
-            f"**3. Risk Assessment:**\n{risk_report}\n\n"
-            f"**4. Final Desk Decision:**\n{final_decision}"
-        )
-
-        return {
-            "tech_report": tech_report,
-            "news_report": news_report,
-            "risk_report": risk_report,
-            "final_decision": final_decision,
-            "decision_status": decision_status,
-            "full_analysis": full_analysis
-        }
-    except Exception as e:
-        print(f"[!] Forex agents note ({e}) -> Activating High-Accuracy Balanced Consensus Engine.")
-        return generate_algorithmic_agent_consensus(signal)
-
-
-# -------------------------------------------------------------
-# 6. خودکار مارکیٹ اسکینر پائپ لائن (Gold-Only Ultra-Safe Scanner)
-# -------------------------------------------------------------
-async def scan_single_market(symbol: str, meta: dict):
-    sym_clean = symbol.upper().replace("M", "").replace(".PRO", "").replace("_I", "")
-
-    # 1. Strict Instrument Whitelist (XAUUSD / Gold exclusively)
-    if "XAU" not in sym_clean and "GOLD" not in sym_clean:
-        print(f"[-] [GOLD DIRECTIVE] Skipping {symbol} (Only XAUUSD Gold is permitted)")
-        return {
-            "status": "SKIPPED_INSTRUMENT_BANNED",
-            "symbol": symbol
-        }
-
-    # 2. Strict Max 1 Open Position Capacity Pre-Check
-    acc_status = cbot_bridge.get_cbot_status()
-    open_pos = acc_status.get("open_positions", [])
-    if len(open_pos) >= 1:
-        print(f"[-] [CAPACITY LIMIT] Skipping Gold scan (1 active trade already open)")
-        return {
-            "status": "SKIPPED_MAX_POSITIONS_ACTIVE",
-            "symbol": "XAUUSD",
-            "open_positions_count": len(open_pos)
-        }
-
-    p = meta["price"]
-    ind = meta.get("indicators", {})
-    rsi = ind.get("rsi", 50.0)
-    trend_15m = ind.get("trend", "NEUTRAL")
-    trend_1h = ind.get("trend_1h", "BULLISH")
-    ema_20_1h = ind.get("ema_20_1h", p)
-    ema_50_1h = ind.get("ema_50_1h", p)
-
-    # Multi-Timeframe Trend Enforcement: Follow 1H EMA 20/50 directional trend
-    if trend_1h == "BULLISH" or ema_20_1h >= ema_50_1h:
-        action = "BUY"
-    elif trend_1h == "BEARISH" or ema_20_1h <= ema_50_1h:
-        action = "SELL"
-    else:
-        action = "BUY" if rsi >= 50.0 else "SELL"
-
-    # Precision Hardcoded 1:2.00 Risk-to-Reward Ratio for Gold: $6.00 SL / $12.00 TP
-    sl_offset = 6.00  # $6.00 (60 Pips)
-    tp_offset = 12.00 # $12.00 (120 Pips - 1:2.00 R:R)
-
-    sl = round(p - sl_offset if action == "BUY" else p + sl_offset, 2)
-    tp = round(p + tp_offset if action == "BUY" else p - tp_offset, 2)
-
-    signal = TradingViewSignal(
-        symbol="XAUUSD",
+    sig_model = SignalPayload(
+        id=payload_json.get("id") or f"TV_{uuid.uuid4().hex[:8].upper()}",
+        symbol=symbol,
         action=action,
+        entry_price=entry,
+        stop_loss=sl,
+        take_profit=tp,
+        timeframe=tf,
+        strategy_name=strat,
+        source="TRADINGVIEW_WEBHOOK"
+    )
+
+    market_data = get_gold_market_snapshot()
+    macro_data = economic_calendar.get_macro_status()
+    acc_status = cbot_bridge.get_cbot_status()
+
+    # Process through 7 Agents + Guardian
+    consensus_res = consensus_engine.process_signal(
+        signal=sig_model,
+        market_data=market_data,
+        macro_data=macro_data,
+        account_status=acc_status
+    )
+
+    # Dispatch to Paper, Demo, or Live Execution
+    if consensus_res.decision_status == "APPROVED":
+        exec_res = execution_engine.dispatch_trade(consensus_res, sig_model)
+        consensus_res.execution_result = exec_res
+
+    return {
+        "status": consensus_res.decision_status,
+        "score": consensus_res.decision_score,
+        "signal_id": consensus_res.signal_id,
+        "symbol": consensus_res.symbol,
+        "action": consensus_res.direction,
+        "analysis": consensus_res.full_analysis,
+        "execution": consensus_res.execution_result
+    }
+
+# -------------------------------------------------------------
+# Copilot & Autonomous Scanner Endpoints
+# -------------------------------------------------------------
+class CopilotChatRequest(BaseModel):
+    message: str
+
+@app.post("/api/copilot/chat")
+async def chat_copilot(req: CopilotChatRequest):
+    sys_state = {
+        "auto_trade_enabled": settings_manager.load_settings().get("auto_trade_enabled", True),
+        "trading_mode": execution_engine.mode,
+        "active_pairs": ["XAUUSD"]
+    }
+    return copilot_agent.execute_copilot_intent(req.message, sys_state)
+
+@app.post("/api/scan-now")
+async def trigger_manual_scan():
+    """Triggers immediate market scan on XAUUSD Gold."""
+    market_data = get_gold_market_snapshot(force_refresh=True)
+    p = market_data["price"]
+    trend = market_data["indicators"]["trend"]
+    act = "BUY" if trend == "BULLISH" else "SELL"
+    sl = p - 6.0 if act == "BUY" else p + 6.0
+    tp = p + 12.0 if act == "BUY" else p - 12.0
+
+    sig = SignalPayload(
+        symbol="XAUUSD",
+        action=act,
         entry_price=p,
         stop_loss=sl,
         take_profit=tp,
         timeframe="15m & 1H",
-        strategy_name=f"GoldSniper_MTF_1H (RSI:{rsi:.0f})"
+        strategy_name="GoldSniper_Autonomous_Scan",
+        source="MARKET_SCANNER"
     )
 
-    signal_id = str(uuid.uuid4())[:8]
-    timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    macro_data = economic_calendar.get_macro_status()
+    acc_status = cbot_bridge.get_cbot_status()
 
-    agent_data = await run_forex_agents(signal)
-    full_analysis = agent_data["full_analysis"]
-    decision_status = agent_data["decision_status"]
-
-    execution_result = None
-    if decision_status == "APPROVED" and SYSTEM_STATE["auto_trade_enabled"]:
-        lot_size = 0.01  # Safe micro-lot strictly
-        execution_result = execute_order(
-            symbol="XAUUSD",
-            action=action,
-            lot_size=lot_size,
-            sl=sl,
-            tp=tp,
-            fill_price=p
-        )
-
-    record = {
-        "id": execution_result["ticket"] if execution_result and "ticket" in execution_result else signal_id,
-        "timestamp": timestamp,
-        "symbol": "XAUUSD",
-        "action": action,
-        "entry_price": p,
-        "stop_loss": sl,
-        "take_profit": tp,
-        "timeframe": "15m & 1H",
-        "strategy_name": signal.strategy_name,
-        "decision_status": decision_status,
-        "tech_report": agent_data["tech_report"],
-        "news_report": agent_data["news_report"],
-        "risk_report": agent_data["risk_report"],
-        "final_decision": agent_data["final_decision"],
-        "analysis": full_analysis,
-        "ctrader": execution_result
-    }
-
-    SIGNALS_HISTORY.insert(0, record)
-    if len(SIGNALS_HISTORY) > 25:
-        SIGNALS_HISTORY.pop()
-
-    return record
-
-async def autonomous_scanner_background_loop():
-    """Background worker that continuously evaluates live market data strictly adhering to user pair whitelist."""
-    print("[*] Autonomous AI Market Scanner background task started.")
-    await asyncio.sleep(5)  # Quick warmup
-    
-    idx = 0
-
-    while True:
-        try:
-            if SYSTEM_STATE["scanner_active"]:
-                active_symbols = settings_manager.get_active_pairs()
-                SYSTEM_STATE["active_pairs"] = active_symbols
-
-                if not active_symbols:
-                    print("[!] Whitelist empty: No pairs selected for auto-trading. Waiting for user selection...")
-                else:
-                    market_data = market_feed.get_live_market_data()
-                    target_sym = active_symbols[idx % len(active_symbols)]
-                    idx += 1
-
-                    if target_sym in market_data:
-                        SYSTEM_STATE["last_scan_time"] = datetime.datetime.now(datetime.timezone.utc).strftime("%H:%M:%S UTC")
-                        SYSTEM_STATE["total_scans"] += 1
-                        print(f"\n[{SYSTEM_STATE['last_scan_time']}] [AUTONOMOUS SCAN] Inspecting {target_sym} (Whitelist: {active_symbols})...")
-                        await scan_single_market(target_sym, market_data[target_sym])
-
-        except Exception as e:
-            print(f"[!] Autonomous scanner cycle error: {e}")
-
-        # Rapid scan interval: evaluate next pair every 15 seconds
-        await asyncio.sleep(15)
-
-# -------------------------------------------------------------
-# 7. FastAPI لائف سائیکل اور روٹس
-# -------------------------------------------------------------
-@app.on_event("startup")
-async def startup_event():
-    asyncio.create_task(autonomous_scanner_background_loop())
-
-@app.get("/api/market-prices")
-@app.get("/api/live-prices")
-def get_market_prices():
-    return market_feed.get_live_market_data()
-
-@app.get("/api/system-state")
-def get_system_state():
-    return SYSTEM_STATE
-
-class MT5ConnectRequest(BaseModel):
-    login: int
-    password: str
-    server: str
-    path: str = None
-
-class CTraderConnectRequest(BaseModel):
-    account_id: str = "1005621"
-    access_token: str = None
-    client_id: str = None
-    client_secret: str = None
-    environment: str = "Live"
-
-from fastapi import Request
-from fastapi.responses import RedirectResponse
-
-@app.get("/api/ctrader/status")
-def get_ctrader_status():
-    return ctrader_executor.get_ctrader_status()
-
-@app.get("/api/ctrader/auth-url")
-def get_ctrader_auth_url(request: Request):
-    # Dynamic redirect URI pointing to callback endpoint
-    host = request.headers.get("host", "multi-agent-trading-bot.onrender.com")
-    proto = "https" if "onrender.com" in host or request.headers.get("x-forwarded-proto") == "https" else "http"
-    redirect_uri = f"{proto}://{host}/api/ctrader/callback"
-    auth_url = ctrader_executor.get_oauth_auth_url(redirect_uri)
-    return {
-        "auth_url": auth_url,
-        "redirect_uri": redirect_uri,
-        "client_id": ctrader_executor.CTRADER_CONFIG["client_id"]
-    }
-
-@app.get("/api/ctrader/callback")
-def handle_ctrader_oauth_callback(code: str = None, error: str = None, request: Request = None):
-    if error:
-        return HTMLResponse(content=f"<h3>cTrader Authorization Error: {error}</h3><a href='/'>Return to Dashboard</a>")
-    
-    if code:
-        host = request.headers.get("host", "multi-agent-trading-bot.onrender.com")
-        proto = "https" if "onrender.com" in host or request.headers.get("x-forwarded-proto") == "https" else "http"
-        redirect_uri = f"{proto}://{host}/api/ctrader/callback"
-        
-        result = ctrader_executor.exchange_oauth_code(code=code, redirect_uri=redirect_uri)
-        if result.get("status") == "SUCCESS":
-            return RedirectResponse(url="/?ctrader_linked=true")
-        else:
-            return HTMLResponse(content=f"<h3>Token Exchange Failed: {result.get('message')}</h3><a href='/'>Return to Dashboard</a>")
-
-    return RedirectResponse(url="/")
-
-@app.post("/api/ctrader/connect")
-def connect_ctrader(req: CTraderConnectRequest):
-    res = ctrader_executor.init_ctrader_connection(
-        account_id=req.account_id,
-        access_token=req.access_token,
-        client_id=req.client_id,
-        client_secret=req.client_secret,
-        environment=req.environment
+    consensus_res = consensus_engine.process_signal(
+        signal=sig,
+        market_data=market_data,
+        macro_data=macro_data,
+        account_status=acc_status
     )
-    return res
 
-# -------------------------------------------------------------
-# cTrader cBot Webhook Bridge Endpoints (Instant Setup, No KYC)
-# -------------------------------------------------------------
-@app.post("/api/cbot/heartbeat")
-@app.post("/api/cbot/stream")
-async def cbot_heartbeat_stream(request: Request):
-    try:
-        data = await request.json()
-    except Exception:
-        data = {}
-    return cbot_bridge.update_heartbeat(data)
+    if consensus_res.decision_status == "APPROVED" and settings_manager.load_settings().get("auto_trade_enabled", True):
+        exec_res = execution_engine.dispatch_trade(consensus_res, sig)
+        consensus_res.execution_result = exec_res
 
-@app.get("/api/cbot/stream")
-@app.get("/api/account/status")
-@app.get("/api/cbot/status")
-def get_cbot_account_status():
-    return cbot_bridge.get_cbot_status()
-
-@app.get("/api/cbot/orders")
-def get_cbot_orders():
-    return cbot_bridge.get_pending_orders_for_cbot()
-
-@app.post("/api/cbot/order-filled")
-def cbot_order_filled(receipt: dict):
-    rec = cbot_bridge.record_cbot_execution(receipt)
-    # Update matched signal in SIGNALS_HISTORY
-    order_id = str(receipt.get("id", ""))
-    pos_id = receipt.get("position_id")
-    ticket_label = f"Position #{pos_id}" if pos_id else f"CT_{pos_id}"
-
-    matched = False
-    for sig in SIGNALS_HISTORY:
-        ct = sig.get("ctrader") or {}
-        if sig.get("id") == order_id or ct.get("ticket") == order_id or order_id in str(ct.get("order_id", "")):
-            sig["ctrader"] = {
-                "status": "FILLED",
-                "order_id": ticket_label,
-                "ticket_id": pos_id,
-                "fill_price": receipt.get("fill_price"),
-                "symbol": receipt.get("symbol"),
-                "action": receipt.get("action")
-            }
-            matched = True
-            break
-
-    if not matched and SIGNALS_HISTORY:
-        for sig in SIGNALS_HISTORY:
-            ct = sig.get("ctrader") or {}
-            if "Pending Fill" in str(ct.get("order_id", "")):
-                sig["ctrader"] = {
-                    "status": "FILLED",
-                    "order_id": ticket_label,
-                    "ticket_id": pos_id,
-                    "fill_price": receipt.get("fill_price"),
-                    "symbol": receipt.get("symbol"),
-                    "action": receipt.get("action")
-                }
-                break
-
-    return rec
-
-@app.post("/api/cbot/close-position")
-def close_cbot_position(data: dict):
-    pos_id = data.get("position_id")
-    if pos_id:
-        return cbot_bridge.queue_close_position(pos_id)
-    return {"status": "ERROR", "message": "Missing position_id"}
-
-@app.post("/api/copilot/chat")
-def copilot_chat_endpoint(data: dict):
-    import copilot_agent
-    msg = data.get("message", "")
-    return copilot_agent.execute_copilot_intent(msg, SYSTEM_STATE)
-
-@app.get("/api/cbot/download")
-def download_cbot_file():
-    path = Path(__file__).parent / "TradeTalkBridge.cs"
-    if path.exists():
-        from fastapi.responses import PlainTextResponse
-        return PlainTextResponse(content=path.read_text(encoding="utf-8"), media_type="text/plain")
-    return PlainTextResponse(content="// TradeTalkBridge.cs not found", status_code=404)
-
-@app.get("/api/mt5/status")
-def get_mt5_status():
-    return mt5_executor.get_mt5_status()
-
-@app.post("/api/mt5/connect")
-def connect_mt5(req: MT5ConnectRequest):
-    res = mt5_executor.init_mt5_connection(
-        login=req.login,
-        password=req.password,
-        server=req.server,
-        path=req.path
-    )
-    return res
-
-@app.post("/api/auto-trade/toggle")
-def toggle_auto_trade():
-    SYSTEM_STATE["auto_trade_enabled"] = not SYSTEM_STATE["auto_trade_enabled"]
-    return {
-        "auto_trade_enabled": SYSTEM_STATE["auto_trade_enabled"],
-        "status": "Auto-Trading ACTIVE" if SYSTEM_STATE["auto_trade_enabled"] else "Auto-Trading PAUSED"
-    }
+    return consensus_res
 
 @app.get("/api/pairs/settings")
-def get_pair_settings():
+async def get_pairs_settings():
     return {
-        "active_pairs": settings_manager.get_active_pairs(),
-        "all_pairs": settings_manager.ALL_SUPPORTED_PAIRS
+        "all_pairs": [{"symbol": "XAUUSD", "name": "Gold / USD", "category": "Metals", "icon": "fa-coins"}],
+        "active_pairs": ["XAUUSD"],
+        "auto_trade_enabled": settings_manager.load_settings().get("auto_trade_enabled", True),
+        "trading_mode": execution_engine.mode
     }
 
 @app.post("/api/pairs/settings")
-def update_pair_settings(data: dict):
-    if "active_pairs" in data and isinstance(data["active_pairs"], list):
-        new_active = settings_manager.set_active_pairs(data["active_pairs"])
-    elif "toggle_pair" in data:
-        new_active = settings_manager.toggle_pair(data["toggle_pair"])
-    elif "pair" in data and "enabled" in data:
-        pair_sym = data["pair"].upper().strip()
-        active = settings_manager.get_active_pairs()
-        if data["enabled"] and pair_sym not in active:
-            active.append(pair_sym)
-        elif not data["enabled"] and pair_sym in active:
-            active.remove(pair_sym)
-        new_active = settings_manager.set_active_pairs(active)
-    else:
-        new_active = settings_manager.get_active_pairs()
-
-    SYSTEM_STATE["active_pairs"] = new_active
+async def update_pairs_settings():
     return {
-        "status": "SUCCESS",
-        "active_pairs": new_active,
-        "all_pairs": settings_manager.ALL_SUPPORTED_PAIRS
+        "active_pairs": ["XAUUSD"],
+        "message": "System is locked strictly to Gold (XAUUSD) Sniper Mode"
     }
 
-@app.post("/api/scan-now")
-async def trigger_manual_scan():
-    market_data = market_feed.get_live_market_data()
-    results = []
-    active_symbols = settings_manager.get_active_pairs()
-    for sym in active_symbols:
-        if sym in market_data:
-            rec = await scan_single_market(sym, market_data[sym])
-            results.append(rec)
-    return {
-        "status": "Scan Complete",
-        "active_pairs": active_symbols,
-        "evaluated_pairs": len(results)
-    }
-
-@app.post("/webhook/tradingview")
-async def receive_tradingview_alert(signal: TradingViewSignal):
-    print(f"\n--- TradingView سگنل موصول ہوا: {signal.symbol} ({signal.action}) ---")
-    
-    # Whitelist Filter for incoming webhooks
-    if not settings_manager.is_pair_whitelisted(signal.symbol):
-        print(f"[-] [WEBHOOK IGNORED] {signal.symbol} is not active in user pair whitelist.")
-        return {
-            "status": "REJECTED_NOT_WHITELISTED",
-            "message": f"Pair {signal.symbol} is disabled in active pair settings.",
-            "active_pairs": settings_manager.get_active_pairs()
-        }
-
-    timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
-    signal_id = str(uuid.uuid4())[:8]
-
-    try:
-        agent_data = await run_forex_agents(signal)
-        full_analysis = agent_data["full_analysis"]
-        decision_status = agent_data["decision_status"]
-
-        summary_message = f"🚨 **نئی فاریکس ٹریڈ سمری ({signal.symbol}):**\n\n{full_analysis}"
-        send_telegram_alert(summary_message)
-
-        execution_result = None
-        if decision_status == "APPROVED" and SYSTEM_STATE["auto_trade_enabled"]:
-            lot_size = 0.01  # Safe micro-lot
-            execution_result = execute_order(
-                symbol=signal.symbol,
-                action=signal.action.upper(),
-                lot_size=lot_size,
-                sl=signal.stop_loss,
-                tp=signal.take_profit,
-                fill_price=signal.entry_price
-            )
-
-        record = {
-            "id": signal_id,
-            "timestamp": timestamp,
-            "symbol": signal.symbol,
-            "action": signal.action.upper(),
-            "entry_price": signal.entry_price,
-            "stop_loss": signal.stop_loss,
-            "take_profit": signal.take_profit,
-            "timeframe": signal.timeframe,
-            "strategy_name": signal.strategy_name,
-            "decision_status": decision_status,
-            "tech_report": agent_data["tech_report"],
-            "news_report": agent_data["news_report"],
-            "risk_report": agent_data["risk_report"],
-            "final_decision": agent_data["final_decision"],
-            "analysis": full_analysis,
-            "ctrader": execution_result
-        }
-
-        SIGNALS_HISTORY.insert(0, record)
-        if len(SIGNALS_HISTORY) > 25:
-            SIGNALS_HISTORY.pop()
-
-        if decision_status == "APPROVED":
-            return {"status": "Trade Executed", "analysis": full_analysis, "order": execution_result}
-        return {"status": "Trade Rejected by Agents", "analysis": full_analysis}
-
-    except Exception as e:
-        tb = traceback.format_exc()
-        print("ERROR processing alert:\n", tb)
-        return {"status": "Error", "error_message": str(e), "traceback": tb}
-
-@app.get("/api/signals")
-def get_signals():
-    total = len(SIGNALS_HISTORY)
-    approved = sum(1 for s in SIGNALS_HISTORY if s.get("decision_status") == "APPROVED")
-    rejected = sum(1 for s in SIGNALS_HISTORY if s.get("decision_status") == "REJECTED")
-    rate = round((approved / total * 100), 1) if total > 0 else 0
-    return {
-        "signals": SIGNALS_HISTORY,
-        "stats": {
-            "total": total,
-            "approved": approved,
-            "rejected": rejected,
-            "approval_rate": rate
-        },
-        "system_state": SYSTEM_STATE
-    }
-
+# -------------------------------------------------------------
+# Frontend Dashboard View & Health
+# -------------------------------------------------------------
 @app.get("/", response_class=HTMLResponse)
-def serve_dashboard():
-    template_path = Path(__file__).parent / "templates" / "dashboard.html"
-    if template_path.exists():
-        return HTMLResponse(content=template_path.read_text(encoding="utf-8"))
-    return HTMLResponse(content="<h1>TradeTalk AI Dashboard Loading...</h1>")
+async def serve_dashboard():
+    html_path = Path(__file__).resolve().parent / "templates" / "dashboard.html"
+    if html_path.exists():
+        with open(html_path, "r", encoding="utf-8") as f:
+            return f.read()
+    return "<h1>TradeTalk AI Dashboard</h1>"
 
 @app.get("/health")
-def health_check():
-    return {"status": "online", "service": "Multi-Agent Autonomous Trading System"}
+async def health_check():
+    return {
+        "status": "healthy",
+        "service": settings.PROJECT_NAME,
+        "version": settings.VERSION,
+        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
+    }
 
-# -------------------------------------------------------------
-# 8. سرور اسٹارٹ کریں
-# -------------------------------------------------------------
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", "10000"))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run("main_native:app", host="0.0.0.0", port=port, reload=True)

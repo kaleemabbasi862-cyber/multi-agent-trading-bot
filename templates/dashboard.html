@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TradeTalk AI - Autonomous cTrader cBot Bridge & Trading System</title>
-    <!-- Tailwind CSS -->
+    <title>TradeTalk.AI V2 — 7-Agent Quantitative Gold Sniper Terminal</title>
+    <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -12,18 +12,11 @@
             theme: {
                 extend: {
                     colors: {
-                        brand: {
-                            50: '#eef2ff',
-                            500: '#6366f1',
-                            600: '#4f46e5',
-                            700: '#4338ca',
-                            900: '#1e1b4b',
-                        },
                         dark: {
                             bg: '#090d16',
-                            card: '#0f172a',
-                            border: '#1e293b',
-                            hover: '#1e293b'
+                            card: '#111827',
+                            border: '#1f293d',
+                            hover: '#1a2438'
                         }
                     }
                 }
@@ -47,7 +40,6 @@
             50% { opacity: 0.5; transform: scale(1.08); }
         }
         .pulse-live { animation: pulseGlow 2s infinite ease-in-out; }
-        
         .flash-green { animation: flashGreen 1s ease-out; }
         .flash-red { animation: flashRed 1s ease-out; }
         @keyframes flashGreen {
@@ -73,38 +65,28 @@
 
             <!-- DYNAMIC TICKER CARDS -->
             <template x-for="(data, sym) in marketPrices" :key="sym">
-                <div class="flex items-center space-x-3 bg-slate-900/90 border px-3.5 py-1.5 rounded-xl transition-all duration-300 cursor-pointer hover:border-indigo-500/60 shadow-sm"
-                     :class="[
-                         priceFlashes[sym] === 'up' ? 'flash-green border-emerald-500' : 
-                         (priceFlashes[sym] === 'down' ? 'flash-red border-rose-500' : 'border-dark-border')
-                     ]"
-                     @click="selectTickerForSimulator(sym, data)">
+                <div @click="autoFillFromLive(sym)"
+                     class="flex items-center space-x-3 px-3.5 py-1.5 rounded-xl border bg-dark-card/90 transition-all cursor-pointer select-none"
+                     :class="priceFlashes[sym] ? (priceFlashes[sym] === 'up' ? 'flash-green border-emerald-500/80 shadow-lg shadow-emerald-500/10' : 'flash-red border-rose-500/80 shadow-lg shadow-rose-500/10') : 'border-dark-border hover:border-slate-600'">
+                    
                     <div class="flex items-center space-x-1.5">
-                        <span class="font-extrabold text-white text-xs" x-text="sym"></span>
-                        <span class="text-[10px] text-slate-400 font-mono hidden sm:inline" x-text="'(' + data.name.split('/')[0].trim() + ')'"></span>
+                        <i class="fa-solid fa-coins text-amber-400 text-xs"></i>
+                        <span class="font-bold text-white tracking-tight" x-text="data.symbol"></span>
                     </div>
 
-                    <!-- LIVE PRICE -->
-                    <span class="font-mono font-black text-slate-100 text-xs tracking-tight"
-                          x-text="'$' + formatNumber(data.price, sym)"></span>
+                    <div class="flex items-center space-x-2 font-mono">
+                        <span class="font-extrabold text-sm"
+                              :class="data.change_24h >= 0 ? 'text-emerald-400' : 'text-rose-400'"
+                              x-text="'$' + formatNumber(data.price, data.symbol)"></span>
+                        <span class="text-[10px] px-1.5 py-0.5 rounded font-bold"
+                              :class="data.change_24h >= 0 ? 'bg-emerald-500/15 text-emerald-400' : 'bg-rose-500/15 text-rose-400'"
+                              x-text="(data.change_24h >= 0 ? '+' : '') + data.change_24h + '%'"></span>
+                    </div>
 
-                    <!-- 24H CHANGE -->
-                    <span class="text-[10px] font-extrabold px-1.5 py-0.5 rounded flex items-center space-x-0.5"
-                          :class="data.change_24h >= 0 ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20' : 'bg-rose-500/15 text-rose-400 border border-rose-500/20'">
-                        <i class="fa-solid text-[8px]" :class="data.change_24h >= 0 ? 'fa-arrow-trend-up' : 'fa-arrow-trend-down'"></i>
-                        <span x-text="(data.change_24h >= 0 ? '+' : '') + data.change_24h + '%'"></span>
-                    </span>
-
-                    <!-- ACCURATE RSI (14) -->
-                    <span class="text-[10px] px-2 py-0.5 rounded font-mono font-bold border"
-                          :class="data.indicators.rsi > 70 ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' : 
-                                 (data.indicators.rsi < 30 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-slate-800 text-slate-300 border-slate-700')"
-                          x-text="'RSI: ' + data.indicators.rsi"></span>
-
-                    <!-- WHITELIST STATUS INDICATOR -->
-                    <span class="text-[9px] font-black uppercase px-1.5 py-0.5 rounded border tracking-wider"
-                          :class="isPairActive(sym) ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' : 'bg-slate-800/80 text-slate-500 border-slate-700/60'"
-                          x-text="isPairActive(sym) ? 'Active' : 'Disabled'"></span>
+                    <div class="text-[10px] text-slate-400 hidden sm:flex items-center space-x-2 pl-2 border-l border-slate-800">
+                        <span>Spread: <strong class="text-slate-200" x-text="'$' + (data.spread ? data.spread.toFixed(2) : '0.35')"></strong></span>
+                        <span>RSI: <strong :class="data.indicators && data.indicators.rsi > 70 ? 'text-rose-400' : (data.indicators && data.indicators.rsi < 30 ? 'text-emerald-400' : 'text-indigo-300')" x-text="data.indicators ? data.indicators.rsi : '54.0'"></strong></span>
+                    </div>
                 </div>
             </template>
         </div>
@@ -113,25 +95,27 @@
     <!-- 2. TOP NAVIGATION & CONTROLS -->
     <nav class="border-b border-dark-border bg-dark-card/90 backdrop-blur px-4 lg:px-8 py-3.5 flex flex-wrap items-center justify-between gap-3 shadow-xl">
         <div class="flex items-center space-x-3">
-            <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-emerald-400 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-600 via-indigo-600 to-emerald-400 flex items-center justify-center shadow-lg shadow-indigo-500/20">
                 <i class="fa-solid fa-robot text-white text-lg"></i>
             </div>
             <div>
                 <div class="flex flex-wrap items-center gap-1.5">
-                    <span class="font-black text-xl tracking-tight text-white">TradeTalk<span class="text-indigo-400">.AI</span></span>
+                    <span class="font-black text-xl tracking-tight text-white">TradeTalk<span class="text-amber-400">.V2</span></span>
                     <span class="px-2 py-0.5 text-[10px] font-black rounded-full flex items-center space-x-1 bg-amber-500/15 text-amber-300 border border-amber-500/30">
-                        <i class="fa-solid fa-coins text-amber-400 text-[9px]"></i>
-                        <span>🥇 Gold Sniper (XAUUSD Only)</span>
+                        <i class="fa-solid fa-crosshairs text-amber-400 text-[9px]"></i>
+                        <span>7-Agent Quantitative Engine</span>
                     </span>
-                    <span class="px-2 py-0.5 text-[10px] font-black rounded-full flex items-center space-x-1 bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
-                        <i class="fa-solid fa-crosshairs text-indigo-400 text-[9px]"></i>
-                        <span>🎯 Quality Score >= 85% | 1:2 R:R</span>
-                    </span>
-                    <span class="px-2 py-0.5 text-[10px] font-black rounded-full flex items-center space-x-1"
-                          :class="cbotStatus.is_live ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'">
-                        <i class="fa-solid" :class="cbotStatus.is_live ? 'fa-satellite-dish' : 'fa-flask'"></i>
-                        <span x-text="cbotStatus.is_live ? 'Live Real Funds' : 'cTrader Demo (Paper Test)'"></span>
-                    </span>
+                    
+                    <!-- 3-STATE TRADING MODE BADGE -->
+                    <div class="flex items-center space-x-1 px-1 py-0.5 rounded-full bg-slate-900 border border-slate-700 text-[10px]">
+                        <button @click="switchTradingMode('PAPER')" class="px-2 py-0.5 rounded-full font-bold transition"
+                                :class="tradingMode === 'PAPER' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'">PAPER</button>
+                        <button @click="switchTradingMode('DEMO')" class="px-2 py-0.5 rounded-full font-bold transition"
+                                :class="tradingMode === 'DEMO' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-slate-200'">DEMO</button>
+                        <button @click="promptLiveMode()" class="px-2 py-0.5 rounded-full font-bold transition"
+                                :class="tradingMode === 'LIVE' ? 'bg-rose-600 text-white animate-pulse' : 'text-slate-400 hover:text-rose-300'">LIVE</button>
+                    </div>
+
                     <template x-if="cbotStatus.circuit_breaker_active">
                         <span class="px-2 py-0.5 text-[10px] font-black rounded-full flex items-center space-x-1 bg-rose-500/20 text-rose-300 border border-rose-500/40 animate-pulse">
                             <i class="fa-solid fa-triangle-exclamation text-rose-400"></i>
@@ -139,16 +123,22 @@
                         </span>
                     </template>
                 </div>
-                <p class="text-xs text-slate-400 font-medium">Strict Gold Execution &bull; 0.01 Lots Only &bull; 15m/1H MTF Consensus &bull; cTrader Account #<span x-text="cbotStatus.account_id || '1005621'"></span></p>
+                <p class="text-xs text-slate-400 font-medium">Philosophy: <em>Trade less, trade better</em> &bull; XAUUSD (0.01 Lots) &bull; cTrader Account #<span x-text="cbotStatus.account_id || '1005621'"></span></p>
             </div>
         </div>
 
         <!-- RIGHT CONTROLS -->
         <div class="flex items-center space-x-2.5">
-            <!-- cBOT SETUP / STATUS BUTTON -->
+            <!-- STRATEGY LAB (BACKTEST) BUTTON -->
+            <button @click="showBacktestModal = true" class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition shadow-sm bg-purple-600/15 border-purple-500/40 text-purple-300 hover:bg-purple-600/25">
+                <i class="fa-solid fa-flask"></i>
+                <span>Strategy Lab</span>
+            </button>
+
+            <!-- cBOT SETUP BUTTON -->
             <button @click="showCBotModal = true" class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition shadow-sm bg-emerald-600/15 border-emerald-500/40 text-emerald-300 hover:bg-emerald-600/25">
                 <span class="w-2 h-2 rounded-full bg-emerald-400 pulse-live mr-0.5"></span>
-                <span x-text="'cBot: #' + (cbotStatus.account_id || '1005621') + ' ($' + formatMoney(cbotStatus.balance || 39.61) + ')'"></span>
+                <span x-text="'cBot: #' + (cbotStatus.account_id || '1005621') + ' ($' + formatMoney(cbotStatus.balance || 39.05) + ')'"></span>
             </button>
 
             <!-- AUTO TRADE TOGGLE -->
@@ -159,9 +149,9 @@
             </button>
 
             <!-- SCAN NOW BUTTON -->
-            <button @click="triggerScanNow()" :disabled="scanning" class="flex items-center space-x-1.5 bg-indigo-600 hover:bg-indigo-500 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold transition shadow-md shadow-indigo-600/20 disabled:opacity-50">
+            <button @click="triggerScanNow()" :disabled="scanning" class="flex items-center space-x-1.5 bg-amber-600 hover:bg-amber-500 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold transition shadow-md shadow-amber-600/20 disabled:opacity-50">
                 <i class="fa-solid fa-radar" :class="scanning ? 'fa-spin' : ''"></i>
-                <span x-text="scanning ? 'Scanning...' : 'Scan Markets'"></span>
+                <span x-text="scanning ? 'Scanning...' : 'Scan Gold'"></span>
             </button>
 
             <!-- SIMULATOR BUTTON -->
@@ -175,163 +165,27 @@
     <!-- 3. MAIN DASHBOARD CONTENT -->
     <main class="flex-1 max-w-7xl w-full mx-auto p-4 lg:p-8 space-y-6">
 
-        <!-- PAIR WHITELIST / SELECTION SETTINGS BAR -->
-        <div class="bg-dark-card/95 border border-indigo-500/30 rounded-2xl p-4 shadow-xl backdrop-blur-md relative overflow-hidden">
-            <!-- Background Glow Accent -->
-            <div class="absolute -right-16 -top-16 w-36 h-36 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none"></div>
-
-            <div class="flex flex-wrap items-center justify-between gap-4 relative z-10">
-                <!-- Left: Title & Whitelist Counter -->
-                <div class="flex items-center space-x-3">
-                    <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600/30 to-emerald-500/20 border border-indigo-500/40 text-indigo-300 flex items-center justify-center text-base shadow-sm">
-                        <i class="fa-solid fa-list-check"></i>
-                    </div>
-                    <div>
-                        <div class="flex items-center space-x-2">
-                            <h4 class="text-xs font-black uppercase tracking-wider text-white">Active Pair Whitelist</h4>
-                            <span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-indigo-500/20 text-indigo-300 border border-indigo-500/30"
-                                  x-text="activePairs.length + ' / ' + allSupportedPairs.length + ' Enabled'"></span>
-                            <template x-if="pairToast">
-                                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 animate-fade-in"
-                                      x-text="pairToast"></span>
-                            </template>
-                        </div>
-                        <p class="text-[11px] text-slate-400 font-medium mt-0.5">Toggle which assets the 4 AI consensus agents scan and execute in cTrader.</p>
-                    </div>
-                </div>
-
-                <!-- Center: Multi-Select Pair Badges -->
-                <div class="flex flex-wrap items-center gap-2">
-                    <template x-for="p in allSupportedPairs" :key="p.symbol">
-                        <button @click="togglePair(p.symbol)"
-                                type="button"
-                                class="flex items-center space-x-2 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all shadow-sm cursor-pointer select-none active:scale-95"
-                                :class="isPairActive(p.symbol) ? 
-                                        (p.symbol === 'XAUUSD' ? 'bg-amber-500/20 border-amber-500/50 text-amber-300 shadow-amber-500/10 hover:bg-amber-500/30' : 
-                                        (p.symbol === 'XAGUSD' ? 'bg-slate-200/20 border-slate-300/50 text-slate-100 shadow-slate-300/10 hover:bg-slate-200/30' : 
-                                        (p.symbol === 'BTCUSD' ? 'bg-orange-500/20 border-orange-500/50 text-orange-300 shadow-orange-500/10 hover:bg-orange-500/30' : 
-                                        'bg-indigo-500/20 border-indigo-500/50 text-indigo-300 shadow-indigo-500/10 hover:bg-indigo-500/30'))) : 
-                                        'bg-slate-900/90 border-slate-800 text-slate-500 hover:border-slate-700 hover:text-slate-400 opacity-50'">
-                            
-                            <!-- Checkbox icon -->
-                            <i class="fa-solid text-xs" :class="isPairActive(p.symbol) ? 'fa-square-check text-emerald-400' : 'fa-square opacity-40'"></i>
-                            
-                            <!-- Symbol Icon -->
-                            <i class="fa-solid text-[11px]" :class="p.icon"></i>
-                            
-                            <!-- Symbol Name -->
-                            <span class="font-mono tracking-tight" x-text="p.symbol"></span>
-                            
-                            <!-- Category Badge -->
-                            <span class="text-[9px] font-semibold opacity-70 px-1 py-0.2 rounded bg-black/30" x-text="p.name.split('/')[0].trim()"></span>
-                        </button>
-                    </template>
-                </div>
-
-                <!-- Right: Quick Selection Presets -->
-                <div class="flex items-center space-x-1.5 text-[11px]">
-                    <span class="text-slate-400 text-[10px] uppercase font-bold mr-1 hidden sm:inline">Presets:</span>
-                    <button @click="setPresetPairs(['XAUUSD', 'XAGUSD', 'EURUSD', 'GBPUSD', 'BTCUSD'])" 
-                            class="px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 font-bold border border-slate-700/80 transition active:scale-95">
-                        All (5)
-                    </button>
-                    <button @click="setPresetPairs(['EURUSD', 'GBPUSD'])" 
-                            class="px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-indigo-300 font-bold border border-slate-700/80 transition active:scale-95">
-                        Forex Only
-                    </button>
-                    <button @click="setPresetPairs(['XAUUSD', 'XAGUSD'])" 
-                            class="px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-amber-300 font-bold border border-slate-700/80 transition active:scale-95">
-                        Metals Only
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- cBOT SETUP PROMPT BANNER (IF NOT CONNECTED) -->
-        <template x-if="!cbotStatus.is_connected">
-            <div class="bg-gradient-to-r from-indigo-950/80 via-slate-900 to-slate-900 border border-indigo-500/40 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4 shadow-xl">
-                <div class="flex items-center space-x-3">
-                    <div class="w-10 h-10 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center text-lg">
-                        <i class="fa-solid fa-cloud-arrow-down"></i>
-                    </div>
-                    <div>
-                        <h4 class="font-bold text-white text-sm">Connect cTrader Terminal (Account #1005621)</h4>
-                        <p class="text-xs text-slate-300">Run the lightweight <span class="font-mono text-indigo-300 font-bold">TradeTalkBridge.cs</span> cBot directly in your cTrader Automate tab (Instant, No KYC needed!).</p>
-                    </div>
-                </div>
-                <button @click="showCBotModal = true" class="bg-indigo-600 hover:bg-indigo-500 text-white font-black px-5 py-2.5 rounded-xl text-xs flex items-center space-x-2 shadow-lg shadow-indigo-600/30 transition">
-                    <i class="fa-solid fa-code"></i>
-                    <span>Get cBot Code & Instructions</span>
-                </button>
-            </div>
-        </template>
-
-        <!-- METRICS ROW: CAPITAL & PERFORMANCE -->
-        <div class="grid grid-cols-2 md:grid-cols-5 gap-3.5">
-            <!-- ACCOUNT BALANCE CARD -->
-            <div class="bg-dark-card border border-dark-border rounded-2xl p-4 shadow-sm">
-                <p class="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">cTrader Live Balance</p>
-                <div>
-                    <h3 class="text-xl font-black text-emerald-400 mt-1 font-mono" x-text="'$' + formatMoney(cbotStatus.balance || 39.61) + ' ' + (cbotStatus.currency || 'USD')"></h3>
-                    <span class="text-[10px] text-emerald-400 font-semibold flex items-center mt-0.5">
-                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1 pulse-live"></span>
-                        <span x-text="'Real Equity: $' + formatMoney(cbotStatus.equity || 39.61)"></span>
-                    </span>
-                </div>
-            </div>
-
-            <!-- TOTAL SIGNALS -->
-            <div class="bg-dark-card border border-dark-border rounded-2xl p-4 shadow-sm">
-                <p class="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">Signals Evaluated</p>
-                <h3 class="text-xl font-black text-white mt-1" x-text="stats.total">0</h3>
-                <span class="text-[10px] text-slate-400" x-text="'Auto Scans: ' + (systemState.total_scans || 0)"></span>
-            </div>
-
-            <!-- TRADES EXECUTED -->
-            <div class="bg-dark-card border border-dark-border rounded-2xl p-4 shadow-sm">
-                <p class="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">cTrader Orders Filled</p>
-                <h3 class="text-xl font-black text-emerald-400 mt-1" x-text="stats.approved">0</h3>
-                <span class="text-[10px] text-emerald-400 font-medium">Consensus Cleared</span>
-            </div>
-
-            <!-- TRADES PROTECTED/REJECTED -->
-            <div class="bg-dark-card border border-dark-border rounded-2xl p-4 shadow-sm">
-                <p class="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">Blocked (Protected)</p>
-                <h3 class="text-xl font-black text-rose-400 mt-1" x-text="stats.rejected">0</h3>
-                <span class="text-[10px] text-rose-400 font-medium">Capital Preserved</span>
-            </div>
-
-            <!-- APPROVAL RATE -->
-            <div class="bg-dark-card border border-dark-border rounded-2xl p-4 shadow-sm col-span-2 md:col-span-1">
-                <p class="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">Quality Approval Rate</p>
-                <h3 class="text-xl font-black text-amber-400 mt-1 font-mono" x-text="stats.approval_rate + '%'">0%</h3>
-                <span class="text-[10px] text-slate-400">High Conviction Only</span>
-            </div>
-        </div>
-
         <!-- SIMULATOR / MANUAL SIGNAL DRAWER -->
-        <div x-show="openSimulator" x-transition class="bg-dark-card border border-indigo-500/30 rounded-2xl p-5 shadow-2xl space-y-4">
+        <div x-show="openSimulator" x-transition class="bg-dark-card border border-amber-500/30 rounded-2xl p-5 shadow-2xl space-y-4">
             <div class="flex items-center justify-between border-b border-dark-border pb-3">
                 <div class="flex items-center space-x-2">
-                    <i class="fa-solid fa-sliders text-indigo-400"></i>
-                    <h2 class="font-bold text-white text-sm">TradingView Webhook & Signal Simulator</h2>
-                    <span class="text-xs text-slate-400">(Click any top ticker card to auto-populate live prices)</span>
+                    <i class="fa-solid fa-sliders text-amber-400"></i>
+                    <h2 class="font-bold text-white text-sm">Signal Simulator (7-Agent Consensus Test)</h2>
+                    <span class="text-xs text-slate-400">(Runs signal without executing live order)</span>
                 </div>
                 <div class="flex items-center space-x-2 text-xs">
-                    <button @click="autoFillFromLive('XAUUSD')" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded text-slate-300 transition">Live XAUUSD</button>
-                    <button @click="autoFillFromLive('EURUSD')" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded text-slate-300 transition">Live EURUSD</button>
-                    <button @click="autoFillFromLive('BTCUSD')" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded text-slate-300 transition">Live BTCUSD</button>
+                    <button @click="autoFillFromLive('XAUUSD')" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded text-amber-300 transition">Populate Live XAUUSD</button>
                 </div>
             </div>
 
             <form @submit.prevent="submitTestSignal()" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3 text-xs">
                 <div>
                     <label class="block text-slate-400 font-semibold mb-1">Symbol</label>
-                    <input type="text" x-model="simForm.symbol" required class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 font-bold">
+                    <input type="text" x-model="simForm.symbol" required class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-amber-500 font-bold">
                 </div>
                 <div>
                     <label class="block text-slate-400 font-semibold mb-1">Action</label>
-                    <select x-model="simForm.action" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 font-black"
+                    <select x-model="simForm.action" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-amber-500 font-black"
                             :class="simForm.action === 'BUY' ? 'text-emerald-400' : 'text-rose-400'">
                         <option value="BUY">BUY</option>
                         <option value="SELL">SELL</option>
@@ -339,24 +193,24 @@
                 </div>
                 <div>
                     <label class="block text-slate-400 font-semibold mb-1">Entry Price</label>
-                    <input type="number" step="any" x-model="simForm.entry_price" required class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 font-mono font-bold">
+                    <input type="number" step="any" x-model="simForm.entry_price" required class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-amber-500 font-mono font-bold">
                 </div>
                 <div>
                     <label class="block text-slate-400 font-semibold mb-1">Stop Loss (SL)</label>
-                    <input type="number" step="any" x-model="simForm.stop_loss" required class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 font-mono text-rose-400 font-bold">
+                    <input type="number" step="any" x-model="simForm.stop_loss" required class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-amber-500 font-mono text-rose-400 font-bold">
                 </div>
                 <div>
                     <label class="block text-slate-400 font-semibold mb-1">Take Profit (TP)</label>
-                    <input type="number" step="any" x-model="simForm.take_profit" required class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 font-mono text-emerald-400 font-bold">
+                    <input type="number" step="any" x-model="simForm.take_profit" required class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-amber-500 font-mono text-emerald-400 font-bold">
                 </div>
                 <div>
                     <label class="block text-slate-400 font-semibold mb-1">Timeframe</label>
-                    <input type="text" x-model="simForm.timeframe" required class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500">
+                    <input type="text" x-model="simForm.timeframe" required class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-amber-500">
                 </div>
                 <div class="flex items-end">
-                    <button type="submit" :disabled="loading" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center space-x-2 transition disabled:opacity-50 shadow-md shadow-indigo-600/20">
+                    <button type="submit" :disabled="loading" class="w-full bg-amber-600 hover:bg-amber-500 text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center space-x-2 transition disabled:opacity-50 shadow-md shadow-amber-600/20">
                         <template x-if="!loading">
-                            <span><i class="fa-solid fa-play mr-1"></i> Run Agents</span>
+                            <span><i class="fa-solid fa-play mr-1"></i> Run 7 Agents</span>
                         </template>
                         <template x-if="loading">
                             <span><i class="fa-solid fa-circle-notch fa-spin mr-1"></i> Evaluating...</span>
@@ -366,23 +220,31 @@
             </form>
         </div>
 
-        <!-- 4-AGENT CONSENSUS DESK -->
+        <!-- 7-AGENT QUANTITATIVE DECISION GRID -->
         <div>
             <div class="flex items-center justify-between mb-3">
                 <div class="flex items-center space-x-2">
-                    <i class="fa-solid fa-network-wired text-indigo-400"></i>
-                    <h2 class="font-bold text-white text-base">Active 4-Agent Consensus Desk</h2>
-                    <span class="text-xs text-slate-400">・ Continuous AI Collaboration</span>
+                    <i class="fa-solid fa-network-wired text-amber-400"></i>
+                    <h2 class="font-bold text-white text-base">7-Agent Quantitative Decision Engine</h2>
+                    <span class="text-xs text-slate-400">・ Weighted Consensus & Risk Veto Gate</span>
                 </div>
                 <template x-if="activeSignal">
-                    <div class="text-xs text-slate-300 bg-slate-900 px-3 py-1 rounded-lg border border-dark-border">
-                        Selected: <span class="font-bold text-white" x-text="activeSignal.symbol + ' (' + activeSignal.action + ' @ $' + formatNumber(activeSignal.entry_price, activeSignal.symbol) + ')'"></span>
+                    <div class="flex items-center space-x-2">
+                        <button @click="inspectDecisionDNA(activeSignal.id)" class="px-2.5 py-1 rounded bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-300 font-bold text-xs border border-indigo-500/30 transition flex items-center space-x-1">
+                            <i class="fa-solid fa-dna"></i>
+                            <span>Decision DNA</span>
+                        </button>
+                        <div class="text-xs text-slate-300 bg-slate-900 px-3 py-1 rounded-lg border border-dark-border">
+                            Selected: <span class="font-bold text-white" x-text="activeSignal.symbol + ' (' + activeSignal.direction + ' @ $' + formatNumber(activeSignal.entry_price, activeSignal.symbol) + ')'"></span>
+                        </div>
                     </div>
                 </template>
             </div>
 
+            <!-- 7 AGENTS GRID (4 ON TOP, 3 ON BOTTOM) -->
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <!-- AGENT 1: TECHNICAL ANALYST -->
+                
+                <!-- AGENT 1: TECHNICAL ANALYST (20%) -->
                 <div class="bg-dark-card border border-dark-border hover:border-blue-500/40 transition rounded-2xl p-4 flex flex-col justify-between shadow-md">
                     <div>
                         <div class="flex items-center justify-between mb-2.5">
@@ -391,23 +253,23 @@
                                     <i class="fa-solid fa-chart-candlestick"></i>
                                 </div>
                                 <div>
-                                    <h3 class="font-bold text-xs text-white">Technical Agent</h3>
-                                    <p class="text-[10px] text-slate-400">Price Action & EMAs</p>
+                                    <h3 class="font-bold text-xs text-white">Technical Analyst</h3>
+                                    <p class="text-[10px] text-slate-400">15m & 1H EMAs, RSI 14</p>
                                 </div>
                             </div>
-                            <span class="px-2 py-0.5 text-[9px] font-black rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">AGENT 1</span>
+                            <span class="px-2 py-0.5 text-[9px] font-black rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">20% WEIGHT</span>
                         </div>
-                        <div class="bg-slate-950/80 rounded-xl p-3 text-xs text-slate-300 urdu-text max-h-48 overflow-y-auto custom-scrollbar border border-dark-border/60">
-                            <p x-text="activeSignal ? (activeSignal.tech_report || 'No data') : 'Awaiting real-time market scan or TradingView trigger to analyze live EMA 20/50/200, authentic RSI 14, and support/resistance...'"></p>
+                        <div class="bg-slate-950/80 rounded-xl p-3 text-xs text-slate-300 urdu-text max-h-40 overflow-y-auto custom-scrollbar border border-dark-border/60">
+                            <p x-text="getAgentSummary('Technical Analyst Agent')"></p>
                         </div>
                     </div>
                     <div class="mt-3 pt-2.5 border-t border-dark-border flex items-center justify-between text-[11px] text-slate-400">
-                        <span>Role: Technical Validator</span>
+                        <span>Score: <strong class="text-blue-400" x-text="getAgentScore('Technical Analyst Agent')"></strong></span>
                         <span class="text-blue-400 font-bold flex items-center"><span class="w-1.5 h-1.5 rounded-full bg-blue-400 mr-1 pulse-live"></span> Active</span>
                     </div>
                 </div>
 
-                <!-- AGENT 2: FUNDAMENTAL ANALYST -->
+                <!-- AGENT 2: FUNDAMENTAL & SENTIMENT (15%) -->
                 <div class="bg-dark-card border border-dark-border hover:border-amber-500/40 transition rounded-2xl p-4 flex flex-col justify-between shadow-md">
                     <div>
                         <div class="flex items-center justify-between mb-2.5">
@@ -416,79 +278,153 @@
                                     <i class="fa-solid fa-newspaper"></i>
                                 </div>
                                 <div>
-                                    <h3 class="font-bold text-xs text-white">Fundamental Agent</h3>
-                                    <p class="text-[10px] text-slate-400">Economic News & CPI</p>
+                                    <h3 class="font-bold text-xs text-white">Fundamental & News</h3>
+                                    <p class="text-[10px] text-slate-400">CPI, NFP, FOMC Windows</p>
                                 </div>
                             </div>
-                            <span class="px-2 py-0.5 text-[9px] font-black rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">AGENT 2</span>
+                            <span class="px-2 py-0.5 text-[9px] font-black rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">15% WEIGHT</span>
                         </div>
-                        <div class="bg-slate-950/80 rounded-xl p-3 text-xs text-slate-300 urdu-text max-h-48 overflow-y-auto custom-scrollbar border border-dark-border/60">
-                            <p x-text="activeSignal ? (activeSignal.news_report || 'No data') : 'Continuously screening US Dollar index, interest rate policy divergence, and high-impact economic news events...'"></p>
+                        <div class="bg-slate-950/80 rounded-xl p-3 text-xs text-slate-300 urdu-text max-h-40 overflow-y-auto custom-scrollbar border border-dark-border/60">
+                            <p x-text="getAgentSummary('Fundamental & Sentiment Agent')"></p>
                         </div>
                     </div>
                     <div class="mt-3 pt-2.5 border-t border-dark-border flex items-center justify-between text-[11px] text-slate-400">
-                        <span>Role: News Risk Guard</span>
+                        <span>Score: <strong class="text-amber-400" x-text="getAgentScore('Fundamental & Sentiment Agent')"></strong></span>
                         <span class="text-amber-400 font-bold flex items-center"><span class="w-1.5 h-1.5 rounded-full bg-amber-400 mr-1 pulse-live"></span> Active</span>
                     </div>
                 </div>
 
-                <!-- AGENT 3: RISK MANAGER -->
-                <div class="bg-dark-card border border-dark-border hover:border-purple-500/40 transition rounded-2xl p-4 flex flex-col justify-between shadow-md">
+                <!-- AGENT 3: RISK MANAGEMENT (20% & VETO) -->
+                <div class="bg-dark-card border border-dark-border hover:border-rose-500/40 transition rounded-2xl p-4 flex flex-col justify-between shadow-md relative overflow-hidden">
+                    <div class="absolute -right-4 -top-4 w-24 h-24 bg-rose-500/10 rounded-full blur-2xl pointer-events-none"></div>
                     <div>
                         <div class="flex items-center justify-between mb-2.5">
                             <div class="flex items-center space-x-2.5">
-                                <div class="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center text-sm shadow-inner">
-                                    <i class="fa-solid fa-scale-balanced"></i>
+                                <div class="w-9 h-9 rounded-xl bg-rose-500/10 text-rose-400 flex items-center justify-center text-sm shadow-inner">
+                                    <i class="fa-solid fa-shield-halved"></i>
                                 </div>
                                 <div>
-                                    <h3 class="font-bold text-xs text-white">Risk Manager</h3>
-                                    <p class="text-[10px] text-slate-400">Position & Lot Sizing</p>
+                                    <h3 class="font-bold text-xs text-white">Risk Manager (VETO)</h3>
+                                    <p class="text-[10px] text-slate-400">Capital Guard & 1:2 R:R</p>
                                 </div>
                             </div>
-                            <span class="px-2 py-0.5 text-[9px] font-black rounded-full bg-purple-500/10 text-purple-400 border border-purple-500/20">AGENT 3</span>
+                            <span class="px-2 py-0.5 text-[9px] font-black rounded-full bg-rose-500/15 text-rose-400 border border-rose-500/30">VETO POWER</span>
                         </div>
-                        <div class="bg-slate-950/80 rounded-xl p-3 text-xs text-slate-300 urdu-text max-h-48 overflow-y-auto custom-scrollbar border border-dark-border/60">
-                            <p x-text="activeSignal ? (activeSignal.risk_report || 'No data') : 'Calculates exact lot size adhering to strict 1% risk limit and minimum 1:2 R:R ratio based on live balance...'"></p>
+                        <div class="bg-slate-950/80 rounded-xl p-3 text-xs text-slate-300 urdu-text max-h-40 overflow-y-auto custom-scrollbar border border-dark-border/60">
+                            <p x-text="getAgentSummary('Risk Management Agent')"></p>
                         </div>
                     </div>
                     <div class="mt-3 pt-2.5 border-t border-dark-border flex items-center justify-between text-[11px] text-slate-400">
-                        <span>Rule: Max 1% Risk</span>
-                        <span class="text-purple-400 font-bold flex items-center"><span class="w-1.5 h-1.5 rounded-full bg-purple-400 mr-1 pulse-live"></span> Active</span>
+                        <span>Rule: Max 1 Pos &bull; 0.01 Lot</span>
+                        <span class="text-rose-400 font-bold flex items-center"><span class="w-1.5 h-1.5 rounded-full bg-rose-400 mr-1 pulse-live"></span> Active</span>
                     </div>
                 </div>
 
-                <!-- AGENT 4: HEAD DESK MANAGER -->
-                <div class="bg-dark-card border border-dark-border hover:border-emerald-500/40 transition rounded-2xl p-4 flex flex-col justify-between shadow-md relative overflow-hidden">
-                    <div class="absolute -right-4 -top-4 w-24 h-24 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none"></div>
+                <!-- AGENT 4: MARKET REGIME (15%) -->
+                <div class="bg-dark-card border border-dark-border hover:border-teal-500/40 transition rounded-2xl p-4 flex flex-col justify-between shadow-md">
+                    <div>
+                        <div class="flex items-center justify-between mb-2.5">
+                            <div class="flex items-center space-x-2.5">
+                                <div class="w-9 h-9 rounded-xl bg-teal-500/10 text-teal-400 flex items-center justify-center text-sm shadow-inner">
+                                    <i class="fa-solid fa-wave-square"></i>
+                                </div>
+                                <div>
+                                    <h3 class="font-bold text-xs text-white">Market Regime</h3>
+                                    <p class="text-[10px] text-slate-400">Trend vs Range & Volatility</p>
+                                </div>
+                            </div>
+                            <span class="px-2 py-0.5 text-[9px] font-black rounded-full bg-teal-500/10 text-teal-400 border border-teal-500/20">15% WEIGHT</span>
+                        </div>
+                        <div class="bg-slate-950/80 rounded-xl p-3 text-xs text-slate-300 urdu-text max-h-40 overflow-y-auto custom-scrollbar border border-dark-border/60">
+                            <p x-text="getAgentSummary('Market Regime Agent')"></p>
+                        </div>
+                    </div>
+                    <div class="mt-3 pt-2.5 border-t border-dark-border flex items-center justify-between text-[11px] text-slate-400">
+                        <span>Score: <strong class="text-teal-400" x-text="getAgentScore('Market Regime Agent')"></strong></span>
+                        <span class="text-teal-400 font-bold flex items-center"><span class="w-1.5 h-1.5 rounded-full bg-teal-400 mr-1 pulse-live"></span> Active</span>
+                    </div>
+                </div>
+
+                <!-- AGENT 5: LIQUIDITY / SMC (15%) -->
+                <div class="bg-dark-card border border-dark-border hover:border-indigo-500/40 transition rounded-2xl p-4 flex flex-col justify-between shadow-md">
+                    <div>
+                        <div class="flex items-center justify-between mb-2.5">
+                            <div class="flex items-center space-x-2.5">
+                                <div class="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center text-sm shadow-inner">
+                                    <i class="fa-solid fa-water"></i>
+                                </div>
+                                <div>
+                                    <h3 class="font-bold text-xs text-white">Liquidity / SMC</h3>
+                                    <p class="text-[10px] text-slate-400">Sweeps, BOS, Order Blocks</p>
+                                </div>
+                            </div>
+                            <span class="px-2 py-0.5 text-[9px] font-black rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">15% WEIGHT</span>
+                        </div>
+                        <div class="bg-slate-950/80 rounded-xl p-3 text-xs text-slate-300 urdu-text max-h-40 overflow-y-auto custom-scrollbar border border-dark-border/60">
+                            <p x-text="getAgentSummary('Liquidity & SMC Agent')"></p>
+                        </div>
+                    </div>
+                    <div class="mt-3 pt-2.5 border-t border-dark-border flex items-center justify-between text-[11px] text-slate-400">
+                        <span>Score: <strong class="text-indigo-400" x-text="getAgentScore('Liquidity & SMC Agent')"></strong></span>
+                        <span class="text-indigo-400 font-bold flex items-center"><span class="w-1.5 h-1.5 rounded-full bg-indigo-400 mr-1 pulse-live"></span> Active</span>
+                    </div>
+                </div>
+
+                <!-- AGENT 6: TRADE QUALITY (15%) -->
+                <div class="bg-dark-card border border-dark-border hover:border-emerald-500/40 transition rounded-2xl p-4 flex flex-col justify-between shadow-md">
                     <div>
                         <div class="flex items-center justify-between mb-2.5">
                             <div class="flex items-center space-x-2.5">
                                 <div class="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center text-sm shadow-inner">
+                                    <i class="fa-solid fa-star"></i>
+                                </div>
+                                <div>
+                                    <h3 class="font-bold text-xs text-white">Trade Quality</h3>
+                                    <p class="text-[10px] text-slate-400">Expectancy & Setup Match</p>
+                                </div>
+                            </div>
+                            <span class="px-2 py-0.5 text-[9px] font-black rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">15% WEIGHT</span>
+                        </div>
+                        <div class="bg-slate-950/80 rounded-xl p-3 text-xs text-slate-300 urdu-text max-h-40 overflow-y-auto custom-scrollbar border border-dark-border/60">
+                            <p x-text="getAgentSummary('Trade Quality Agent')"></p>
+                        </div>
+                    </div>
+                    <div class="mt-3 pt-2.5 border-t border-dark-border flex items-center justify-between text-[11px] text-slate-400">
+                        <span>Score: <strong class="text-emerald-400" x-text="getAgentScore('Trade Quality Agent')"></strong></span>
+                        <span class="text-emerald-400 font-bold flex items-center"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1 pulse-live"></span> Active</span>
+                    </div>
+                </div>
+
+                <!-- AGENT 7: HEAD DESK MANAGER (FINAL ARBITER) -->
+                <div class="bg-dark-card border border-dark-border hover:border-amber-500/40 transition rounded-2xl p-4 flex flex-col justify-between shadow-md md:col-span-2 relative overflow-hidden">
+                    <div class="absolute -right-4 -top-4 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl pointer-events-none"></div>
+                    <div>
+                        <div class="flex items-center justify-between mb-2.5">
+                            <div class="flex items-center space-x-2.5">
+                                <div class="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center text-sm shadow-inner">
                                     <i class="fa-solid fa-gavel"></i>
                                 </div>
                                 <div>
-                                    <h3 class="font-bold text-xs text-white">Head Desk Manager</h3>
-                                    <p class="text-[10px] text-slate-400">cTrader Execution Authority</p>
+                                    <h3 class="font-bold text-xs text-white">Head Desk Manager (Agent 7)</h3>
+                                    <p class="text-[10px] text-slate-400">Executive Execution Authority</p>
                                 </div>
                             </div>
-                            <span class="px-2 py-0.5 text-[9px] font-black rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">AGENT 4</span>
+                            <template x-if="activeSignal">
+                                <span class="px-2.5 py-0.5 text-[10px] font-black rounded-full"
+                                      :class="activeSignal.status === 'APPROVED' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : (activeSignal.status === 'BLOCKED' ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30')"
+                                      x-text="activeSignal.status + ' (' + activeSignal.decision_score + '%)'"></span>
+                            </template>
                         </div>
-                        <div class="bg-slate-950/80 rounded-xl p-3 text-xs text-slate-300 urdu-text max-h-48 overflow-y-auto custom-scrollbar border border-dark-border/60">
-                            <p x-text="activeSignal ? (activeSignal.final_decision || 'No data') : 'Reviews all 3 reports to grant final [APPROVED] authorization or [REJECTED] safety block...'"></p>
+                        <div class="bg-slate-950/80 rounded-xl p-3 text-xs text-slate-300 urdu-text max-h-40 overflow-y-auto custom-scrollbar border border-dark-border/60">
+                            <p x-text="activeSignal ? (activeSignal.rejection_reason || 'Consensus criteria satisfied. Execution cleared.') : 'Awaiting market trigger to arbitrate final weighted scoring...'"></p>
                         </div>
                     </div>
                     <div class="mt-3 pt-2.5 border-t border-dark-border flex items-center justify-between text-[11px]">
-                        <template x-if="activeSignal">
-                            <span class="font-black px-2.5 py-0.5 rounded text-[10px]"
-                                  :class="activeSignal.decision_status === 'APPROVED' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'"
-                                  x-text="activeSignal.decision_status"></span>
-                        </template>
-                        <template x-if="!activeSignal">
-                            <span class="text-slate-400 text-[10px]">Awaiting Signal</span>
-                        </template>
-                        <span class="text-emerald-400 font-bold text-[10px]">Head of Desk</span>
+                        <span class="text-slate-400">Approval Threshold: <strong>>= 85% + Risk Pass</strong></span>
+                        <span class="text-amber-400 font-bold">Executive Arbiter</span>
                     </div>
                 </div>
+
             </div>
         </div>
 
@@ -499,7 +435,7 @@
                     <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 pulse-live shadow-sm shadow-emerald-400/50"></span>
                     <h2 class="font-bold text-white text-sm">Active Open Positions (Live cTrader Account #1005621)</h2>
                     <span class="text-xs px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 font-mono font-bold"
-                          x-text="(cbotStatus.open_positions ? cbotStatus.open_positions.length : 0) + ' Open'"></span>
+                          x-text="(cbotStatus.open_positions ? cbotStatus.open_positions.length : 0) + ' / 1 Position'"></span>
                 </div>
                 <div class="flex items-center space-x-2 text-xs">
                     <span class="text-slate-400">Total Live PnL:</span>
@@ -519,7 +455,7 @@
                             <th class="py-3 px-4">Volume</th>
                             <th class="py-3 px-4">Entry</th>
                             <th class="py-3 px-4">SL / TP</th>
-                            <th class="py-3 px-4">AI Guard Status</th>
+                            <th class="py-3 px-4">Auto Break-Even</th>
                             <th class="py-3 px-4 text-right">Net Profit</th>
                             <th class="py-3 px-4 text-right">Manage</th>
                         </tr>
@@ -531,8 +467,8 @@
                                 <td class="py-3 px-4 font-bold text-white whitespace-nowrap" x-text="pos.symbol"></td>
                                 <td class="py-3 px-4 whitespace-nowrap">
                                     <span class="px-2.5 py-0.5 rounded-md font-black text-[10px]"
-                                          :class="pos.trade_type === 'Buy' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'"
-                                          x-text="pos.trade_type ? pos.trade_type.toUpperCase() : 'BUY'"></span>
+                                          :class="pos.type === 'BUY' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'"
+                                          x-text="pos.type || 'BUY'"></span>
                                 </td>
                                 <td class="py-3 px-4 font-mono text-slate-200" x-text="pos.volume"></td>
                                 <td class="py-3 px-4 font-mono text-slate-200" x-text="'$' + formatNumber(pos.entry_price, pos.symbol)"></td>
@@ -542,9 +478,9 @@
                                 </td>
                                 <td class="py-3 px-4 whitespace-nowrap">
                                     <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center space-x-1"
-                                          :class="(pos.be_active || pos.net_profit > 1.5) ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'">
-                                        <i class="fa-solid" :class="(pos.be_active || pos.net_profit > 1.5) ? 'fa-shield-halved text-emerald-400' : 'fa-chart-line text-indigo-400'"></i>
-                                        <span x-text="(pos.be_active || pos.net_profit > 1.5) ? 'Break-Even & Trailing Guard' : 'AI Trailing Active'"></span>
+                                          :class="(pos.net_profit > 1.50) ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'">
+                                        <i class="fa-solid fa-shield-halved text-emerald-400"></i>
+                                        <span x-text="(pos.net_profit > 1.50) ? 'Locked to Break-Even' : 'Monitoring (+15 Pips Target)'"></span>
                                     </span>
                                 </td>
                                 <td class="py-3 px-4 text-right font-mono font-black text-sm">
@@ -562,7 +498,7 @@
                             <tr>
                                 <td colspan="9" class="text-center py-6 text-slate-500 text-xs">
                                     <i class="fa-solid fa-folder-open text-xl mb-1.5 block opacity-40"></i>
-                                    No open market positions currently active on cTrader Live Account #1005621.
+                                    No open market positions currently active on cTrader Account #1005621.
                                 </td>
                             </tr>
                         </template>
@@ -571,19 +507,13 @@
             </div>
         </div>
 
-        <!-- 5. LIVE SIGNALS & AUTO-EXECUTED ORDERS LEDGER -->
-        <div class="bg-dark-card border border-dark-border rounded-2xl overflow-hidden shadow-2xl">
-            <div class="px-6 py-4 border-b border-dark-border flex flex-wrap items-center justify-between gap-3 bg-slate-900/40">
+        <!-- 5. WHY NOT TRADE? (REJECTED OPPORTUNITIES & VETO LOGS) -->
+        <div class="bg-dark-card border border-rose-500/20 rounded-2xl overflow-hidden shadow-2xl">
+            <div class="px-6 py-4 border-b border-dark-border flex flex-wrap items-center justify-between gap-3 bg-rose-950/20">
                 <div class="flex items-center space-x-2">
-                    <span class="w-2.5 h-2.5 rounded-full bg-indigo-500 pulse-live"></span>
-                    <h2 class="font-bold text-white text-sm">Autonomous Signals & cTrader Order Execution Ledger</h2>
-                    <span class="text-xs text-slate-400 font-normal hidden sm:inline">(Live real-time feed)</span>
-                </div>
-                <div class="flex items-center space-x-2 text-xs">
-                    <button @click="fetchSignals()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition flex items-center space-x-1.5">
-                        <i class="fa-solid fa-arrows-rotate" :class="isRefreshing ? 'fa-spin' : ''"></i>
-                        <span>Refresh</span>
-                    </button>
+                    <i class="fa-solid fa-ban text-rose-400"></i>
+                    <h2 class="font-bold text-white text-sm">Why Not Trade? (Rejected & Blocked Opportunities)</h2>
+                    <span class="text-xs text-slate-400">・ Strict Capital Preservation Audit</span>
                 </div>
             </div>
 
@@ -591,56 +521,43 @@
                 <table class="w-full text-left text-xs text-slate-300">
                     <thead class="bg-slate-900/90 text-slate-400 font-semibold uppercase tracking-wider border-b border-dark-border">
                         <tr>
-                            <th class="py-3.5 px-4">Time</th>
-                            <th class="py-3.5 px-4">cTrader Ticket</th>
-                            <th class="py-3.5 px-4">Pair</th>
-                            <th class="py-3.5 px-4">Action</th>
-                            <th class="py-3.5 px-4">Fill Price</th>
-                            <th class="py-3.5 px-4">SL / TP Target</th>
-                            <th class="py-3.5 px-4">Strategy</th>
-                            <th class="py-3.5 px-4">AI Consensus</th>
-                            <th class="py-3.5 px-4 text-right">Audit</th>
+                            <th class="py-3 px-4">Time</th>
+                            <th class="py-3 px-4">Symbol</th>
+                            <th class="py-3 px-4">Action</th>
+                            <th class="py-3 px-4">Entry</th>
+                            <th class="py-3 px-4">Score</th>
+                            <th class="py-3 px-4">Status</th>
+                            <th class="py-3 px-4">Veto / Rejection Reason</th>
+                            <th class="py-3 px-4 text-right">DNA</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-dark-border">
-                        <template x-for="item in signals" :key="item.id">
-                            <tr class="hover:bg-dark-hover transition cursor-pointer" @click="activeSignal = item">
+                        <template x-for="item in rejectedSignals" :key="item.id">
+                            <tr class="hover:bg-dark-hover transition">
                                 <td class="py-3 px-4 text-slate-400 whitespace-nowrap" x-text="formatTime(item.timestamp)"></td>
-                                <td class="py-3 px-4 font-mono text-emerald-400 font-bold whitespace-nowrap">
-                                    <span x-text="item.ctrader ? item.ctrader.order_id : '#' + item.id"></span>
-                                </td>
                                 <td class="py-3 px-4 font-bold text-white whitespace-nowrap" x-text="item.symbol"></td>
                                 <td class="py-3 px-4 whitespace-nowrap">
-                                    <span class="px-2.5 py-0.5 rounded-md font-black text-[10px]"
-                                          :class="item.action === 'BUY' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'"
-                                          x-text="item.action"></span>
+                                    <span class="px-2 py-0.5 rounded font-black text-[10px]"
+                                          :class="item.direction === 'BUY' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'"
+                                          x-text="item.direction"></span>
                                 </td>
-                                <td class="py-3 px-4 font-mono text-slate-200 font-semibold" x-text="'$' + formatNumber(item.entry_price, item.symbol)"></td>
-                                <td class="py-3 px-4 font-mono text-slate-400 text-[11px] whitespace-nowrap">
-                                    <span class="text-rose-400 font-bold" x-text="formatNumber(item.stop_loss, item.symbol)"></span> / 
-                                    <span class="text-emerald-400 font-bold" x-text="formatNumber(item.take_profit, item.symbol)"></span>
-                                </td>
-                                <td class="py-3 px-4 text-slate-300 text-[11px]" x-text="item.strategy_name"></td>
+                                <td class="py-3 px-4 font-mono text-slate-300" x-text="'$' + formatNumber(item.entry_price, item.symbol)"></td>
+                                <td class="py-3 px-4 font-mono font-bold text-amber-400" x-text="item.decision_score + '%'"></td>
                                 <td class="py-3 px-4 whitespace-nowrap">
-                                    <span class="px-2.5 py-1 rounded-md font-bold text-[10px] inline-flex items-center space-x-1"
-                                          :class="item.decision_status === 'APPROVED' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'">
-                                        <i class="fa-solid" :class="item.decision_status === 'APPROVED' ? 'fa-check' : 'fa-xmark'"></i>
-                                        <span x-text="item.decision_status"></span>
-                                    </span>
+                                    <span class="px-2 py-0.5 rounded-md font-bold text-[10px] bg-rose-500/20 text-rose-300 border border-rose-500/30" x-text="item.status"></span>
                                 </td>
+                                <td class="py-3 px-4 text-slate-300 max-w-md truncate" x-text="item.rejection_reason || 'Insufficient conviction score'"></td>
                                 <td class="py-3 px-4 text-right whitespace-nowrap">
-                                    <button @click.stop="viewModal(item)" class="px-2.5 py-1 bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-300 rounded font-semibold text-[11px] transition">
-                                        Audit Report
+                                    <button @click="inspectDecisionDNA(item.id)" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[10px] transition">
+                                        Inspect DNA
                                     </button>
                                 </td>
                             </tr>
                         </template>
-
-                        <template x-if="signals.length === 0">
+                        <template x-if="rejectedSignals.length === 0">
                             <tr>
-                                <td colspan="9" class="text-center py-10 text-slate-500">
-                                    <i class="fa-solid fa-inbox text-3xl mb-2 block opacity-40"></i>
-                                    No signals processed yet. Click "Scan Markets" above to trigger autonomous analysis.
+                                <td colspan="8" class="text-center py-6 text-slate-500 text-xs">
+                                    No rejected opportunities logged in recent history.
                                 </td>
                             </tr>
                         </template>
@@ -650,6 +567,129 @@
         </div>
 
     </main>
+
+    <!-- DECISION DNA INSPECTOR MODAL -->
+    <div x-show="showDNAModal" x-transition class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" style="display: none;">
+        <div @click.away="showDNAModal = false" class="bg-dark-card border border-indigo-500/40 rounded-2xl max-w-3xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] flex flex-col overflow-hidden">
+            <div class="flex items-center justify-between border-b border-dark-border pb-3">
+                <div class="flex items-center space-x-2">
+                    <i class="fa-solid fa-dna text-indigo-400"></i>
+                    <h3 class="font-bold text-white text-base">Immutable Decision DNA Snapshot (<span x-text="activeDNA?.signal_id"></span>)</h3>
+                </div>
+                <button @click="showDNAModal = false" class="text-slate-400 hover:text-white">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            
+            <div class="flex-1 overflow-y-auto custom-scrollbar space-y-4 text-xs font-mono">
+                <div class="bg-slate-950 p-4 rounded-xl border border-dark-border text-slate-300 overflow-x-auto">
+                    <pre><code x-text="JSON.stringify(activeDNA, null, 2)"></code></pre>
+                </div>
+            </div>
+
+            <div class="pt-2 flex justify-end">
+                <button type="button" @click="showDNAModal = false" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold">
+                    Close DNA Inspector
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- STRATEGY LAB (BACKTEST) MODAL -->
+    <div x-show="showBacktestModal" x-transition class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" style="display: none;">
+        <div @click.away="showBacktestModal = false" class="bg-dark-card border border-purple-500/40 rounded-2xl max-w-4xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] flex flex-col overflow-hidden">
+            <div class="flex items-center justify-between border-b border-dark-border pb-3">
+                <div class="flex items-center space-x-2">
+                    <i class="fa-solid fa-flask text-purple-400"></i>
+                    <h3 class="font-bold text-white text-base">Strategy Lab & Walk-Forward Quantitative Backtester</h3>
+                </div>
+                <button @click="showBacktestModal = false" class="text-slate-400 hover:text-white">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <!-- BACKTEST CONTROLS -->
+            <form @submit.prevent="runBacktestLab()" class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs bg-slate-900/80 p-3.5 rounded-xl border border-dark-border">
+                <div>
+                    <label class="block text-slate-400 mb-1">Strategy</label>
+                    <input type="text" x-model="btForm.strategy_name" class="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-white font-bold">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1">Timeframe</label>
+                    <select x-model="btForm.timeframe" class="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-white">
+                        <option value="15m">15m (Sniper Standard)</option>
+                        <option value="1h">1h (Swing Trend)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1">Days Back</label>
+                    <input type="number" x-model="btForm.days_back" min="5" max="60" class="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-white">
+                </div>
+                <div class="flex items-end">
+                    <button type="submit" :disabled="btLoading" class="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-1.5 px-3 rounded transition flex items-center justify-center space-x-1.5">
+                        <i class="fa-solid" :class="btLoading ? 'fa-spinner fa-spin' : 'fa-play'"></i>
+                        <span x-text="btLoading ? 'Simulating...' : 'Run Simulation'"></span>
+                    </button>
+                </div>
+            </form>
+
+            <!-- BACKTEST RESULTS -->
+            <template x-if="btResult">
+                <div class="space-y-4 overflow-y-auto custom-scrollbar flex-1 text-xs">
+                    <div class="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center">
+                        <div class="bg-slate-900 p-2.5 rounded-lg border border-dark-border">
+                            <span class="text-slate-400 block text-[10px]">Total Trades</span>
+                            <span class="font-bold text-white font-mono text-sm" x-text="btResult.total_trades"></span>
+                        </div>
+                        <div class="bg-slate-900 p-2.5 rounded-lg border border-dark-border">
+                            <span class="text-slate-400 block text-[10px]">Win Rate</span>
+                            <span class="font-bold text-emerald-400 font-mono text-sm" x-text="btResult.win_rate + '%'"></span>
+                        </div>
+                        <div class="bg-slate-900 p-2.5 rounded-lg border border-dark-border">
+                            <span class="text-slate-400 block text-[10px]">Profit Factor</span>
+                            <span class="font-bold text-indigo-300 font-mono text-sm" x-text="btResult.profit_factor"></span>
+                        </div>
+                        <div class="bg-slate-900 p-2.5 rounded-lg border border-dark-border">
+                            <span class="text-slate-400 block text-[10px]">Net Profit</span>
+                            <span class="font-bold font-mono text-sm" :class="btResult.net_profit >= 0 ? 'text-emerald-400' : 'text-rose-400'" x-text="(btResult.net_profit >= 0 ? '+' : '') + '$' + btResult.net_profit"></span>
+                        </div>
+                        <div class="bg-slate-900 p-2.5 rounded-lg border border-dark-border">
+                            <span class="text-slate-400 block text-[10px]">Max Drawdown</span>
+                            <span class="font-bold text-rose-400 font-mono text-sm" x-text="'$' + btResult.max_drawdown"></span>
+                        </div>
+                    </div>
+
+                    <!-- SIMULATED TRADES LIST -->
+                    <div class="bg-slate-950 p-3 rounded-xl border border-dark-border max-h-48 overflow-y-auto custom-scrollbar font-mono text-[11px]">
+                        <table class="w-full text-left">
+                            <thead class="text-slate-500 border-b border-slate-800">
+                                <tr>
+                                    <th class="py-1 px-2">Time</th>
+                                    <th class="py-1 px-2">Action</th>
+                                    <th class="py-1 px-2">Entry</th>
+                                    <th class="py-1 px-2">Exit</th>
+                                    <th class="py-1 px-2">Reason</th>
+                                    <th class="py-1 px-2 text-right">PnL</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template x-for="t in (btResult.trades || [])">
+                                    <tr class="border-b border-slate-900">
+                                        <td class="py-1 px-2 text-slate-400" x-text="t.entry_time"></td>
+                                        <td class="py-1 px-2 font-bold" :class="t.action === 'BUY' ? 'text-emerald-400' : 'text-rose-400'" x-text="t.action"></td>
+                                        <td class="py-1 px-2 text-slate-300" x-text="'$' + t.entry_price"></td>
+                                        <td class="py-1 px-2 text-slate-300" x-text="'$' + t.exit_price"></td>
+                                        <td class="py-1 px-2 text-slate-400" x-text="t.close_reason"></td>
+                                        <td class="py-1 px-2 text-right font-bold" :class="t.pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'" x-text="(t.pnl >= 0 ? '+' : '') + '$' + t.pnl"></td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
 
     <!-- 5. cBOT BRIDGE SETUP & CODE MODAL -->
     <div x-show="showCBotModal" x-transition class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" style="display: none;">
@@ -678,546 +718,67 @@
                 </div>
                 <div class="flex items-center justify-between">
                     <span class="text-slate-400">Live Balance:</span>
-                    <span class="font-bold font-mono text-emerald-400 text-sm" x-text="cbotStatus.is_connected ? ('$' + formatMoney(cbotStatus.balance) + ' ' + cbotStatus.currency) : '--'"></span>
+                    <span class="font-bold font-mono text-emerald-400 text-sm" x-text="cbotStatus.is_connected ? ('$' + formatMoney(cbotStatus.balance) + ' ' + (cbotStatus.currency || 'USD')) : '--'"></span>
                 </div>
             </div>
 
-            <!-- 2-STEP INSTRUCTIONS -->
-            <div class="space-y-2 text-xs">
-                <h4 class="font-bold text-white text-xs flex items-center"><i class="fa-solid fa-circle-info text-indigo-400 mr-1.5"></i> How to Run in cTrader (1 Minute Setup):</h4>
-                <ol class="list-decimal list-inside space-y-1.5 text-slate-300 pl-1">
-                    <li>Open your <strong>cTrader Terminal</strong> on Desktop or Web.</li>
-                    <li>Click on the <strong>Automate</strong> tab on the left sidebar.</li>
-                    <li>Click <strong>"+ New cBot"</strong>, delete the default template, and paste the code below.</li>
-                    <li>Click <strong>Build</strong> (F7) and then click <strong>Add Instance -> Run</strong> on any chart!</li>
-                </ol>
-            </div>
-
-            <!-- CODE BLOCK & ACTIONS -->
-            <div class="flex-1 flex flex-col min-h-0 space-y-2">
-                <div class="flex items-center justify-between text-xs">
-                    <span class="text-slate-400 font-semibold">TradeTalkBridge.cs (C# Code)</span>
-                    <div class="space-x-2">
-                        <button @click="copyCBotCode()" class="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-[11px] transition">
-                            <i class="fa-solid fa-copy mr-1"></i> <span x-text="cbotCopied ? 'Copied!' : 'Copy Code'"></span>
-                        </button>
-                        <a href="/api/cbot/download" download="TradeTalkBridge.cs" class="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg font-bold text-[11px] transition">
-                            <i class="fa-solid fa-download mr-1"></i> Download .cs
-                        </a>
-                    </div>
-                </div>
-                <div class="flex-1 bg-slate-950 p-3 rounded-xl border border-dark-border overflow-y-auto custom-scrollbar font-mono text-[11px] text-slate-300 max-h-44">
-                    <pre><code x-text="cbotCode"></code></pre>
-                </div>
-            </div>
-
-            <div class="pt-2 flex justify-end">
-                <button type="button" @click="showCBotModal = false" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold">
+            <!-- ACTIONS -->
+            <div class="flex justify-end space-x-2">
+                <a href="/api/cbot/download" download="TradeTalkBridge.cs" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-xs transition">
+                    <i class="fa-solid fa-download mr-1"></i> Download TradeTalkBridge.cs
+                </a>
+                <button type="button" @click="showCBotModal = false" class="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold">
                     Close
                 </button>
             </div>
         </div>
     </div>
 
-    <!-- 6. REPORT AUDIT MODAL -->
-    <div x-show="showModal" x-transition class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm" style="display: none;">
-        <div @click.away="showModal = false" class="bg-dark-card border border-dark-border rounded-2xl max-w-3xl w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
-            <div class="px-6 py-4 border-b border-dark-border flex items-center justify-between bg-slate-900/80">
-                <div class="flex items-center space-x-3">
-                    <span class="px-2.5 py-1 rounded font-black text-xs"
-                          :class="modalData?.decision_status === 'APPROVED' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'"
-                          x-text="modalData?.decision_status"></span>
-                    <h3 class="font-bold text-white text-base">
-                        <span x-text="modalData?.symbol"></span>
-                        <span class="text-slate-400 text-xs font-normal" x-text="'(' + modalData?.action + ' @ $' + formatNumber(modalData?.entry_price, modalData?.symbol) + ')'"></span>
-                    </h3>
-                </div>
-                <button @click="showModal = false" class="text-slate-400 hover:text-white text-lg transition">
-                    <i class="fa-solid fa-xmark"></i>
-                </button>
-            </div>
-
-            <div class="p-6 overflow-y-auto space-y-4 custom-scrollbar">
-                <!-- PARAMETERS SUMMARY -->
-                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-900/80 p-3.5 rounded-xl border border-dark-border text-xs">
-                    <div><span class="text-slate-400">Stop Loss:</span> <span class="font-bold text-rose-400 font-mono" x-text="'$' + formatNumber(modalData?.stop_loss, modalData?.symbol)"></span></div>
-                    <div><span class="text-slate-400">Take Profit:</span> <span class="font-bold text-emerald-400 font-mono" x-text="'$' + formatNumber(modalData?.take_profit, modalData?.symbol)"></span></div>
-                    <div><span class="text-slate-400">Timeframe:</span> <span class="font-bold text-white" x-text="modalData?.timeframe"></span></div>
-                    <div><span class="text-slate-400">cTrader Ticket:</span> <span class="font-bold text-emerald-400 font-mono" x-text="modalData?.ctrader ? modalData?.ctrader.order_id : '#' + modalData?.id"></span></div>
-                </div>
-
-                <!-- FULL CONSENSUS TEXT -->
-                <div class="bg-slate-950 p-5 rounded-xl border border-dark-border text-xs text-slate-200 urdu-text whitespace-pre-wrap leading-relaxed">
-                    <p x-text="modalData?.analysis || 'No detailed analysis text available.'"></p>
-                </div>
-            </div>
-
-            <div class="px-6 py-3 border-t border-dark-border flex justify-end bg-slate-900/40">
-                <button @click="showModal = false" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-semibold transition">
-                    Close
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <!-- FLOATING AI COPILOT LAUNCHER BUTTON -->
-    <div class="fixed bottom-6 right-6 z-40 flex items-center space-x-3">
-        <button @click="openCopilot = !openCopilot" class="group relative flex items-center space-x-3 px-5 py-3.5 bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-700 hover:from-indigo-500 hover:to-purple-500 text-white rounded-full shadow-2xl shadow-indigo-500/40 border border-indigo-400/40 transition-all duration-300 transform hover:scale-105">
-            <span class="relative flex h-3 w-3">
-                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-400"></span>
-            </span>
-            <i class="fa-solid fa-headset text-base"></i>
-            <span class="font-bold text-xs tracking-wide">AI Copilot</span>
-            <span class="hidden sm:inline-block px-2 py-0.5 rounded-full bg-white/10 text-[10px] font-mono">Voice & Chat</span>
-        </button>
-    </div>
-
-    <!-- COPILOT CHAT & VOICE DRAWER -->
-    <div x-show="openCopilot"
-         x-transition:enter="transition ease-out duration-300"
-         x-transition:enter-start="opacity-0 translate-y-10 scale-95"
-         x-transition:enter-end="opacity-100 translate-y-0 scale-100"
-         x-transition:leave="transition ease-in duration-200"
-         x-transition:leave-start="opacity-100 translate-y-0 scale-100"
-         x-transition:leave-end="opacity-0 translate-y-10 scale-95"
-         class="fixed bottom-24 right-4 sm:right-6 z-50 w-[95vw] sm:w-[440px] max-h-[620px] h-[80vh] flex flex-col bg-slate-950/95 backdrop-blur-xl border border-indigo-500/30 rounded-3xl shadow-2xl shadow-indigo-950/80 overflow-hidden"
-         style="display: none;">
-        
-        <!-- Header -->
-        <div class="px-5 py-4 border-b border-indigo-500/20 bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900 flex items-center justify-between">
-            <div class="flex items-center space-x-3">
-                <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white shadow-md shadow-indigo-500/30">
-                    <i class="fa-solid fa-robot text-sm"></i>
-                </div>
-                <div>
-                    <div class="flex items-center space-x-2">
-                        <h3 class="font-bold text-white text-sm">TradeTalk Copilot</h3>
-                        <span class="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">LIVE</span>
-                    </div>
-                    <p class="text-[11px] text-slate-400">Urdu & English Voice Command Terminal</p>
-                </div>
-            </div>
-            <div class="flex items-center space-x-2">
-                <button @click="ttsEnabled = !ttsEnabled"
-                        :title="ttsEnabled ? 'Voice Replies Active' : 'Voice Replies Muted'"
-                        class="p-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-xs transition"
-                        :class="ttsEnabled ? 'text-indigo-300' : 'text-slate-500'">
-                    <i class="fa-solid" :class="ttsEnabled ? 'fa-volume-high' : 'fa-volume-xmark'"></i>
-                </button>
-                <button @click="openCopilot = false" class="p-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white text-xs transition">
-                    <i class="fa-solid fa-xmark"></i>
-                </button>
-            </div>
-        </div>
-
-        <!-- Messages Container -->
-        <div id="copilotChatBox" class="flex-1 p-4 overflow-y-auto space-y-3 text-xs divide-y-0">
-            <template x-for="(msg, idx) in copilotMessages" :key="idx">
-                <div class="flex flex-col" :class="msg.sender === 'user' ? 'items-end' : 'items-start'">
-                    <div class="max-w-[85%] rounded-2xl px-4 py-2.5 shadow-md"
-                         :class="msg.sender === 'user' ? 'bg-indigo-600 text-white rounded-br-none' : 'bg-slate-900/90 text-slate-200 border border-slate-800 rounded-bl-none'">
-                        <p class="whitespace-pre-line leading-relaxed text-[12px]" x-text="msg.text"></p>
-                        <template x-if="msg.action">
-                            <div class="mt-2 pt-2 border-t border-white/10 flex items-center">
-                                <span class="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30" x-text="'⚡ ' + msg.action"></span>
-                            </div>
-                        </template>
-                    </div>
-                    <span class="text-[9px] text-slate-500 mt-1 px-1" x-text="msg.time"></span>
-                </div>
-            </template>
-
-            <!-- Typing / Processing indicator -->
-            <template x-if="copilotLoading">
-                <div class="flex items-center space-x-2 text-indigo-400 text-xs py-2">
-                    <i class="fa-solid fa-circle-notch fa-spin"></i>
-                    <span class="text-[11px] font-mono">AI analyzing market & dispatching action...</span>
-                </div>
-            </template>
-        </div>
-
-        <!-- Quick Prompts Chips -->
-        <div class="px-4 py-2 bg-slate-950/60 border-t border-slate-900 flex items-center space-x-1.5 overflow-x-auto text-[11px]">
-            <button @click="sendCopilot('گولڈ کا تجزیہ کرو')" class="whitespace-nowrap px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 hover:border-indigo-500/40 transition">
-                📊 گولڈ تجزیہ
-            </button>
-            <button @click="sendCopilot('صرف گولڈ اور سلور ٹریڈ کرو')" class="whitespace-nowrap px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-amber-300 border border-slate-800 hover:border-amber-500/40 transition">
-                🥇 Only Gold & Silver
-            </button>
-            <button @click="sendCopilot('صرف فاریکس ٹریڈ کرو')" class="whitespace-nowrap px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-indigo-300 border border-slate-800 hover:border-indigo-500/40 transition">
-                💶 Only Forex
-            </button>
-            <button @click="sendCopilot('تمام پیئرز فعال کرو')" class="whitespace-nowrap px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-emerald-300 border border-slate-800 hover:border-emerald-500/40 transition">
-                🌐 All 5 Pairs
-            </button>
-            <button @click="sendCopilot('Check my balance and risk status')" class="whitespace-nowrap px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 hover:border-indigo-500/40 transition">
-                💰 Balance & Risk
-            </button>
-            <button @click="sendCopilot('Pause auto-trading')" class="whitespace-nowrap px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 hover:border-indigo-500/40 transition">
-                ⏸️ Pause Auto
-            </button>
-        </div>
-
-        <!-- Voice / Text Input Box -->
-        <div class="p-3 bg-slate-900/90 border-t border-indigo-500/20">
-            <form @submit.prevent="sendCopilot(copilotInput)" class="flex items-center space-x-2">
-                <button type="button"
-                        @click="toggleVoiceRecognition()"
-                        class="w-10 h-10 rounded-xl flex items-center justify-center transition"
-                        :class="voiceListening ? 'bg-rose-600 text-white animate-pulse shadow-lg shadow-rose-600/50' : 'bg-slate-800 hover:bg-slate-700 text-indigo-400'"
-                        :title="voiceListening ? 'Listening (Click to Stop)' : 'Voice Command (Urdu / English)'">
-                    <i class="fa-solid" :class="voiceListening ? 'fa-microphone-lines' : 'fa-microphone'"></i>
-                </button>
-
-                <input type="text"
-                       x-model="copilotInput"
-                       placeholder="بولیں یا لکھیں (مثلاً 'گولڈ اسکین کرو')..."
-                       class="flex-1 bg-slate-950 border border-slate-800 focus:border-indigo-500 text-white rounded-xl px-3.5 py-2.5 text-xs outline-none transition placeholder-slate-500 font-sans" />
-
-                <button type="submit"
-                        :disabled="!copilotInput.trim() || copilotLoading"
-                        class="w-10 h-10 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white flex items-center justify-center transition shadow-md shadow-indigo-600/30">
-                    <i class="fa-solid fa-paper-plane text-xs"></i>
-                </button>
-            </form>
-        </div>
-    </div>
-
-    <!-- FOOTER -->
-    <footer class="border-t border-dark-border py-4 px-8 text-center text-xs text-slate-500">
-        TradeTalk AI &copy; 2026 ・ Autonomous Multi-Agent Forex Trading System ・ cTrader cBot Webhook Bridge
-    </footer>
-
-    <!-- APP JAVASCRIPT LOGIC -->
+    <!-- JAVASCRIPT APP LOGIC (ALPINE.JS) -->
     <script>
         function dashboardApp() {
             return {
-                openCopilot: false,
-                copilotInput: '',
-                copilotLoading: false,
-                voiceListening: false,
-                ttsEnabled: true,
-                recognition: null,
-                copilotMessages: [
-                    {
-                        sender: 'assistant',
-                        text: 'السلام علیکم! میں آپ کا ٹریڈ ٹاک AI کوپائلٹ ہوں۔ آپ بول کر یا لکھ کر مجھ سے مارکیٹ تجزیہ ("گولڈ کا تجزیہ کرو")، بیلنس چیک کرنے یا آٹو ٹریڈ کنٹرول کرنے کا کہہ سکتے ہیں۔\n\nHello! I am your TradeTalk AI Copilot. Speak or type commands like "Analyze Gold" or "Pause auto-trading".',
-                        action: 'READY',
-                        time: 'Just now'
-                    }
-                ],
+                tradingMode: 'PAPER',
                 openSimulator: false,
                 showCBotModal: false,
+                showDNAModal: false,
+                showBacktestModal: false,
                 loading: false,
                 scanning: false,
                 isRefreshing: false,
-                cbotCopied: false,
-                showModal: false,
-                modalData: null,
                 activeSignal: null,
+                activeDNA: null,
                 signals: [],
+                rejectedSignals: [],
                 marketPrices: {},
                 priceFlashes: {},
-                cbotCode: `using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Net;
-using System.Net.Http;
-using System.Text;
-using System.Threading.Tasks;
-using System.Globalization;
-using cAlgo.API;
-using cAlgo.API.Internals;
-
-namespace cAlgo.Robots
-{
-    [Robot(TimeZone = TimeZones.UTC, AccessRights = AccessRights.FullAccess)]
-    public class TradeTalkBridge : Robot
-    {
-        [Parameter("Server URL", DefaultValue = "https://multi-agent-trading-bot.onrender.com")]
-        public string ServerUrl { get; set; }
-
-        [Parameter("Sync Interval (Sec)", DefaultValue = 2, MinValue = 1, MaxValue = 10)]
-        public int SyncInterval { get; set; }
-
-        [Parameter("Enable Auto Execution", DefaultValue = true)]
-        public bool EnableAutoExecution { get; set; }
-
-        [Parameter("Auto Break-Even Pips", DefaultValue = 15.0, MinValue = 5.0, MaxValue = 50.0)]
-        public double AutoBreakEvenPips { get; set; }
-
-        private static readonly HttpClient httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
-        private readonly HashSet<string> _executedTickets = new HashSet<string>();
-
-        protected override void OnStart()
-        {
-            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12 | SecurityProtocolType.Tls11 | SecurityProtocolType.Tls;
-            EnsureAllPositionsProtected();
-            SendTelemetry();
-            Timer.Start(SyncInterval);
-        }
-
-        protected override void OnTimer()
-        {
-            try
-            {
-                EnsureAllPositionsProtected();
-                ApplyAutoBreakEvenProtection();
-                SendTelemetry();
-                if (EnableAutoExecution) PollOrders();
-            }
-            catch {}
-        }
-
-        private void EnsureAllPositionsProtected()
-        {
-            try
-            {
-                foreach (var pos in Positions)
-                {
-                    if (pos.StopLoss == null || pos.TakeProfit == null)
-                    {
-                        Symbol sym = Symbols.GetSymbol(pos.SymbolName) ?? Symbol;
-                        int digits = sym.Digits;
-                        double pipSize = sym.PipSize > 0 ? sym.PipSize : Math.Pow(10, -digits);
-                        if (pos.SymbolName.Contains("XAG") || pos.SymbolName.Contains("SILVER")) pipSize = Math.Pow(10, -digits);
-
-                        double minDistance = Math.Max(sym.Spread * 2.0, pipSize * 20);
-                        double? targetSl = pos.StopLoss;
-                        double? targetTp = pos.TakeProfit;
-
-                        if (pos.TradeType == TradeType.Buy)
-                        {
-                            if (targetSl == null) targetSl = Math.Round(pos.EntryPrice - Math.Max(minDistance, pipSize * 50), digits);
-                            if (targetTp == null) targetTp = Math.Round(pos.EntryPrice + Math.Max(minDistance * 1.8, pipSize * 100), digits);
-                        }
-                        else
-                        {
-                            if (targetSl == null) targetSl = Math.Round(pos.EntryPrice + Math.Max(minDistance, pipSize * 50), digits);
-                            if (targetTp == null) targetTp = Math.Round(pos.EntryPrice - Math.Max(minDistance * 1.8, pipSize * 100), digits);
-                        }
-                        ModifyPosition(pos, targetSl, targetTp);
-                    }
-                }
-            }
-            catch {}
-        }
-
-        private void ApplyAutoBreakEvenProtection()
-        {
-            try
-            {
-                foreach (var pos in Positions)
-                {
-                    if (pos.Pips >= AutoBreakEvenPips)
-                    {
-                        Symbol posSym = Symbols.GetSymbol(pos.SymbolName) ?? Symbol;
-                        double pipSize = posSym.PipSize > 0 ? posSym.PipSize : Math.Pow(10, -posSym.Digits);
-                        if (pos.TradeType == TradeType.Buy)
-                        {
-                            double targetBe = Math.Round(pos.EntryPrice + (1.0 * pipSize), posSym.Digits);
-                            if (pos.StopLoss == null || pos.StopLoss < pos.EntryPrice) ModifyPosition(pos, targetBe, pos.TakeProfit);
-                        }
-                        else
-                        {
-                            double targetBe = Math.Round(pos.EntryPrice - (1.0 * pipSize), posSym.Digits);
-                            if (pos.StopLoss == null || pos.StopLoss > pos.EntryPrice) ModifyPosition(pos, targetBe, pos.TakeProfit);
-                        }
-                    }
-                }
-            }
-            catch {}
-        }
-
-        private async void SendTelemetry()
-        {
-            try
-            {
-                string url = ServerUrl.TrimEnd('/') + "/api/cbot/stream";
-                string assetName = (Account.Asset != null && !string.IsNullOrEmpty(Account.Asset.Name)) ? Account.Asset.Name : "USD";
-                string symClean = Symbol.Name.Replace("m", "").Replace(".pro", "").ToUpperInvariant();
-
-                StringBuilder positionsJson = new StringBuilder("[");
-                int count = 0;
-                foreach (var pos in Positions)
-                {
-                    if (count > 0) positionsJson.Append(",");
-                    positionsJson.Append(string.Format(CultureInfo.InvariantCulture,
-                        "{{\\"id\\":{0},\\"symbol\\":\\"{1}\\",\\"trade_type\\":\\"{2}\\",\\"volume\\":{3},\\"entry_price\\":{4},\\"net_profit\\":{5},\\"pips\\":{6},\\"sl\\":{7},\\"tp\\":{8}}}",
-                        pos.Id, pos.SymbolName, pos.TradeType, pos.VolumeInUnits, pos.EntryPrice, pos.NetProfit, pos.Pips, pos.StopLoss ?? 0, pos.TakeProfit ?? 0));
-                    count++;
-                }
-                positionsJson.Append("]");
-
-                string json = string.Format(CultureInfo.InvariantCulture,
-                    "{{\\"account_id\\":\\"{0}\\",\\"balance\\":{1},\\"equity\\":{2},\\"margin\\":{3},\\"freeMargin\\":{4},\\"currency\\":\\"{5}\\",\\"broker\\":\\"{6}\\",\\"symbol\\":\\"{7}\\",\\"bid\\":{8},\\"ask\\":{9},\\"open_positions\\":{10}}}",
-                    Account.Number, Account.Balance, Account.Equity, Account.Margin, Account.FreeMargin, assetName, Account.BrokerName ?? "cTrader", symClean, Symbol.Bid, Symbol.Ask, positionsJson.ToString());
-
-                var res = await httpClient.PostAsync(url, new StringContent(json, Encoding.UTF8, "application/json"));
-                if (res.IsSuccessStatusCode && EnableAutoExecution)
-                {
-                    string replyJson = await res.Content.ReadAsStringAsync();
-                    if (!string.IsNullOrEmpty(replyJson) && (replyJson.Contains("\\"signal\\"") || replyJson.Contains("\\"pending_orders\\"")))
-                    {
-                        BeginInvokeOnMainThread(() => ProcessOrders(replyJson));
-                    }
-                }
-            }
-            catch {}
-        }
-
-        private async void PollOrders()
-        {
-            try
-            {
-                string url = ServerUrl.TrimEnd('/') + "/api/cbot/orders";
-                var response = await httpClient.GetAsync(url);
-                if (response.IsSuccessStatusCode)
-                {
-                    string json = await response.Content.ReadAsStringAsync();
-                    if (!string.IsNullOrEmpty(json) && json != "[]" && json.Contains("symbol"))
-                    {
-                        BeginInvokeOnMainThread(() => ProcessOrders(json));
-                    }
-                }
-            }
-            catch {}
-        }
-
-        private void ProcessOrders(string json)
-        {
-            try
-            {
-                string symbolStr = ExtractJsonValue(json, "symbol");
-                string action = ExtractJsonValue(json, "signal");
-                if (string.IsNullOrEmpty(action)) action = ExtractJsonValue(json, "action");
-                action = action.ToUpperInvariant();
-                string signalId = ExtractJsonValue(json, "ticket_id");
-                if (string.IsNullOrEmpty(signalId)) signalId = ExtractJsonValue(json, "id");
-
-                if (string.IsNullOrEmpty(symbolStr) || (action != "BUY" && action != "SELL") || (!string.IsNullOrEmpty(signalId) && _executedTickets.Contains(signalId))) return;
-
-                double lotSize = 0.01;
-                double rawSl = 0, rawTp = 0;
-                double.TryParse(ExtractJsonValue(json, "sl"), NumberStyles.Any, CultureInfo.InvariantCulture, out rawSl);
-                double.TryParse(ExtractJsonValue(json, "tp"), NumberStyles.Any, CultureInfo.InvariantCulture, out rawTp);
-
-                Symbol targetSymbol = Symbols.GetSymbol(symbolStr) ?? Symbols.GetSymbol(symbolStr + "m") ?? Symbol;
-                TradeType tradeType = action == "BUY" ? TradeType.Buy : TradeType.Sell;
-
-                double volumeInUnits = targetSymbol.NormalizeVolumeInUnits(lotSize * 100000);
-                if (targetSymbol.Name.Contains("XAU") || targetSymbol.Name.Contains("GOLD")) volumeInUnits = targetSymbol.NormalizeVolumeInUnits(lotSize * 100);
-                else if (targetSymbol.Name.Contains("XAG") || targetSymbol.Name.Contains("SILVER")) volumeInUnits = targetSymbol.NormalizeVolumeInUnits(lotSize * 1000);
-
-                int digits = targetSymbol.Digits;
-                double pipSize = targetSymbol.PipSize > 0 ? targetSymbol.PipSize : Math.Pow(10, -digits);
-                if (targetSymbol.Name.Contains("XAG") || targetSymbol.Name.Contains("SILVER")) pipSize = Math.Pow(10, -digits);
-
-                double minDistance = Math.Max(targetSymbol.Spread * 2.0, pipSize * 20);
-                double currentRefPrice = tradeType == TradeType.Buy ? targetSymbol.Ask : targetSymbol.Bid;
-                double validSl = rawSl, validTp = rawTp;
-
-                if (tradeType == TradeType.Buy)
-                {
-                    if (validSl <= 0 || validSl >= (currentRefPrice - minDistance)) validSl = currentRefPrice - Math.Max(minDistance, pipSize * 50);
-                    if (validTp <= 0 || validTp <= (currentRefPrice + minDistance)) validTp = currentRefPrice + Math.Max(minDistance * 1.8, pipSize * 100);
-                }
-                else
-                {
-                    if (validSl <= 0 || validSl <= (currentRefPrice + minDistance)) validSl = currentRefPrice + Math.Max(minDistance, pipSize * 50);
-                    if (validTp <= 0 || validTp >= (currentRefPrice - minDistance)) validTp = currentRefPrice - Math.Max(minDistance * 1.8, pipSize * 100);
-                }
-
-                validSl = Math.Round(validSl, digits);
-                validTp = Math.Round(validTp, digits);
-
-                double slPips = Math.Round(Math.Abs(currentRefPrice - validSl) / pipSize, 1);
-                double tpPips = Math.Round(Math.Abs(validTp - currentRefPrice) / pipSize, 1);
-
-                TradeResult result = ExecuteMarketOrder(tradeType, targetSymbol.Name, volumeInUnits, "TradeTalk.AI", slPips, tpPips);
-                if (!result.IsSuccessful) result = ExecuteMarketOrder(tradeType, targetSymbol.Name, volumeInUnits, "TradeTalk.AI");
-
-                if (result.IsSuccessful && result.Position != null)
-                {
-                    Position pos = result.Position;
-                    if (!string.IsNullOrEmpty(signalId)) _executedTickets.Add(signalId);
-                    if (pos.StopLoss == null || pos.TakeProfit == null) ModifyPosition(pos, validSl, validTp);
-                    ReportOrderFilled(signalId, pos.Id, pos.EntryPrice, targetSymbol.Name, action);
-                }
-            }
-            catch {}
-        }
-
-        private async void ReportOrderFilled(string signalId, long posId, double fillPrice, string symbol, string action)
-        {
-            try
-            {
-                string url = ServerUrl.TrimEnd('/') + "/api/cbot/order-filled";
-                string json = string.Format(CultureInfo.InvariantCulture,
-                    "{{\\"id\\":\\"{0}\\",\\"ticket_id\\":\\"CT_{1}\\",\\"position_id\\":\\"{1}\\",\\"fill_price\\":{2},\\"symbol\\":\\"{3}\\",\\"action\\":\\"{4}\\",\\"status\\":\\"FILLED\\"}}",
-                    signalId, posId, fillPrice, symbol, action);
-                await httpClient.PostAsync(url, new StringContent(json, Encoding.UTF8, "application/json"));
-            }
-            catch {}
-        }
-
-        private string ExtractJsonValue(string json, string key)
-        {
-            string search = "\\"" + key + "\\":";
-            int idx = json.IndexOf(search, StringComparison.OrdinalIgnoreCase);
-            if (idx == -1) return "";
-            int start = idx + search.Length;
-            while (start < json.Length && (json[start] == ' ' || json[start] == '\\"')) start++;
-            int end = start;
-            while (end < json.Length && json[end] != '\\"' && json[end] != ',' && json[end] != '}') end++;
-            return json.Substring(start, end - start).Trim('\\"', ' ');
-        }
-    }
-}`,
-                allSupportedPairs: [
-                    { symbol: 'XAUUSD', name: 'Gold / USD', category: 'Metals', icon: 'fa-coins' }
-                ],
-                activePairs: ['XAUUSD'],
-                pairToast: null,
-                cbotStatus: { mode: 'CBOT_BRIDGE_ACTIVE', is_connected: true, balance: 39.05, equity: 39.05, account_id: '1005621', currency: 'USD', account_type: 'DEMO', is_live: false, circuit_breaker_active: false },
-                systemState: { auto_trade_enabled: true, last_scan_time: null, total_scans: 0, active_pairs: ['XAUUSD'] },
-                stats: { total: 0, approved: 0, rejected: 0, approval_rate: 0 },
+                cbotStatus: { mode: 'PAPER', is_connected: true, balance: 39.05, equity: 39.05, account_id: '1005621', currency: 'USD', is_live: false },
+                systemState: { auto_trade_enabled: true },
                 simForm: {
                     symbol: 'XAUUSD',
                     action: 'BUY',
-                    entry_price: 2900.00,
-                    stop_loss: 2894.00,
-                    take_profit: 2912.00,
-                    timeframe: '15m & 1H',
-                    strategy_name: 'GoldSniper_MTF_1H'
+                    entry_price: 2750.00,
+                    stop_loss: 2744.00,
+                    take_profit: 2762.00,
+                    timeframe: '15m'
                 },
+                btForm: {
+                    strategy_name: 'Gold_Sniper_SMC_v2',
+                    symbol: 'XAUUSD',
+                    timeframe: '15m',
+                    days_back: 30
+                },
+                btLoading: false,
+                btResult: null,
 
                 initDashboard() {
-                    this.fetchPairSettings();
                     this.fetchLivePrices();
                     this.fetchSignals();
                     this.fetchCBotStatus();
 
-                    // Load dynamic C# Bridge Code
-                    fetch('/api/cbot/download').then(r => r.text()).then(t => { 
-                        if (t && t.includes('TradeTalkBridge')) this.cbotCode = t; 
-                    }).catch(() => {});
-
-                    // Real-Time Live Prices polling every 2.5 seconds
-                    setInterval(() => {
-                        this.fetchLivePrices();
-                    }, 2500);
-
-                    // cBot Telemetry and Account Status fast polling every 1.5 seconds
-                    setInterval(() => {
-                        this.fetchCBotStatus();
-                    }, 1500);
-
-                    // Signals & State polling every 3 seconds
-                    setInterval(() => {
-                        this.fetchSignals(true);
-                    }, 3000);
+                    setInterval(() => { this.fetchLivePrices(); }, 2500);
+                    setInterval(() => { this.fetchCBotStatus(); }, 2000);
+                    setInterval(() => { this.fetchSignals(); }, 4000);
                 },
 
                 async fetchLivePrices() {
@@ -1228,297 +789,130 @@ namespace cAlgo.Robots
                             for (const sym in newPrices) {
                                 if (this.marketPrices[sym]) {
                                     const oldP = this.marketPrices[sym].price;
-                                    const newP = newPrices[sym].price;
-                                    if (newP > oldP) {
-                                        this.priceFlashes[sym] = 'up';
-                                        setTimeout(() => { this.priceFlashes[sym] = null; }, 1000);
-                                    } else if (newP < oldP) {
-                                        this.priceFlashes[sym] = 'down';
-                                        setTimeout(() => { this.priceFlashes[sym] = null; }, 1000);
-                                    }
+                                    const curP = newPrices[sym].price;
+                                    if (curP > oldP) this.priceFlashes[sym] = 'up';
+                                    else if (curP < oldP) this.priceFlashes[sym] = 'down';
+                                    setTimeout(() => { this.priceFlashes[sym] = null; }, 1000);
                                 }
                             }
                             this.marketPrices = newPrices;
                         }
-                    } catch (err) {
-                        console.error('Error fetching live prices:', err);
-                    }
+                    } catch (e) {}
                 },
 
-                async fetchSignals(silent = false) {
-                    if (!silent) this.isRefreshing = true;
+                async fetchSignals() {
                     try {
                         const res = await fetch('/api/signals');
                         if (res.ok) {
                             const data = await res.json();
-                            this.signals = data.signals || [];
-                            this.stats = data.stats || { total: 0, approved: 0, rejected: 0, approval_rate: 0 };
-                            if (data.system_state) {
-                                this.systemState = data.system_state;
-                            }
+                            this.signals = data || [];
+                            this.rejectedSignals = this.signals.filter(s => s.status === 'REJECTED' || s.status === 'BLOCKED');
                             if (!this.activeSignal && this.signals.length > 0) {
                                 this.activeSignal = this.signals[0];
                             }
                         }
-                    } catch (err) {
-                        console.error('Error fetching signals:', err);
-                    } finally {
-                        if (!silent) this.isRefreshing = false;
-                    }
+                    } catch (e) {}
                 },
 
                 async fetchCBotStatus() {
                     try {
-                        const res = await fetch('/api/account/status');
+                        const res = await fetch('/api/cbot/status');
                         if (res.ok) {
-                            const data = await res.json();
-                            this.cbotStatus = data;
+                            this.cbotStatus = await res.json();
                         }
-                    } catch (err) {
-                        console.error('Error fetching cBot status:', err);
+                    } catch (e) {}
+                },
+
+                getAgentSummary(agentName) {
+                    if (!this.activeSignal || !this.activeSignal.agent_decisions) {
+                        return 'Awaiting real-time evaluation...';
                     }
+                    const dec = this.activeSignal.agent_decisions.find(a => a.agent_name === agentName);
+                    return dec ? dec.reasoning_summary : 'Evaluation complete.';
                 },
 
-                calcTotalPnL() {
-                    if (!this.cbotStatus.open_positions || !this.cbotStatus.open_positions.length) return 0.0;
-                    return this.cbotStatus.open_positions.reduce((acc, pos) => acc + (parseFloat(pos.net_profit) || 0), 0);
+                getAgentScore(agentName) {
+                    if (!this.activeSignal || !this.activeSignal.agent_decisions) return '--';
+                    const dec = this.activeSignal.agent_decisions.find(a => a.agent_name === agentName);
+                    return dec ? dec.score + '/100' : '--';
                 },
 
-                async fetchPairSettings() {
+                async inspectDecisionDNA(sigId) {
                     try {
-                        const res = await fetch('/api/pairs/settings');
+                        const res = await fetch('/api/signals/dna/' + sigId);
                         if (res.ok) {
-                            const data = await res.json();
-                            this.activePairs = data.active_pairs || [];
-                            if (data.all_pairs) this.allSupportedPairs = data.all_pairs;
+                            this.activeDNA = await res.json();
+                            this.showDNAModal = true;
                         }
-                    } catch (err) {
-                        console.error('Error fetching pair settings:', err);
-                    }
-                },
-
-                isPairActive(sym) {
-                    if (!sym || !this.activePairs) return false;
-                    const clean = sym.toUpperCase().replace('M', '').replace('.PRO', '').replace('_I', '');
-                    return this.activePairs.includes(sym) || this.activePairs.includes(clean);
-                },
-
-                async togglePair(sym) {
-                    try {
-                        const res = await fetch('/api/pairs/settings', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ toggle_pair: sym })
-                        });
-                        if (res.ok) {
-                            const data = await res.json();
-                            this.activePairs = data.active_pairs || [];
-                            const isNowActive = this.isPairActive(sym);
-                            this.showPairToast(sym + (isNowActive ? ' Enabled ✓' : ' Disabled ✗'));
-                        }
-                    } catch (err) {
-                        console.error('Error toggling pair:', err);
-                    }
-                },
-
-                async setPresetPairs(pairsList) {
-                    try {
-                        const res = await fetch('/api/pairs/settings', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ active_pairs: pairsList })
-                        });
-                        if (res.ok) {
-                            const data = await res.json();
-                            this.activePairs = data.active_pairs || [];
-                            this.showPairToast('Whitelist Updated: ' + this.activePairs.length + ' Pairs Active');
-                        }
-                    } catch (err) {
-                        console.error('Error saving preset pairs:', err);
-                    }
-                },
-
-                showPairToast(msg) {
-                    this.pairToast = msg;
-                    setTimeout(() => { if (this.pairToast === msg) this.pairToast = null; }, 3000);
-                },
-
-                async closePosition(posId) {
-                    if (!confirm('Are you sure you want to close Position #' + posId + ' immediately?')) return;
-                    try {
-                        const res = await fetch('/api/cbot/close-position', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ position_id: posId })
-                        });
-                        alert('Close command dispatched to cTrader for Position #' + posId);
-                    } catch (err) {
-                        alert('Error closing position: ' + err);
-                    }
-                },
-
-                async sendCopilot(text) {
-                    if (!text || !text.trim() || this.copilotLoading) return;
-                    const query = text.trim();
-                    this.copilotInput = '';
-                    const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                    
-                    this.copilotMessages.push({ sender: 'user', text: query, time: now });
-                    this.copilotLoading = true;
-                    this.scrollCopilotBottom();
-
-                    try {
-                        const res = await fetch('/api/copilot/chat', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ message: query })
-                        });
-                        if (res.ok) {
-                            const data = await res.json();
-                            const reply = data.reply || 'Action completed.';
-                            this.copilotMessages.push({
-                                sender: 'assistant',
-                                text: reply,
-                                action: data.action_taken,
-                                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                            });
-                            if (data.active_pairs) {
-                                this.activePairs = data.active_pairs;
-                                this.showPairToast('Whitelist Updated: ' + this.activePairs.length + ' Active');
-                            }
-                            if (data.system_state) {
-                                if (data.system_state.auto_trade_enabled !== undefined) {
-                                    this.systemState.auto_trade_enabled = data.system_state.auto_trade_enabled;
-                                }
-                                if (data.system_state.active_pairs) {
-                                    this.activePairs = data.system_state.active_pairs;
-                                }
-                            }
-                            if (this.ttsEnabled) {
-                                this.speakText(reply);
-                            }
-                        } else {
-                            this.copilotMessages.push({ sender: 'assistant', text: 'Error executing command. Please try again.', time: now });
-                        }
-                    } catch (err) {
-                        this.copilotMessages.push({ sender: 'assistant', text: 'Connection issue: ' + err.message, time: now });
-                    } finally {
-                        this.copilotLoading = false;
-                        this.scrollCopilotBottom();
-                    }
-                },
-
-                scrollCopilotBottom() {
-                    setTimeout(() => {
-                        const box = document.getElementById('copilotChatBox');
-                        if (box) box.scrollTop = box.scrollHeight;
-                    }, 80);
-                },
-
-                toggleVoiceRecognition() {
-                    if (this.voiceListening) {
-                        if (this.recognition) {
-                            try { this.recognition.stop(); } catch(e) {}
-                        }
-                        this.voiceListening = false;
-                        return;
-                    }
-
-                    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-                    if (!SpeechRec) {
-                        alert('Voice Speech Recognition is not supported in this browser. Please use Google Chrome, Edge, or Brave.');
-                        return;
-                    }
-
-                    try {
-                        this.recognition = new SpeechRec();
-                        this.recognition.lang = 'ur-PK'; // Supports Urdu & English
-                        this.recognition.interimResults = false;
-                        this.recognition.maxAlternatives = 1;
-
-                        this.recognition.onstart = () => {
-                            this.voiceListening = true;
-                        };
-
-                        this.recognition.onresult = (event) => {
-                            const transcript = event.results[0][0].transcript;
-                            if (transcript) {
-                                this.sendCopilot(transcript);
-                            }
-                        };
-
-                        this.recognition.onerror = (event) => {
-                            console.warn('Speech recognition error:', event.error);
-                            this.voiceListening = false;
-                        };
-
-                        this.recognition.onend = () => {
-                            this.voiceListening = false;
-                        };
-
-                        this.recognition.start();
-                    } catch (err) {
-                        console.error('Error starting voice recognition:', err);
-                        this.voiceListening = false;
-                    }
-                },
-
-                speakText(text) {
-                    if (!window.speechSynthesis) return;
-                    try {
-                        window.speechSynthesis.cancel();
-                        const clean = text.replace(/[^\w\s\u0600-\u06FF.,!?'$-]/g, '').trim();
-                        const utterance = new SpeechSynthesisUtterance(clean);
-                        utterance.rate = 1.0;
-                        utterance.pitch = 1.0;
-                        const isUrdu = /[\u0600-\u06FF]/.test(clean);
-                        utterance.lang = isUrdu ? 'ur-PK' : 'en-US';
-                        window.speechSynthesis.speak(utterance);
                     } catch (e) {
-                        console.warn('TTS error:', e);
+                        alert('Could not load Decision DNA: ' + e);
                     }
                 },
 
-                async copyCBotCode() {
+                async submitTestSignal() {
+                    this.loading = true;
                     try {
-                        const res = await fetch('/api/cbot/download');
-                        const text = await res.text();
-                        navigator.clipboard.writeText(text);
-                        this.cbotCopied = true;
-                        setTimeout(() => { this.cbotCopied = false; }, 2500);
-                    } catch (err) {
-                        navigator.clipboard.writeText(this.cbotCode);
-                        this.cbotCopied = true;
-                        setTimeout(() => { this.cbotCopied = false; }, 2500);
+                        const res = await fetch('/api/signals/simulate', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(this.simForm)
+                        });
+                        if (res.ok) {
+                            const data = await res.json();
+                            this.activeSignal = {
+                                id: data.signal_id,
+                                symbol: data.symbol,
+                                direction: data.direction,
+                                entry_price: this.simForm.entry_price,
+                                status: data.decision_status,
+                                decision_score: data.decision_score,
+                                agent_decisions: data.agent_decisions,
+                                rejection_reason: data.full_analysis
+                            };
+                            this.fetchSignals();
+                        }
+                    } catch (e) {
+                        alert('Simulation error: ' + e);
+                    } finally {
+                        this.loading = false;
                     }
                 },
 
-                selectTickerForSimulator(sym, data) {
-                    this.autoFillFromLive(sym);
-                    this.openSimulator = true;
+                async runBacktestLab() {
+                    this.btLoading = true;
+                    try {
+                        const res = await fetch('/api/backtest/run', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(this.btForm)
+                        });
+                        if (res.ok) {
+                            this.btResult = await res.json();
+                        }
+                    } catch (e) {
+                        alert('Backtest error: ' + e);
+                    } finally {
+                        this.btLoading = false;
+                    }
                 },
 
-                autoFillFromLive(sym) {
-                    if (this.marketPrices[sym]) {
-                        const d = this.marketPrices[sym];
-                        const p = d.price;
-                        const action = d.indicators.trend === 'BULLISH' ? 'BUY' : 'SELL';
-                        
-                        let slOffset = (sym === 'XAUUSD') ? 6.0 : ((sym === 'BTCUSD') ? 800.0 : (p * 0.003));
-                        let tpOffset = (sym === 'XAUUSD') ? 12.0 : ((sym === 'BTCUSD') ? 12.0 : (p * 0.007));
+                async switchTradingMode(mode) {
+                    try {
+                        const res = await fetch('/api/trading/mode', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ mode: mode, confirmed: mode === 'LIVE' })
+                        });
+                        if (res.ok) {
+                            const data = await res.json();
+                            this.tradingMode = data.current_mode;
+                        }
+                    } catch (e) {}
+                },
 
-                        let sl = action === 'BUY' ? (p - slOffset) : (p + slOffset);
-                        let tp = action === 'BUY' ? (p + tpOffset) : (p - tpOffset);
-
-                        const dec = (sym === 'EURUSD' || sym === 'GBPUSD') ? 4 : 2;
-
-                        this.simForm.symbol = sym;
-                        this.simForm.action = action;
-                        this.simForm.entry_price = Number(p.toFixed(dec));
-                        this.simForm.stop_loss = Number(sl.toFixed(dec));
-                        this.simForm.take_profit = Number(tp.toFixed(dec));
-                        this.simForm.timeframe = '15m';
-                        this.simForm.strategy_name = `Live_cTrader_Stream (RSI:${d.indicators.rsi})`;
+                promptLiveMode() {
+                    if (confirm('⚠️ CAUTION: You are about to activate LIVE Trading with real money.\n\nEnsure cTrader Bridge is running on Account #1005621.\n\nProceed to enable LIVE mode?')) {
+                        this.switchTradingMode('LIVE');
                     }
                 },
 
@@ -1529,9 +923,7 @@ namespace cAlgo.Robots
                             const data = await res.json();
                             this.systemState.auto_trade_enabled = data.auto_trade_enabled;
                         }
-                    } catch (err) {
-                        console.error('Error toggling auto trade:', err);
-                    }
+                    } catch (e) {}
                 },
 
                 async triggerScanNow() {
@@ -1540,71 +932,59 @@ namespace cAlgo.Robots
                         const res = await fetch('/api/scan-now', { method: 'POST' });
                         if (res.ok) {
                             await this.fetchSignals();
-                            if (this.signals.length > 0) {
-                                this.activeSignal = this.signals[0];
-                            }
                         }
-                    } catch (err) {
-                        alert('Scan error: ' + err);
-                    } finally {
+                    } catch (e) {}
+                    finally {
                         this.scanning = false;
                     }
                 },
 
-                async submitTestSignal() {
-                    this.loading = true;
+                async closePosition(posId) {
+                    if (!confirm('Close Position #' + posId + ' immediately in cTrader?')) return;
                     try {
-                        const payload = {
-                            symbol: this.simForm.symbol,
-                            action: this.simForm.action,
-                            entry_price: parseFloat(this.simForm.entry_price),
-                            stop_loss: parseFloat(this.simForm.stop_loss),
-                            take_profit: parseFloat(this.simForm.take_profit),
-                            timeframe: this.simForm.timeframe,
-                            strategy_name: this.simForm.strategy_name
-                        };
-                        const res = await fetch('/webhook/tradingview', {
+                        await fetch('/api/cbot/close-position', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(payload)
+                            body: JSON.stringify({ position_id: posId })
                         });
-                        const data = await res.json();
-                        await this.fetchSignals();
-                        if (this.signals.length > 0) {
-                            this.activeSignal = this.signals[0];
-                        }
-                    } catch (err) {
-                        alert('Error executing signal: ' + err);
-                    } finally {
-                        this.loading = false;
+                    } catch (e) {}
+                },
+
+                autoFillFromLive(sym) {
+                    if (this.marketPrices[sym]) {
+                        const p = this.marketPrices[sym].price;
+                        this.simForm.symbol = sym;
+                        this.simForm.entry_price = p;
+                        this.simForm.stop_loss = Number((p - 6.0).toFixed(2));
+                        this.simForm.take_profit = Number((p + 12.0).toFixed(2));
                     }
                 },
 
-                viewModal(item) {
-                    this.modalData = item;
-                    this.showModal = true;
+                calcTotalPnL() {
+                    if (!this.cbotStatus.open_positions) return 0.0;
+                    return this.cbotStatus.open_positions.reduce((sum, p) => sum + (parseFloat(p.net_profit) || 0.0), 0.0);
                 },
 
-                formatTime(isoStr) {
-                    if (!isoStr) return '--:--';
-                    const d = new Date(isoStr);
-                    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                formatNumber(val, sym) {
+                    if (val === undefined || val === null || isNaN(val)) return '0.00';
+                    return Number(val).toFixed(2);
                 },
 
                 formatMoney(val) {
-                    if (!val && val !== 0) return '0.00';
-                    return Number(val).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                    if (val === undefined || val === null || isNaN(val)) return '0.00';
+                    return Number(val).toFixed(2);
                 },
 
-                formatNumber(val, symbol = '') {
-                    if (val === undefined || val === null) return '0.00';
-                    const num = Number(val);
-                    if (symbol && (symbol.includes('EUR') || symbol.includes('GBP'))) {
-                        return num.toFixed(4);
+                formatTime(ts) {
+                    if (!ts) return '';
+                    try {
+                        const d = new Date(ts);
+                        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    } catch (e) {
+                        return ts;
                     }
-                    return num.toFixed(2);
                 }
-            };
+            }
         }
     </script>
 </body>
