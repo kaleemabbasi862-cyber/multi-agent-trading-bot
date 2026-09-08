@@ -1284,16 +1284,17 @@
                         this.autoFillFromLive(this.selectedSymbol || 'XAUUSD');
                     }, 600);
 
-                    setInterval(() => { this.fetchLivePrices(); }, 2500);
+                    setInterval(() => { this.fetchLivePrices(); }, 2000);
                     setInterval(() => { this.fetchCBotStatus(); }, 2000);
-                    setInterval(() => { this.fetchSignals(); }, 4000);
+                    setInterval(() => { this.fetchSignals(); }, 3000);
                     setInterval(() => { this.fetchTrades(); }, 3000);
+                    setInterval(() => { this.fetchLiveConsensus(); }, 2500);
                     setInterval(() => { this.fetchAccounts(); }, 5000);
                 },
 
                 async refreshLedgerData() {
                     this.isRefreshing = true;
-                    await Promise.all([this.fetchSignals(), this.fetchTrades()]);
+                    await Promise.all([this.fetchSignals(), this.fetchTrades(), this.fetchLiveConsensus()]);
                     setTimeout(() => { this.isRefreshing = false; }, 600);
                 },
 
@@ -1322,7 +1323,7 @@
                                     entry_price: liveP,
                                     status: c.decision_status,
                                     decision_score: c.decision_score,
-                                    agent_decisions: c.agent_decisions,
+                                    agent_decisions: c.agent_decisions || [],
                                     rejection_reason: c.full_analysis
                                 };
                             }
@@ -1355,12 +1356,12 @@
                         if (res.ok) {
                             const data = await res.json();
                             this.signals = data || [];
-                            this.rejectedSignals = this.signals.filter(s => s.status === 'REJECTED' || s.status === 'BLOCKED');
+                            this.rejectedSignals = this.signals.filter(s => s.status === 'REJECTED' || (s.status && s.status.includes('BLOCKED')));
                             this.stats.total = this.signals.length;
                             this.stats.approved = this.signals.filter(s => s.status === 'APPROVED').length;
                             this.stats.rejected = this.rejectedSignals.length;
 
-                            if (!this.activeSignal && this.signals.length > 0) {
+                            if ((!this.activeSignal || !this.activeSignal.agent_decisions || this.activeSignal.agent_decisions.length === 0) && this.signals.length > 0) {
                                 this.activeSignal = this.signals[0];
                             }
                         }
@@ -1376,18 +1377,24 @@
                     } catch (e) {}
                 },
 
+                findAgentDecision(agentName) {
+                    if (!this.activeSignal || !this.activeSignal.agent_decisions || !Array.isArray(this.activeSignal.agent_decisions)) return null;
+                    const searchKey = agentName.toLowerCase().replace(/agent|analyst|manager/g, '').trim();
+                    return this.activeSignal.agent_decisions.find(a => {
+                        if (!a || !a.agent_name) return false;
+                        const aName = a.agent_name.toLowerCase();
+                        return aName === agentName.toLowerCase() || aName.includes(searchKey) || searchKey.includes(aName.split(' ')[0]);
+                    });
+                },
+
                 getAgentSummary(agentName) {
-                    if (!this.activeSignal || !this.activeSignal.agent_decisions) {
-                        return '7-Agent quantitative model monitoring live market quotes...';
-                    }
-                    const dec = this.activeSignal.agent_decisions.find(a => a.agent_name === agentName);
-                    return dec ? dec.reasoning_summary : 'Quantitative evaluation verified.';
+                    const dec = this.findAgentDecision(agentName);
+                    return dec ? dec.reasoning_summary : 'Quantitative market evaluation active & synchronized.';
                 },
 
                 getAgentScore(agentName) {
-                    if (!this.activeSignal || !this.activeSignal.agent_decisions) return '--';
-                    const dec = this.activeSignal.agent_decisions.find(a => a.agent_name === agentName);
-                    return dec ? dec.score + '/100' : '--';
+                    const dec = this.findAgentDecision(agentName);
+                    return dec ? (Math.round(dec.score) + '/100') : '--';
                 },
 
                 togglePopover(agentKey) {
