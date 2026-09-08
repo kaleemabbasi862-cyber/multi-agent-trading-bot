@@ -102,6 +102,24 @@ namespace cAlgo.Robots
             }
         }
 
+        private T RunOnMainThread<T>(Func<T> func)
+        {
+            var tcs = new TaskCompletionSource<T>();
+            BeginInvokeOnMainThread(() =>
+            {
+                try
+                {
+                    var result = func();
+                    tcs.SetResult(result);
+                }
+                catch (Exception ex)
+                {
+                    tcs.SetException(ex);
+                }
+            });
+            return tcs.Task.GetAwaiter().GetResult();
+        }
+
         private void ProcessRequest(object state)
         {
             var context = (HttpListenerContext)state;
@@ -125,18 +143,21 @@ namespace cAlgo.Robots
 
                 if (request.HttpMethod == "GET")
                 {
-                    // Status / Healthcheck endpoint
-                    var posList = new List<string>();
-                    foreach (var p in Positions)
+                    // Status / Healthcheck endpoint executed on Main Thread
+                    string statusJson = RunOnMainThread(() =>
                     {
-                        posList.Add(string.Format(CultureInfo.InvariantCulture,
-                            "{{\"id\":{0},\"symbol\":\"{1}\",\"side\":\"{2}\",\"lots\":{3},\"entry\":{4},\"sl\":{5},\"tp\":{6},\"pnl\":{7:F2}}}",
-                            p.Id, p.SymbolName, p.TradeType, p.Quantity, p.EntryPrice, p.StopLoss ?? 0, p.TakeProfit ?? 0, p.NetProfit));
-                    }
+                        var posList = new List<string>();
+                        foreach (var p in Positions)
+                        {
+                            posList.Add(string.Format(CultureInfo.InvariantCulture,
+                                "{{\"id\":{0},\"symbol\":\"{1}\",\"side\":\"{2}\",\"lots\":{3},\"entry\":{4},\"sl\":{5},\"tp\":{6},\"pnl\":{7:F2}}}",
+                                p.Id, p.SymbolName, p.TradeType, p.Quantity, p.EntryPrice, p.StopLoss ?? 0, p.TakeProfit ?? 0, p.NetProfit));
+                        }
 
-                    string statusJson = string.Format(CultureInfo.InvariantCulture,
-                        "{{\"status\":\"ONLINE\",\"bridge\":\"TradeTalk Local cBot Webhook Bridge\",\"account_id\":\"{0}\",\"broker\":\"{1}\",\"is_live\":{2},\"balance\":{3:F2},\"equity\":{4:F2},\"margin\":{5:F2},\"free_margin\":{6:F2},\"open_positions_count\":{7},\"positions\":[{8}]}}",
-                        Account.Number, Account.BrokerName, Account.IsLive ? "true" : "false", Account.Balance, Account.Equity, Account.Margin, Account.FreeMargin, Positions.Count, string.Join(",", posList));
+                        return string.Format(CultureInfo.InvariantCulture,
+                            "{{\"status\":\"ONLINE\",\"bridge\":\"TradeTalk Local cBot Webhook Bridge\",\"account_id\":\"{0}\",\"broker\":\"{1}\",\"is_live\":{2},\"balance\":{3:F2},\"equity\":{4:F2},\"margin\":{5:F2},\"free_margin\":{6:F2},\"open_positions_count\":{7},\"positions\":[{8}]}}",
+                            Account.Number, Account.BrokerName, Account.IsLive ? "true" : "false", Account.Balance, Account.Equity, Account.Margin, Account.FreeMargin, Positions.Count, string.Join(",", posList));
+                    });
 
                     response.StatusCode = 200;
                     SendJsonResponse(response, statusJson);
@@ -152,9 +173,16 @@ namespace cAlgo.Robots
                     }
 
                     Print("📥 Incoming Bridge Trade Request: " + requestBody);
-                    string executionResultJson = HandleTradeExecution(requestBody, out int httpStatus);
-                    response.StatusCode = httpStatus;
-                    SendJsonResponse(response, executionResultJson);
+
+                    var executionResult = RunOnMainThread(() =>
+                    {
+                        int httpStatus;
+                        string resultJson = HandleTradeExecution(requestBody, out httpStatus);
+                        return new Tuple<int, string>(httpStatus, resultJson);
+                    });
+
+                    response.StatusCode = executionResult.Item1;
+                    SendJsonResponse(response, executionResult.Item2);
                     return;
                 }
 
