@@ -1,16 +1,22 @@
 import os
 import sys
+import time
+import logging
 import asyncio
 import uuid
 import datetime
 import traceback
 from pathlib import Path
+from typing import Optional, Dict, Any, List
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request, Header
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+logger = logging.getLogger("TradeTalk.Main")
 
 if sys.platform == "win32":
     try:
@@ -53,8 +59,9 @@ app.add_middleware(
 # Background Autonomous Cloud Gateway Worker
 # -------------------------------------------------------------
 async def cloud_gateway_background_sync():
-    """Continuously streams live prices and evaluates open positions in cloud memory."""
+    """Continuously streams live prices, syncs Spotware Open API, and evaluates open positions."""
     await asyncio.sleep(2)
+    sync_cycle = 0
     while True:
         try:
             active_sym = settings_manager.get_active_symbol()
@@ -82,17 +89,24 @@ async def cloud_gateway_background_sync():
             
             if price_map:
                 ctrader_cloud_gateway.update_live_market_prices(price_map)
+                
+            # Periodically sync account details with Spotware Open API cloud
+            sync_cycle += 1
+            if sync_cycle % 6 == 0:
+                ctrader_cloud_gateway.sync_with_spotware_cloud()
+                
         except Exception as e:
-            pass
+            logger.debug(f"[Cloud Gateway Sync Note]: {e}")
         await asyncio.sleep(2.5)
 
 async def autonomous_market_scanner_loop():
     """
     Autonomous Quantitative Market Scanner:
-    Continuously scans the active pair and dispatches approved signals directly to cTrader.
+    Continuously scans the active pair and dispatches approved signals directly to cTrader server-side.
     """
     await asyncio.sleep(5)
     last_scan_ts = 0.0
+    logger.info("[Autonomous Engine] 🚀 24/7 Cloud Market Scanner & Execution Engine Initialized")
     while True:
         try:
             now = time.time()
@@ -106,6 +120,7 @@ async def autonomous_market_scanner_loop():
                     if len(open_positions) < ctrader_cloud_gateway.MAX_ACTIVE_OPEN_POSITIONS:
                         cur_sym = cur_settings.get("active_symbol", "XAUUSD")
                         cur_lot = cur_settings.get("active_lot_size", 0.01)
+                        threshold = cur_settings.get("min_confidence_threshold", 75.0)
                         
                         market_data = get_market_snapshot(cur_sym, force_refresh=False)
                         if market_data and market_data.get("price"):
@@ -150,7 +165,7 @@ async def autonomous_market_scanner_loop():
                             
                             if consensus_res.decision_status == "APPROVED":
                                 exec_res = execution_engine.dispatch_trade(consensus_res, sig)
-                                print(f"[Autonomous Engine] [+] 🟢 Approved Signal Dispatched: {exec_res}")
+                                logger.info(f"[Autonomous Engine] [+] 🟢 Approved Signal #{sig.id} Dispatched Directly to cTrader Cloud: {exec_res.get('status')} | Ticket: {exec_res.get('ticket')}")
         except Exception as e:
             logger.error(f"[Autonomous Scanner Error]: {e}")
         await asyncio.sleep(4)
