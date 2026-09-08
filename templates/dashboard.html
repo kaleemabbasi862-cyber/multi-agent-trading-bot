@@ -1312,13 +1312,14 @@
                         const res = await fetch('/api/consensus');
                         if (res.ok) {
                             const data = await res.json();
-                            if (!this.activeSignal && data.consensus) {
+                            if (data.consensus) {
                                 const c = data.consensus;
+                                const liveP = (data.market && data.market.price) ? data.market.price : (c.entry_price || 4400.0);
                                 this.activeSignal = {
                                     id: c.signal_id,
-                                    symbol: c.symbol,
+                                    symbol: c.symbol || this.selectedSymbol,
                                     direction: c.direction,
-                                    entry_price: c.entry_price,
+                                    entry_price: liveP,
                                     status: c.decision_status,
                                     decision_score: c.decision_score,
                                     agent_decisions: c.agent_decisions,
