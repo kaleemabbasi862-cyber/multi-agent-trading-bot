@@ -5,7 +5,7 @@ SETTINGS_FILE = os.path.join(os.path.dirname(__file__), "user_settings.json")
 
 # Full Whitelist: Metals & Major FX Pairs
 ALL_SUPPORTED_PAIRS = [
-    {"symbol": "XAUUSD", "name": "Gold / USD", "category": "Metals", "icon": "fa-coins", "color": "amber", "default_price": 2750.0, "pip_size": 0.01},
+    {"symbol": "XAUUSD", "name": "Gold / USD", "category": "Metals", "icon": "fa-coins", "color": "amber", "default_price": 4400.0, "pip_size": 0.01},
     {"symbol": "XAGUSD", "name": "Silver / USD", "category": "Metals", "icon": "fa-gem", "color": "slate", "default_price": 32.50, "pip_size": 0.001},
     {"symbol": "EURUSD", "name": "EUR / USD", "category": "Forex", "icon": "fa-euro-sign", "color": "blue", "default_price": 1.0850, "pip_size": 0.0001},
     {"symbol": "GBPUSD", "name": "GBP / USD", "category": "Forex", "icon": "fa-sterling-sign", "color": "emerald", "default_price": 1.2950, "pip_size": 0.0001},

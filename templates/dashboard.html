@@ -340,25 +340,28 @@
 
         <!-- SIMULATOR / MANUAL SIGNAL DRAWER -->
         <div x-show="openSimulator" x-transition class="bg-dark-card border border-indigo-500/30 rounded-2xl p-5 shadow-2xl space-y-4">
-            <div class="flex items-center justify-between border-b border-dark-border pb-3">
+            <div class="flex items-center justify-between border-b border-dark-border pb-3 flex-wrap gap-2">
                 <div class="flex items-center space-x-2">
                     <i class="fa-solid fa-sliders text-indigo-400"></i>
                     <h2 class="font-bold text-white text-sm">TradingView Webhook & Signal Simulator</h2>
-                    <span class="text-xs text-slate-400">(Click top ticker card to auto-populate live prices)</span>
+                    <span class="text-xs text-slate-400 hidden sm:inline">(Live real-time market quote auto-populated)</span>
                 </div>
                 <div class="flex items-center space-x-2 text-xs">
-                    <button @click="autoFillFromLive('XAUUSD')" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded text-amber-300 transition">Live XAUUSD</button>
+                    <button type="button" @click="autoFillFromLive(simForm.symbol)" class="px-3 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-lg flex items-center gap-1.5 transition font-bold shadow-sm">
+                        <i class="fa-solid fa-bolt text-amber-400"></i>
+                        <span>Fetch Live Spot Quote & 1:2 R:R</span>
+                    </button>
                 </div>
             </div>
 
             <form @submit.prevent="submitTestSignal()" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3 text-xs">
                 <div>
                     <label class="block text-slate-400 font-semibold mb-1">Symbol</label>
-                    <input type="text" x-model="simForm.symbol" required class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 font-bold">
+                    <input type="text" x-model="simForm.symbol" @change="autoFillFromLive(simForm.symbol)" required class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 font-bold">
                 </div>
                 <div>
                     <label class="block text-slate-400 font-semibold mb-1">Action</label>
-                    <select x-model="simForm.action" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 font-black"
+                    <select x-model="simForm.action" @change="recalcSimulatorSLTP()" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 font-black"
                             :class="simForm.action === 'BUY' ? 'text-emerald-400' : 'text-rose-400'">
                         <option value="BUY">BUY</option>
                         <option value="SELL">SELL</option>
@@ -366,7 +369,7 @@
                 </div>
                 <div>
                     <label class="block text-slate-400 font-semibold mb-1">Entry Price</label>
-                    <input type="number" step="any" x-model="simForm.entry_price" required class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 font-mono font-bold">
+                    <input type="number" step="any" x-model="simForm.entry_price" @input="recalcSimulatorSLTP()" required class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 font-mono font-bold">
                 </div>
                 <div>
                     <label class="block text-slate-400 font-semibold mb-1">Stop Loss (SL)</label>
@@ -1181,9 +1184,9 @@
                 simForm: {
                     symbol: 'XAUUSD',
                     action: 'BUY',
-                    entry_price: 2750.00,
-                    stop_loss: 2744.00,
-                    take_profit: 2762.00,
+                    entry_price: 4400.00,
+                    stop_loss: 4394.00,
+                    take_profit: 4412.00,
                     timeframe: '15m'
                 },
                 btForm: {
@@ -1202,6 +1205,10 @@
                     this.fetchSignals();
                     this.fetchCBotStatus();
                     this.fetchLiveConsensus();
+
+                    setTimeout(() => {
+                        this.autoFillFromLive(this.selectedSymbol || 'XAUUSD');
+                    }, 600);
 
                     setInterval(() => { this.fetchLivePrices(); }, 2500);
                     setInterval(() => { this.fetchCBotStatus(); }, 2000);
@@ -1304,6 +1311,62 @@
                         }
                     } catch (e) {
                         alert('Could not load Decision DNA: ' + e);
+                    }
+                },
+
+                async autoFillFromLive(sym) {
+                    if (!sym) sym = this.selectedSymbol || 'XAUUSD';
+                    sym = sym.toUpperCase();
+                    this.simForm.symbol = sym;
+                    
+                    let price = null;
+                    if (this.marketPrices && this.marketPrices[sym] && this.marketPrices[sym].price) {
+                        price = parseFloat(this.marketPrices[sym].price);
+                    } else {
+                        try {
+                            const res = await fetch('/api/market/' + sym);
+                            if (res.ok) {
+                                const data = await res.json();
+                                if (data && data.price) price = parseFloat(data.price);
+                            }
+                        } catch (e) {}
+                    }
+                    
+                    if (!price) {
+                        price = (sym.includes('XAU') || sym.includes('GOLD')) ? 4400.00 : (sym.includes('XAG') ? 32.50 : (sym.includes('EUR') ? 1.0850 : (sym.includes('GBP') ? 1.2950 : 153.50)));
+                    }
+                    
+                    const isForex = (sym.includes('EUR') || sym.includes('GBP') || sym.includes('AUD') || (sym.includes('USD') && !sym.includes('JPY') && !sym.includes('XAU') && !sym.includes('XAG')));
+                    const decimals = isForex ? 5 : ((sym.includes('JPY') || sym.includes('XAG')) ? 3 : 2);
+                    
+                    this.simForm.entry_price = parseFloat(price.toFixed(decimals));
+                    this.recalcSimulatorSLTP();
+                },
+
+                recalcSimulatorSLTP() {
+                    const sym = (this.simForm.symbol || 'XAUUSD').toUpperCase();
+                    const p = parseFloat(this.simForm.entry_price) || 4400.00;
+                    const act = (this.simForm.action || 'BUY').toUpperCase();
+                    
+                    let slDist = 6.0, tpDist = 12.0;
+                    let decimals = 2;
+                    
+                    if (sym.includes('XAU') || sym.includes('GOLD')) {
+                        slDist = 6.0; tpDist = 12.0; decimals = 2;
+                    } else if (sym.includes('XAG') || sym.includes('SILVER')) {
+                        slDist = 0.35; tpDist = 0.75; decimals = 3;
+                    } else if (sym.includes('JPY')) {
+                        slDist = 0.40; tpDist = 0.85; decimals = 3;
+                    } else {
+                        slDist = 0.0035; tpDist = 0.0075; decimals = 5;
+                    }
+                    
+                    if (act === 'BUY') {
+                        this.simForm.stop_loss = parseFloat((p - slDist).toFixed(decimals));
+                        this.simForm.take_profit = parseFloat((p + tpDist).toFixed(decimals));
+                    } else {
+                        this.simForm.stop_loss = parseFloat((p + slDist).toFixed(decimals));
+                        this.simForm.take_profit = parseFloat((p - tpDist).toFixed(decimals));
                     }
                 },
 

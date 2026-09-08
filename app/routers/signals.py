@@ -34,7 +34,7 @@ async def get_live_consensus():
     macro_data = economic_calendar.get_macro_status()
     acc_status = cbot_bridge.get_cbot_status()
     
-    current_price = market_data.get("price", 2750.0)
+    current_price = market_data.get("price", 4400.0)
     trend = market_data.get("indicators", {}).get("trend", market_data.get("trend_1h", "BULLISH"))
     act = "BUY" if trend == "BULLISH" else "SELL"
 

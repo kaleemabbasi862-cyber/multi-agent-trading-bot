@@ -12,7 +12,7 @@ _FEED_CACHE: Dict[str, Dict[str, Any]] = {}
 _FEED_TIMESTAMPS: Dict[str, float] = {}
 
 PAIR_METADATA = {
-    "XAUUSD": {"name": "Gold / USD", "yahoo": "GC=F", "default_p": 2750.0, "pip": 0.01, "spread": 0.35, "digits": 2},
+    "XAUUSD": {"name": "Gold / USD", "yahoo": "GC=F", "default_p": 4400.0, "pip": 0.01, "spread": 0.35, "digits": 2},
     "XAGUSD": {"name": "Silver / USD", "yahoo": "SI=F", "default_p": 32.50, "pip": 0.001, "spread": 0.02, "digits": 3},
     "EURUSD": {"name": "EUR / USD", "yahoo": "EURUSD=X", "default_p": 1.0850, "pip": 0.0001, "spread": 0.0001, "digits": 5},
     "GBPUSD": {"name": "GBP / USD", "yahoo": "GBPUSD=X", "default_p": 1.2950, "pip": 0.0001, "spread": 0.00015, "digits": 5},

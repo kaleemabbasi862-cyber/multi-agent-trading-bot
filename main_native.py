@@ -223,8 +223,9 @@ async def receive_tradingview_webhook(
     # Normalize Payload
     symbol = payload_json.get("symbol", settings_manager.get_active_symbol())
     action = payload_json.get("action") or payload_json.get("signal") or "BUY"
-    action = action.upper()
-    entry = float(payload_json.get("entry_price") or payload_json.get("price") or 2750.0)
+    market_data = get_market_snapshot(symbol)
+    live_p = float(market_data.get("price", 4400.0))
+    entry = float(payload_json.get("entry_price") or payload_json.get("price") or live_p)
     sl = float(payload_json.get("stop_loss") or payload_json.get("sl") or (entry - 6.0 if action == "BUY" else entry + 6.0))
     tp = float(payload_json.get("take_profit") or payload_json.get("tp") or (entry + 12.0 if action == "BUY" else entry - 12.0))
     tf = payload_json.get("timeframe", "15m")
