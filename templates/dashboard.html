@@ -132,11 +132,30 @@
                 <span>Strategy Lab</span>
             </button>
 
-            <!-- cTRADER CLOUD GATEWAY BUTTON -->
-            <button @click="showCBotModal = true" class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition shadow-sm bg-emerald-600/15 border-emerald-500/40 text-emerald-300 hover:bg-emerald-600/25">
-                <span class="w-2 h-2 rounded-full bg-emerald-400 pulse-live mr-0.5"></span>
-                <span x-text="'cTrader: #' + (cbotStatus.account_id || '5908018') + ' ($' + formatMoney(cbotStatus.balance || 39.05) + ')'"></span>
-            </button>
+            <!-- DYNAMIC cTRADER ACCOUNT SWITCHER DROPDOWN -->
+            <div class="flex items-center space-x-1.5 bg-slate-900/90 border border-emerald-500/40 px-2.5 py-1 rounded-xl text-xs font-bold shadow-sm backdrop-blur-md">
+                <span class="w-2 h-2 rounded-full bg-emerald-400 pulse-live shrink-0"></span>
+                <div class="flex items-center space-x-1">
+                    <i class="fa-solid fa-building-columns text-emerald-400 text-[10px]"></i>
+                    <select :value="selectedAccountId || cbotStatus.account_id || '5908018'"
+                            @change="onAccountChange($event.target.value)"
+                            class="bg-transparent text-emerald-300 font-bold text-xs focus:outline-none cursor-pointer pr-1">
+                        <template x-for="acc in availableAccounts" :key="acc.account_id">
+                            <option :value="acc.account_id"
+                                    :selected="acc.account_id === (selectedAccountId || cbotStatus.account_id)"
+                                    class="bg-slate-900 text-slate-200 font-semibold"
+                                    x-text="(acc.account_type === 'LIVE' ? '🟢 Live' : '🔵 Demo') + ' #' + acc.account_id + ' ($' + formatMoney(acc.balance) + ')'">
+                            </option>
+                        </template>
+                        <template x-if="!availableAccounts || availableAccounts.length === 0">
+                            <option value="5908018" class="bg-slate-900 text-slate-200" selected>🟢 Live #5908018 ($1,007.44)</option>
+                        </template>
+                    </select>
+                </div>
+                <button @click="showCBotModal = true" title="cTrader Cloud & Bridge Config" class="p-1 hover:bg-emerald-500/20 text-emerald-400 rounded-lg transition ml-0.5">
+                    <i class="fa-solid fa-gear text-[11px]"></i>
+                </button>
+            </div>
 
             <!-- AUTO TRADE TOGGLE -->
             <button @click="toggleAutoTrade()" class="flex items-center space-x-2 px-3 py-1.5 rounded-xl border text-xs font-bold transition shadow-sm"
@@ -758,7 +777,7 @@
             <div class="px-6 py-4 border-b border-dark-border flex flex-wrap items-center justify-between gap-3 bg-slate-900/60">
                 <div class="flex items-center space-x-2.5">
                     <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 pulse-live shadow-sm shadow-emerald-400/50"></span>
-                    <h2 class="font-bold text-white text-sm">Active Open Positions (Live cTrader Account #5908018)</h2>
+                    <h2 class="font-bold text-white text-sm">Active Open Positions (cTrader Account #<span x-text="selectedAccountId || cbotStatus.account_id || '5908018'"></span>)</h2>
                     <span class="text-xs px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 font-mono font-bold"
                           x-text="(cbotStatus.open_positions ? cbotStatus.open_positions.length : 0) + ' / 1 Position'"></span>
                 </div>
@@ -823,7 +842,7 @@
                             <tr>
                                 <td colspan="9" class="text-center py-6 text-slate-500 text-xs">
                                     <i class="fa-solid fa-folder-open text-xl mb-1.5 block opacity-40"></i>
-                                    No open market positions currently active on cTrader Account #5908018.
+                                    No open market positions currently active on cTrader Account #<span x-text="selectedAccountId || cbotStatus.account_id || '5908018'"></span>.
                                 </td>
                             </tr>
                         </template>
@@ -1090,7 +1109,7 @@
                 </div>
                 <div class="flex items-center justify-between">
                     <span class="text-slate-400">cTrader Account:</span>
-                    <span class="font-bold text-white font-mono">#5908018 (IC Markets / Live Open API)</span>
+                    <span class="font-bold text-white font-mono" x-text="'#' + (selectedAccountId || cbotStatus.account_id || '5908018') + ' (' + (cbotStatus.broker || 'IC Markets cTrader') + ')'"></span>
                 </div>
                 <div class="flex items-center justify-between">
                     <span class="text-slate-400">Live Server Balance:</span>
@@ -1145,7 +1164,12 @@
                 rejectedSignals: [],
                 marketPrices: {},
                 priceFlashes: {},
-                cbotStatus: { mode: 'PAPER', is_connected: true, balance: 39.05, equity: 39.05, account_id: '5908018', currency: 'USD', is_live: false },
+                availableAccounts: [
+                    { account_id: '5908018', name: 'IC Markets Live #5908018', account_type: 'LIVE', balance: 1007.44, equity: 1007.44, is_live: true, is_active: true },
+                    { account_id: '1005621', name: 'cTrader Demo #1005621', account_type: 'DEMO', balance: 39.05, equity: 39.05, is_live: false, is_active: false }
+                ],
+                selectedAccountId: '5908018',
+                cbotStatus: { mode: 'LIVE', is_connected: true, balance: 1007.44, equity: 1007.44, account_id: '5908018', currency: 'USD', is_live: true, broker: 'IC Markets cTrader' },
                 systemState: { auto_trade_enabled: true },
                 selectedSymbol: 'XAUUSD',
                 selectedLotSize: 0.01,
@@ -1172,6 +1196,7 @@
                 btResult: null,
 
                 initDashboard() {
+                    this.fetchAccounts();
                     this.fetchSettings();
                     this.fetchLivePrices();
                     this.fetchSignals();
@@ -1181,6 +1206,7 @@
                     setInterval(() => { this.fetchLivePrices(); }, 2500);
                     setInterval(() => { this.fetchCBotStatus(); }, 2000);
                     setInterval(() => { this.fetchSignals(); }, 4000);
+                    setInterval(() => { this.fetchAccounts(); }, 5000);
                 },
 
                 async fetchLiveConsensus() {
@@ -1328,6 +1354,48 @@
                     }
                 },
 
+                async fetchAccounts() {
+                    try {
+                        const res = await fetch('/api/accounts');
+                        if (res.ok) {
+                            const data = await res.json();
+                            if (data && data.accounts && data.accounts.length > 0) {
+                                this.availableAccounts = data.accounts;
+                                if (data.active_account_id) {
+                                    this.selectedAccountId = data.active_account_id;
+                                    if (this.cbotStatus) {
+                                        this.cbotStatus.account_id = data.active_account_id;
+                                    }
+                                }
+                            }
+                        }
+                    } catch (e) {}
+                },
+
+                async onAccountChange(newAccountId) {
+                    if (!newAccountId) return;
+                    this.selectedAccountId = newAccountId;
+                    try {
+                        const res = await fetch('/api/settings/active-account', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ account_id: newAccountId })
+                        });
+                        if (res.ok) {
+                            const data = await res.json();
+                            if (data && data.gateway_state) {
+                                this.cbotStatus = data.gateway_state;
+                            }
+                            await this.fetchAccounts();
+                            await this.fetchCBotStatus();
+                            this.settingsSavedToast = true;
+                            setTimeout(() => { this.settingsSavedToast = false; }, 2000);
+                        }
+                    } catch (e) {
+                        console.error('Account switch error:', e);
+                    }
+                },
+
                 async fetchSettings() {
                     try {
                         const res = await fetch('/api/pairs/settings');
@@ -1337,6 +1405,12 @@
                             if (data.active_lot_size) this.selectedLotSize = Number(data.active_lot_size);
                             if (data.min_confidence_threshold) this.minConfidenceThreshold = Number(data.min_confidence_threshold);
                             if (data.auto_trade_enabled !== undefined) this.systemState.auto_trade_enabled = data.auto_trade_enabled;
+                            if (data.account_id || data.active_account_id) {
+                                this.selectedAccountId = data.account_id || data.active_account_id;
+                            }
+                            if (data.accounts && data.accounts.length > 0) {
+                                this.availableAccounts = data.accounts;
+                            }
                         }
                     } catch (e) {}
                 },

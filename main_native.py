@@ -267,6 +267,12 @@ class SettingsUpdateRequest(BaseModel):
     active_lot_size: Optional[float] = None
     min_confidence_threshold: Optional[float] = None
     auto_trade_enabled: Optional[bool] = None
+    account_id: Optional[str] = None
+    active_account_id: Optional[str] = None
+
+class ActiveAccountRequest(BaseModel):
+    account_id: str
+
 
 @app.post("/api/copilot/chat")
 async def chat_copilot(req: CopilotChatRequest):
@@ -341,6 +347,7 @@ async def trigger_manual_scan():
 @app.get("/api/settings")
 async def get_pairs_settings():
     s = settings_manager.load_settings()
+    acc_id = settings_manager.get_active_account_id()
     return {
         "all_pairs": settings_manager.ALL_SUPPORTED_PAIRS,
         "active_symbol": s.get("active_symbol", "XAUUSD"),
@@ -349,7 +356,10 @@ async def get_pairs_settings():
         "fixed_lot_size": s.get("active_lot_size", 0.01),
         "min_confidence_threshold": s.get("min_confidence_threshold", 75.0),
         "auto_trade_enabled": s.get("auto_trade_enabled", True),
-        "trading_mode": execution_engine.mode
+        "account_id": acc_id,
+        "active_account_id": acc_id,
+        "trading_mode": execution_engine.mode,
+        "accounts": ctrader_cloud_gateway.get_all_accounts()["accounts"]
     }
 
 @app.post("/api/settings/update")
@@ -365,6 +375,9 @@ async def update_settings(req: SettingsUpdateRequest):
         s = settings_manager.load_settings()
         s["auto_trade_enabled"] = bool(req.auto_trade_enabled)
         settings_manager.save_settings(s)
+    if req.account_id or req.active_account_id:
+        target_acc = req.account_id or req.active_account_id
+        ctrader_cloud_gateway.switch_active_account(target_acc)
 
     updated = settings_manager.load_settings()
     return {
@@ -373,8 +386,27 @@ async def update_settings(req: SettingsUpdateRequest):
         "active_lot_size": updated.get("active_lot_size", 0.01),
         "min_confidence_threshold": updated.get("min_confidence_threshold", 75.0),
         "auto_trade_enabled": updated.get("auto_trade_enabled", True),
-        "message": f"Settings updated: {updated.get('active_symbol')} @ {updated.get('active_lot_size')} Lots | Gate: {updated.get('min_confidence_threshold')}%"
+        "account_id": updated.get("account_id", "5908018"),
+        "active_account_id": updated.get("account_id", "5908018"),
+        "message": f"Settings updated: {updated.get('active_symbol')} @ {updated.get('active_lot_size')} Lots | Account #{updated.get('account_id', '5908018')} | Gate: {updated.get('min_confidence_threshold')}%"
     }
+
+# -------------------------------------------------------------
+# cTrader Multi-Account Switcher & Status Endpoints
+# -------------------------------------------------------------
+@app.get("/api/accounts")
+@app.get("/api/ctrader/accounts")
+async def get_accounts_list():
+    """Returns all available and linked cTrader accounts."""
+    return ctrader_cloud_gateway.get_all_accounts()
+
+@app.post("/api/settings/active-account")
+@app.post("/api/accounts/switch")
+@app.post("/api/ctrader/account/switch")
+async def switch_active_account(req: ActiveAccountRequest):
+    """Switches the active cTrader account dynamically."""
+    return ctrader_cloud_gateway.switch_active_account(req.account_id)
+
 
 # -------------------------------------------------------------
 # cTrader Cloud Open API Gateway Endpoints

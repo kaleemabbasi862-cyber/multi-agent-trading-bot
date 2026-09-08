@@ -60,3 +60,12 @@ def record_cbot_execution(receipt: dict) -> dict:
     order_id = receipt.get("id") or receipt.get("order_id") or receipt.get("ticket_id")
     print(f"[cBot Bridge] [+] 🟢 Authentic cTrader Order Filled: Ticket #{receipt.get('ticket_id')} for {receipt.get('symbol')} @ {receipt.get('fill_price')}")
     return receipt
+
+def get_all_accounts() -> Dict[str, Any]:
+    """Returns all available and linked cTrader accounts."""
+    return ctrader_cloud_gateway.get_all_accounts()
+
+def switch_active_account(account_id: str) -> Dict[str, Any]:
+    """Switches active cTrader account."""
+    return ctrader_cloud_gateway.switch_active_account(account_id)
+

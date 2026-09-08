@@ -23,14 +23,58 @@ logger = logging.getLogger("TradeTalk.cTraderCloudGateway")
 # --- MULTI-ASSET SERVER-SIDE EXECUTION PARAMETERS ---
 ALLOWED_SYMBOLS = ["XAUUSD", "GOLD", "XAGUSD", "SILVER", "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCHF"]
 MAX_ACTIVE_OPEN_POSITIONS = 1       # Strictly 1 active trade maximum
-DEFAULT_ACCOUNT_ID = os.getenv("CTRADER_ACCOUNT_ID", "5908018").strip('"')
+
+def _resolve_initial_account_id() -> str:
+    try:
+        import settings_manager
+        return settings_manager.get_active_account_id()
+    except Exception:
+        return os.getenv("CTRADER_ACCOUNT_ID", "5908018").strip('"')
+
+DEFAULT_ACCOUNT_ID = _resolve_initial_account_id()
+
+# Linked cTrader Accounts Registry (Live & Demo)
+LINKED_ACCOUNTS: Dict[str, Dict[str, Any]] = {
+    "5908018": {
+        "account_id": "5908018",
+        "name": "IC Markets Live / Demo #5908018",
+        "account_type": "LIVE",
+        "environment": "Live",
+        "balance": 1007.44,
+        "equity": 1007.44,
+        "margin": 0.0,
+        "free_margin": 1007.44,
+        "currency": "USD",
+        "broker": "IC Markets cTrader",
+        "is_live": True,
+        "open_positions": [],
+        "last_seen": time.time()
+    },
+    "1005621": {
+        "account_id": "1005621",
+        "name": "cTrader Demo #1005621",
+        "account_type": "DEMO",
+        "environment": "Demo",
+        "balance": 39.05,
+        "equity": 39.05,
+        "margin": 0.0,
+        "free_margin": 39.05,
+        "currency": "USD",
+        "broker": "Spotware cTrader Demo",
+        "is_live": False,
+        "open_positions": [],
+        "last_seen": time.time()
+    }
+}
+
+_initial_acc = LINKED_ACCOUNTS.get(DEFAULT_ACCOUNT_ID, LINKED_ACCOUNTS["5908018"])
 
 # Spotware cTrader Open API Configuration
 CTRADER_CONFIG = {
     "client_id": os.getenv("CTRADER_CLIENT_ID", "38205_uwQq76FzYirpd9qMjjrPqcO7VcT1CqFHkDx8GXwzMBxratuPNT").strip('"'),
     "client_secret": os.getenv("CTRADER_CLIENT_SECRET", "al5kdBjwDuPX6CCgrJ0o3AholHFhCGAPuN2lj75UUV3NxEHFTm").strip('"'),
     "account_id": DEFAULT_ACCOUNT_ID,
-    "environment": os.getenv("CTRADER_ENVIRONMENT", "live").strip('"').capitalize(),
+    "environment": _initial_acc.get("environment", "Live"),
     "access_token": os.getenv("CTRADER_ACCESS_TOKEN", "").strip('"'),
     "refresh_token": os.getenv("CTRADER_REFRESH_TOKEN", "").strip('"')
 }
@@ -43,15 +87,15 @@ GATEWAY_STATE: Dict[str, Any] = {
     "is_connected": True,
     "cloud_server_active": True,
     "mode": "CLOUD_OPEN_API",
-    "account_id": CTRADER_CONFIG["account_id"],
-    "account_type": "LIVE" if CTRADER_CONFIG["environment"].upper() == "LIVE" else "DEMO",
-    "is_live": CTRADER_CONFIG["environment"].upper() == "LIVE",
-    "balance": 39.05,
-    "equity": 39.05,
-    "margin": 0.0,
-    "free_margin": 39.05,
-    "currency": "USD",
-    "broker": "IC Markets / Spotware cTrader Cloud",
+    "account_id": DEFAULT_ACCOUNT_ID,
+    "account_type": _initial_acc.get("account_type", "LIVE"),
+    "is_live": _initial_acc.get("is_live", True),
+    "balance": _initial_acc.get("balance", 1007.44),
+    "equity": _initial_acc.get("equity", 1007.44),
+    "margin": _initial_acc.get("margin", 0.0),
+    "free_margin": _initial_acc.get("free_margin", 1007.44),
+    "currency": _initial_acc.get("currency", "USD"),
+    "broker": _initial_acc.get("broker", "IC Markets cTrader"),
     "open_positions": [],
     "total_unrealized_pnl": 0.0,
     "target_symbol": "XAUUSD",
@@ -67,6 +111,88 @@ PENDING_CBOT_ORDERS: List[Dict[str, Any]] = []
 
 # Executed Trade History & In-Memory Receipts
 EXECUTED_RECEIPTS: Dict[str, Dict[str, Any]] = {}
+
+def get_all_accounts() -> Dict[str, Any]:
+    """Returns all available and linked cTrader accounts."""
+    active_id = str(GATEWAY_STATE.get("account_id", DEFAULT_ACCOUNT_ID)).strip().replace("#", "")
+    accounts_list = []
+    for acc_id, acc_info in LINKED_ACCOUNTS.items():
+        is_active = (acc_id == active_id)
+        # Update active account info from GATEWAY_STATE if active
+        bal = GATEWAY_STATE["balance"] if is_active else acc_info.get("balance", 0.0)
+        eq = GATEWAY_STATE["equity"] if is_active else acc_info.get("equity", 0.0)
+        accounts_list.append({
+            "account_id": acc_id,
+            "name": acc_info.get("name", f"cTrader #{acc_id}"),
+            "label": f"{acc_info.get('account_type', 'LIVE')} #{acc_id} (${bal:,.2f})",
+            "account_type": acc_info.get("account_type", "LIVE"),
+            "environment": acc_info.get("environment", "Live"),
+            "balance": round(float(bal), 2),
+            "equity": round(float(eq), 2),
+            "currency": acc_info.get("currency", "USD"),
+            "broker": acc_info.get("broker", "IC Markets cTrader"),
+            "is_live": acc_info.get("is_live", True),
+            "is_active": is_active
+        })
+    return {
+        "status": "success",
+        "active_account_id": active_id,
+        "active_account": LINKED_ACCOUNTS.get(active_id, {}),
+        "accounts": accounts_list
+    }
+
+def switch_active_account(account_id: str) -> Dict[str, Any]:
+    """Switches the active cTrader account dynamically in runtime memory and settings."""
+    global GATEWAY_STATE, CTRADER_CONFIG, LINKED_ACCOUNTS
+    clean_id = str(account_id).strip().replace("#", "")
+
+    if clean_id not in LINKED_ACCOUNTS:
+        is_live = "5908" in clean_id or "live" in clean_id.lower()
+        LINKED_ACCOUNTS[clean_id] = {
+            "account_id": clean_id,
+            "name": f"cTrader #{clean_id}",
+            "account_type": "LIVE" if is_live else "DEMO",
+            "environment": "Live" if is_live else "Demo",
+            "balance": 1007.44 if "5908" in clean_id else 39.05,
+            "equity": 1007.44 if "5908" in clean_id else 39.05,
+            "margin": 0.0,
+            "free_margin": 1007.44 if "5908" in clean_id else 39.05,
+            "currency": "USD",
+            "broker": "IC Markets cTrader",
+            "is_live": is_live,
+            "open_positions": [],
+            "last_seen": time.time()
+        }
+
+    acc_data = LINKED_ACCOUNTS[clean_id]
+    GATEWAY_STATE["account_id"] = clean_id
+    GATEWAY_STATE["account_type"] = acc_data.get("account_type", "LIVE")
+    GATEWAY_STATE["is_live"] = acc_data.get("is_live", True)
+    GATEWAY_STATE["balance"] = round(float(acc_data.get("balance", 1007.44)), 2)
+    GATEWAY_STATE["equity"] = round(float(acc_data.get("equity", 1007.44)), 2)
+    GATEWAY_STATE["margin"] = round(float(acc_data.get("margin", 0.0)), 2)
+    GATEWAY_STATE["free_margin"] = round(float(acc_data.get("free_margin", GATEWAY_STATE["equity"])), 2)
+    GATEWAY_STATE["currency"] = acc_data.get("currency", "USD")
+    GATEWAY_STATE["broker"] = acc_data.get("broker", "IC Markets cTrader")
+    GATEWAY_STATE["open_positions"] = acc_data.get("open_positions", [])
+    GATEWAY_STATE["last_sync"] = datetime.datetime.now(datetime.timezone.utc).strftime("%H:%M:%S UTC")
+    GATEWAY_STATE["last_sync_timestamp"] = time.time()
+
+    CTRADER_CONFIG["account_id"] = clean_id
+
+    try:
+        import settings_manager
+        settings_manager.set_active_account_id(clean_id)
+    except Exception:
+        pass
+
+    print(f"[cTrader Cloud] 🔄 Active Account Switched to #{clean_id} (${GATEWAY_STATE['balance']})")
+    return {
+        "status": "SUCCESS",
+        "active_account_id": clean_id,
+        "gateway_state": GATEWAY_STATE,
+        "accounts": get_all_accounts()["accounts"]
+    }
 
 def get_oauth_auth_url(redirect_uri: str = "https://multi-agent-trading-bot.onrender.com/api/ctrader/callback") -> str:
     """Generates direct Spotware OAuth 2.0 authorization URL."""
@@ -123,9 +249,9 @@ def sync_with_spotware_cloud() -> Dict[str, Any]:
     """
     Syncs live account balance, equity, and positions directly with Spotware cTrader Open API.
     """
-    global GATEWAY_STATE, CTRADER_CONFIG
+    global GATEWAY_STATE, CTRADER_CONFIG, LINKED_ACCOUNTS
     token = CTRADER_CONFIG.get("access_token")
-    target_acc = str(CTRADER_CONFIG.get("account_id", "1005621"))
+    target_acc = str(CTRADER_CONFIG.get("account_id", GATEWAY_STATE["account_id"]))
     
     GATEWAY_STATE["last_sync_timestamp"] = time.time()
     GATEWAY_STATE["last_sync"] = datetime.datetime.now(datetime.timezone.utc).strftime("%H:%M:%S UTC")
@@ -148,9 +274,25 @@ def sync_with_spotware_cloud() -> Dict[str, Any]:
                 
                 for acc in accounts:
                     acc_id_str = str(acc.get("accountId") or acc.get("accountNumber") or acc.get("ctidTraderAccountId") or "")
+                    raw_bal = float(acc.get("balance", GATEWAY_STATE["balance"]))
+                    real_bal = raw_bal if raw_bal < 100000 else (raw_bal / 100.0)
+                    
+                    if acc_id_str not in LINKED_ACCOUNTS:
+                        LINKED_ACCOUNTS[acc_id_str] = {
+                            "account_id": acc_id_str,
+                            "name": f"cTrader #{acc_id_str}",
+                            "account_type": "LIVE" if acc.get("isLive", True) else "DEMO",
+                            "balance": round(real_bal, 2),
+                            "equity": round(real_bal, 2),
+                            "currency": str(acc.get("depositCurrency", "USD")),
+                            "broker": str(acc.get("brokerTitle", "IC Markets cTrader")),
+                            "is_live": bool(acc.get("isLive", True)),
+                            "open_positions": [],
+                            "last_seen": time.time()
+                        }
+
                     if acc_id_str == target_acc or not target_acc:
-                        raw_bal = float(acc.get("balance", GATEWAY_STATE["balance"]))
-                        real_bal = raw_bal if raw_bal < 100000 else (raw_bal / 100.0)
+                        GATEWAY_STATE["account_id"] = acc_id_str
                         GATEWAY_STATE["balance"] = round(real_bal, 2)
                         GATEWAY_STATE["equity"] = round(real_bal, 2)
                         GATEWAY_STATE["currency"] = str(acc.get("depositCurrency", "USD"))
@@ -468,7 +610,7 @@ def update_heartbeat(data: dict) -> dict:
     now_ts = time.time()
     now_str = datetime.datetime.now(datetime.timezone.utc).strftime("%H:%M:%S UTC")
 
-    acc_id = str(data.get("account_id") or data.get("accountNumber") or data.get("accountId") or GATEWAY_STATE["account_id"])
+    acc_id = str(data.get("account_id") or data.get("accountNumber") or data.get("accountId") or GATEWAY_STATE["account_id"]).strip().replace("#", "")
     bal = float(data.get("balance", data.get("Balance", GATEWAY_STATE["balance"])))
     eq = float(data.get("equity", data.get("Equity", bal)))
     marg = float(data.get("margin", data.get("Margin", 0.0)))
@@ -476,6 +618,25 @@ def update_heartbeat(data: dict) -> dict:
     curr = str(data.get("currency", data.get("Currency", "USD")))
     broker = str(data.get("broker", data.get("brokerName", "IC Markets cTrader")))
     is_live = bool(data.get("is_live", True))
+
+    # Keep registry of linked accounts up to date
+    if acc_id not in LINKED_ACCOUNTS:
+        LINKED_ACCOUNTS[acc_id] = {}
+    
+    LINKED_ACCOUNTS[acc_id].update({
+        "account_id": acc_id,
+        "name": f"cTrader #{acc_id}",
+        "account_type": "LIVE" if is_live else "DEMO",
+        "balance": round(bal, 2),
+        "equity": round(eq, 2),
+        "margin": round(marg, 2),
+        "free_margin": round(f_marg, 2),
+        "currency": curr,
+        "broker": broker,
+        "is_live": is_live,
+        "open_positions": data.get("open_positions", data.get("positions", [])),
+        "last_seen": now_ts
+    })
 
     sym = data.get("symbol")
     bid = data.get("bid")
@@ -495,19 +656,20 @@ def update_heartbeat(data: dict) -> dict:
         })
 
     open_pos = data.get("open_positions", data.get("positions", []))
-    if open_pos:
+    if open_pos or acc_id == GATEWAY_STATE.get("account_id"):
         GATEWAY_STATE["open_positions"] = open_pos
 
-    GATEWAY_STATE["account_id"] = acc_id
-    GATEWAY_STATE["balance"] = round(bal, 2)
-    GATEWAY_STATE["equity"] = round(eq, 2)
-    GATEWAY_STATE["margin"] = round(marg, 2)
-    GATEWAY_STATE["free_margin"] = round(f_marg, 2)
-    GATEWAY_STATE["currency"] = curr
-    GATEWAY_STATE["broker"] = broker
-    GATEWAY_STATE["is_live"] = is_live
-    GATEWAY_STATE["last_sync"] = now_str
-    GATEWAY_STATE["last_sync_timestamp"] = now_ts
+    if acc_id == GATEWAY_STATE.get("account_id") or not GATEWAY_STATE.get("account_id"):
+        GATEWAY_STATE["account_id"] = acc_id
+        GATEWAY_STATE["balance"] = round(bal, 2)
+        GATEWAY_STATE["equity"] = round(eq, 2)
+        GATEWAY_STATE["margin"] = round(marg, 2)
+        GATEWAY_STATE["free_margin"] = round(f_marg, 2)
+        GATEWAY_STATE["currency"] = curr
+        GATEWAY_STATE["broker"] = broker
+        GATEWAY_STATE["is_live"] = is_live
+        GATEWAY_STATE["last_sync"] = now_str
+        GATEWAY_STATE["last_sync_timestamp"] = now_ts
 
     state_res = dict(GATEWAY_STATE)
     if PENDING_CBOT_ORDERS:

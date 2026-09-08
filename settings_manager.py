@@ -126,3 +126,16 @@ def is_pair_whitelisted(symbol: str) -> bool:
     sym_clean = symbol.upper().replace("M", "").replace(".PRO", "").replace("_I", "")
     return any(sym_clean == s or sym_clean in s or s in sym_clean for s in all_syms)
 
+def get_active_account_id() -> str:
+    """Returns currently selected cTrader Account ID."""
+    return str(load_settings().get("account_id", "5908018")).strip()
+
+def set_active_account_id(account_id: str) -> str:
+    """Updates selected cTrader Account ID."""
+    clean_id = str(account_id).strip().replace("#", "")
+    s = load_settings()
+    s["account_id"] = clean_id
+    save_settings(s)
+    return clean_id
+
+

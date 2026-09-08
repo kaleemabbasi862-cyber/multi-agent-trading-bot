@@ -2,6 +2,9 @@ import ctrader_cloud_gateway
 import cbot_bridge
 
 def test_ctrader_cloud_order_execution():
+    # Ensure baseline active account is 5908018
+    ctrader_cloud_gateway.switch_active_account("5908018")
+    
     # 1. Test Gateway Status
     status = ctrader_cloud_gateway.get_gateway_status()
     assert status["is_connected"] is True
@@ -59,3 +62,27 @@ def test_ctrader_cloud_order_execution():
     close_res = ctrader_cloud_gateway.close_position(pos["id"])
     assert close_res["status"] == "SUCCESS"
     assert len(ctrader_cloud_gateway.get_gateway_status()["open_positions"]) == 0
+
+    # 7. Test Multi-Account Listing and Switching
+    acc_data = ctrader_cloud_gateway.get_all_accounts()
+    assert acc_data["status"] == "success"
+    accounts = acc_data["accounts"]
+    assert len(accounts) >= 2
+    acc_ids = [str(a["account_id"]) for a in accounts]
+    assert "5908018" in acc_ids
+    assert "1005621" in acc_ids
+
+    # Switch to 1005621
+    switch_res = ctrader_cloud_gateway.switch_active_account("1005621")
+    assert switch_res["status"] == "SUCCESS"
+    assert switch_res["active_account_id"] == "1005621"
+    assert switch_res["gateway_state"]["balance"] == 39.05
+    assert ctrader_cloud_gateway.get_gateway_status()["account_id"] == "1005621"
+
+    # Switch back to 5908018
+    switch_back = ctrader_cloud_gateway.switch_active_account("5908018")
+    assert switch_back["status"] == "SUCCESS"
+    assert switch_back["active_account_id"] == "5908018"
+    assert switch_back["gateway_state"]["balance"] == 1007.44
+    assert ctrader_cloud_gateway.get_gateway_status()["account_id"] == "5908018"
+
