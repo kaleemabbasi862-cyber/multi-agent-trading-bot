@@ -9,6 +9,7 @@ import urllib.parse
 from typing import Dict, Any, List, Optional
 from dotenv import load_dotenv
 import ctrader_openapi
+from app.config import settings
 
 if sys.platform == "win32":
     try:
@@ -124,6 +125,9 @@ GATEWAY_STATE: Dict[str, Any] = {
 
 # Queue of pending approved orders for local/VPS cBot bridge execution
 PENDING_CBOT_ORDERS: List[Dict[str, Any]] = []
+
+# Trade Pacing & Cooldown Tracker
+LAST_EXECUTION_TIMESTAMP: float = 0.0
 
 # Executed Trade History & In-Memory Receipts
 EXECUTED_RECEIPTS: Dict[str, Dict[str, Any]] = {}
@@ -411,7 +415,7 @@ def execute_market_order(
     - Dispatches to Local cBot HTTP Webhook Bridge (http://127.0.0.1:5001/trade/).
     - Registers open position in server memory and tracks real-time PnL.
     """
-    global GATEWAY_STATE, EXECUTED_RECEIPTS
+    global GATEWAY_STATE, EXECUTED_RECEIPTS, LAST_EXECUTION_TIMESTAMP
     now_ts = time.time()
     now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
     now_str = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
@@ -419,6 +423,19 @@ def execute_market_order(
     sym_clean = symbol.upper().replace("M", "").replace(".PRO", "").replace("_I", "")
     act_upper = action.upper()
     order_sig_id = signal_id or f"SIG_{int(now_ts)}"
+
+    # 0. Execution Cooldown Check (15 Minutes / 900 Seconds)
+    cooldown_window = getattr(settings, "EXECUTION_COOLDOWN_SECONDS", 900)
+    if LAST_EXECUTION_TIMESTAMP > 0:
+        elapsed = now_ts - LAST_EXECUTION_TIMESTAMP
+        if elapsed < cooldown_window:
+            remaining = int(cooldown_window - elapsed)
+            print(f"[cTrader Cloud] [!] REJECTED: Execution cooldown active ({remaining}s / {cooldown_window}s remaining).")
+            return {
+                "status": "REJECTED_COOLDOWN_ACTIVE",
+                "error": f"Execution cooldown active: {remaining}s remaining to prevent over-trading",
+                "cooldown_remaining_seconds": remaining
+            }
 
     # 1. Strict Instrument Whitelist Validation
     if not any(sym_clean == s or sym_clean in s or s in sym_clean for s in ALLOWED_SYMBOLS):
@@ -474,13 +491,21 @@ def execute_market_order(
     is_silver = "XAG" in sym_clean or "SILVER" in sym_clean
     units = int(final_lot * 100) if is_gold else (int(final_lot * 5000) if is_silver else int(final_lot * 100000))
 
+    # Breathing Room Buffer: Ensure minimum SL distance of at least $2.50 on Gold
+    if is_gold:
+        min_sl_dist = getattr(settings, "MIN_SL_BUFFER_GOLD", 2.50)
+        curr_sl_dist = abs(fill_price - sl_price)
+        if curr_sl_dist < min_sl_dist:
+            sl_price = round((fill_price - 6.0) if act_upper == "BUY" else (fill_price + 6.0), 2)
+            tp_price = round((fill_price + 12.0) if act_upper == "BUY" else (fill_price - 12.0), 2)
+
     ticket_num = random.randint(710000, 999999)
     ticket_id = f"CT_{ticket_num}"
 
     # Calculate pips for cBot bridge
     pip_size = 0.01 if (is_gold or is_silver) else 0.0001
-    sl_pips = abs(fill_price - sl_price) / pip_size if sl_price > 0 else 40.0
-    tp_pips = abs(tp_price - fill_price) / pip_size if tp_price > 0 else 80.0
+    sl_pips = abs(fill_price - sl_price) / pip_size if sl_price > 0 else (600.0 if is_gold else 40.0)
+    tp_pips = abs(tp_price - fill_price) / pip_size if tp_price > 0 else (1200.0 if is_gold else 80.0)
 
     # 1. Primary: Dispatch to Ultra-Low Latency Local cBot Webhook Bridge
     bridge_res = dispatch_local_bridge_order(
@@ -503,6 +528,9 @@ def execute_market_order(
             fill_price = float(bridge_res["entry_price"])
         print(f"[Local Bridge Execution] 🟢 Live cTrader Fill: Ticket #{ticket_num} @ ${fill_price}")
 
+    # Set last execution timestamp
+    LAST_EXECUTION_TIMESTAMP = now_ts
+
     # Create new live active position in server memory
     new_position = {
         "id": ticket_num,
@@ -524,6 +552,7 @@ def execute_market_order(
         "commission": -0.07,
         "break_even_locked": False,
         "opened_at": now_str,
+        "open_timestamp": now_ts,
         "timestamp": now_iso,
         "comment": comment
     }
@@ -560,9 +589,10 @@ def execute_market_order(
     print(f"[cTrader Cloud] [+] 🟢 Authentic Server-Side Order Executed: #{ticket_num} ({ticket_id}) -> {act_upper} {final_lot} Lots of {sym_clean} @ ${fill_price}")
     return receipt
 
-def close_position(position_id: Any, close_price: Optional[float] = None) -> Dict[str, Any]:
+def close_position(position_id: Any, close_price: Optional[float] = None, force: bool = False) -> Dict[str, Any]:
     """
     Closes an open position server-side, updates balance/equity, and frees margin.
+    Enforces minimum 5-minute hold time unless legitimate TP/SL hit or forced.
     """
     global GATEWAY_STATE
     pos_id_str = str(position_id)
@@ -573,10 +603,33 @@ def close_position(position_id: Any, close_price: Optional[float] = None) -> Dic
             target_pos = pos
             break
 
+    if not target_pos:
+        return {"status": "ERROR", "message": f"Position {position_id} not found"}
+
+    # Minimum Trade Hold Time (5 minutes / 300 seconds) Guard
+    open_ts = target_pos.get("open_timestamp", 0)
+    if not open_ts and "timestamp" in target_pos:
+        try:
+            open_ts = datetime.datetime.fromisoformat(target_pos["timestamp"].replace("Z", "+00:00")).timestamp()
+        except Exception:
+            open_ts = 0
+
+    if open_ts > 0 and not force and close_price is None:
+        duration = time.time() - open_ts
+        min_hold = getattr(settings, "MIN_TRADE_HOLD_SECONDS", 300)
+        if duration < min_hold:
+            rem = int(min_hold - duration)
+            print(f"[cTrader Cloud] [!] REJECTED CLOSE: Position #{target_pos.get('id')} open for only {int(duration)}s (< {min_hold}s min hold time).")
+            return {
+                "status": "REJECTED_MIN_HOLD_TIME",
+                "error": f"Minimum trade hold time (5m) not reached ({rem}s remaining to let trade breathe).",
+                "hold_remaining_seconds": rem
+            }
+
     # If local cBot bridge is active, dispatch close request directly to cTrader
     bridge_url = os.getenv("CBOT_BRIDGE_URL", "http://127.0.0.1:5001/trade/").strip()
     try:
-        requests.post(bridge_url, json={"action": "CLOSE", "position_id": str(target_pos.get("id"))}, timeout=2)
+        requests.post(bridge_url, json={"action": "CLOSE", "position_id": str(target_pos.get("id")), "force": str(force).lower()}, timeout=2)
     except Exception:
         pass
 
@@ -607,6 +660,7 @@ def close_position(position_id: Any, close_price: Optional[float] = None) -> Dic
 def update_live_market_prices(prices_map: Dict[str, Dict[str, Any]]) -> None:
     """
     Updates live market tick prices and calculates real-time unrealized PnL for active positions.
+    Does NOT trigger micro break-even closures. Only closes on legitimate TP or SL hits.
     """
     global GATEWAY_STATE
     GATEWAY_STATE["live_prices"].update(prices_map)
@@ -649,21 +703,15 @@ def update_live_market_prices(prices_map: Dict[str, Dict[str, Any]]) -> None:
             pos["gross_profit"] = round(pnl, 2)
             total_unrealized += net_pnl
 
-            # Autonomous Break-Even Lock Check
-            if net_pnl >= 1.50 and not pos.get("break_even_locked"):
-                pos["break_even_locked"] = True
-                pos["sl"] = entry
-                print(f"[cTrader Cloud Guard] 🛡️ Break-Even Activated for #{pos.get('id')} ({sym}). SL moved to ${entry}")
-
-            # Check TP Hit
+            # Check legitimate TP Hit
             if tp > 0 and ((act == "BUY" and cur_price >= tp) or (act == "SELL" and cur_price <= tp)):
                 print(f"[cTrader Cloud] 🎯 Take Profit Reached for #{pos.get('id')} ({sym} @ ${cur_price})!")
-                close_position(pos.get("id"), cur_price)
+                close_position(pos.get("id"), cur_price, force=True)
 
-            # Check SL Hit
+            # Check legitimate SL Hit
             elif sl > 0 and ((act == "BUY" and cur_price <= sl) or (act == "SELL" and cur_price >= sl)):
                 print(f"[cTrader Cloud] 🛑 Stop Loss Hit for #{pos.get('id')} ({sym} @ ${cur_price})!")
-                close_position(pos.get("id"), cur_price)
+                close_position(pos.get("id"), cur_price, force=True)
 
     GATEWAY_STATE["total_unrealized_pnl"] = round(total_unrealized, 2)
     GATEWAY_STATE["equity"] = round(GATEWAY_STATE["balance"] + total_unrealized, 2)

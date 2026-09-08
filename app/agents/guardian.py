@@ -70,12 +70,13 @@ class NoTradeGuardian:
         if sl <= 0 or tp <= 0:
             return True, "Rule 8 Violation: Mandatory SL or TP is missing. Naked positions strictly prohibited."
 
-        # Rule 9: SL Broker Distance & Alignment
+        # Rule 9: SL Broker Distance & Breathing Room Buffer
         sl_dist = abs(p - sl)
         tp_dist = abs(tp - p)
-        min_sl = max(spread * settings.MIN_SL_SPREAD_MULTIPLIER, 0.40)
+        is_gold = "XAU" in sym or "GOLD" in sym
+        min_sl = max(spread * settings.MIN_SL_SPREAD_MULTIPLIER, getattr(settings, "MIN_SL_BUFFER_GOLD", 2.50) if is_gold else 0.40)
         if sl_dist < min_sl:
-            return True, f"Rule 9 Violation: SL distance (${sl_dist:.2f}) is tighter than minimum broker buffer (${min_sl:.2f})."
+            return True, f"Rule 9 Violation: SL distance (${sl_dist:.2f}) is tighter than minimum broker breathing buffer (${min_sl:.2f})."
 
         # Rule 10: Insufficient Risk-to-Reward (< 2.0)
         rr = round(tp_dist / (sl_dist + 1e-6), 2)
@@ -107,6 +108,12 @@ class NoTradeGuardian:
         # Rule 16: Zero-Failure Invalidation Check
         if (act == "BUY" and sl >= p) or (act == "SELL" and sl <= p):
             return True, "Rule 16 Violation: Inverted Stop Loss logic detected."
+
+        # Rule 17: Trade Execution Cooldown (Anti-Churn Guard)
+        last_exec = account_status.get("last_execution_timestamp", 0)
+        if last_exec > 0 and (now_ts - last_exec) < settings.EXECUTION_COOLDOWN_SECONDS:
+            rem_sec = int(settings.EXECUTION_COOLDOWN_SECONDS - (now_ts - last_exec))
+            return True, f"Rule 17 Violation: Execution cooldown active ({rem_sec}s remaining of 15m cooldown)."
 
         return False, None
 

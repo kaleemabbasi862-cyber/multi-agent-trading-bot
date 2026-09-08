@@ -106,14 +106,24 @@ async def autonomous_market_scanner_loop():
     """
     await asyncio.sleep(5)
     last_scan_ts = 0.0
-    logger.info("[Autonomous Engine] 🚀 24/7 Cloud Market Scanner & Execution Engine Initialized")
+    logger.info("[Autonomous Engine] 🚀 24/7 Multi-Timeframe (15m/1H) Market Scanner & Execution Engine Initialized")
     while True:
         try:
             now = time.time()
-            if now - last_scan_ts >= 15.0:
+            # Paced scan cadence: check every 30 seconds
+            if now - last_scan_ts >= 30.0:
                 last_scan_ts = now
                 cur_settings = settings_manager.load_settings()
                 if cur_settings.get("auto_trade_enabled", True):
+                    # 1. Check Execution Cooldown (15 minutes / 900 seconds)
+                    time_since_exec = now - getattr(ctrader_cloud_gateway, "LAST_EXECUTION_TIMESTAMP", 0.0)
+                    cooldown_req = getattr(settings, "EXECUTION_COOLDOWN_SECONDS", 900)
+                    if getattr(ctrader_cloud_gateway, "LAST_EXECUTION_TIMESTAMP", 0.0) > 0 and time_since_exec < cooldown_req:
+                        rem = int(cooldown_req - time_since_exec)
+                        logger.debug(f"[Autonomous Scanner] ⏳ Pacing Cooldown Active ({rem}s / {cooldown_req}s remaining before next scan).")
+                        await asyncio.sleep(10)
+                        continue
+
                     gateway_status = ctrader_cloud_gateway.get_gateway_status()
                     open_positions = gateway_status.get("open_positions", [])
                     
@@ -125,9 +135,19 @@ async def autonomous_market_scanner_loop():
                         market_data = get_market_snapshot(cur_sym, force_refresh=False)
                         if market_data and market_data.get("price"):
                             p = float(market_data["price"])
-                            trend = market_data.get("indicators", {}).get("trend", "BULLISH")
-                            act = "BUY" if trend == "BULLISH" else "SELL"
+                            ind = market_data.get("indicators", {})
+                            trend_15m = ind.get("trend", "BULLISH")
+                            trend_1h = ind.get("trend_1h", "BULLISH")
+
+                            # 2. Strict Higher Timeframe (15m & 1H) Confluence Filter
+                            if trend_15m != trend_1h or trend_15m not in ("BULLISH", "BEARISH"):
+                                logger.debug(f"[Autonomous Scanner] ⏸️ Skipping signal: 15m ({trend_15m}) and 1H ({trend_1h}) trends not aligned.")
+                                await asyncio.sleep(10)
+                                continue
+
+                            act = "BUY" if trend_15m == "BULLISH" else "SELL"
                             
+                            # Breathing Room SL/TP ($6.00 SL / $12.00 TP on Gold)
                             if "XAU" in cur_sym or "GOLD" in cur_sym:
                                 sl_dist, tp_dist = 6.0, 12.0
                             elif "XAG" in cur_sym or "SILVER" in cur_sym:
@@ -148,7 +168,7 @@ async def autonomous_market_scanner_loop():
                                 take_profit=tp,
                                 volume=cur_lot,
                                 timeframe="15m & 1H",
-                                strategy_name=f"{cur_sym}_Autonomous_Scan",
+                                strategy_name=f"{cur_sym}_HigherTimeframe_Confluence",
                                 source="AUTONOMOUS_SCANNER"
                             )
                             
@@ -168,7 +188,7 @@ async def autonomous_market_scanner_loop():
                                 logger.info(f"[Autonomous Engine] [+] 🟢 Approved Signal #{sig.id} Dispatched Directly to cTrader Cloud: {exec_res.get('status')} | Ticket: {exec_res.get('ticket')}")
         except Exception as e:
             logger.error(f"[Autonomous Scanner Error]: {e}")
-        await asyncio.sleep(4)
+        await asyncio.sleep(10)
 
 async def local_cbot_background_sync():
     """

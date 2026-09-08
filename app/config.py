@@ -29,11 +29,16 @@ class Settings:
     MAX_MONTHLY_DRAWDOWN_PERCENT: float = float(os.getenv("MAX_MONTHLY_DRAWDOWN_PERCENT", "10.0"))
     
     # Stop Loss & Take Profit Defaults
-    MIN_SL_SPREAD_MULTIPLIER: float = float(os.getenv("MIN_SL_SPREAD_MULTIPLIER", "3.0"))
+    MIN_SL_SPREAD_MULTIPLIER: float = float(os.getenv("MIN_SL_SPREAD_MULTIPLIER", "4.0"))
+    MIN_SL_BUFFER_GOLD: float = float(os.getenv("MIN_SL_BUFFER_GOLD", "2.50")) # Mandatory $2.50 (25 pips) breathing room on Gold
     DEFAULT_SL_PIPS: float = float(os.getenv("DEFAULT_SL_PIPS", "60.0")) # $6.00 on Gold
     DEFAULT_TP_PIPS: float = float(os.getenv("DEFAULT_TP_PIPS", "120.0")) # $12.00 on Gold (1:2 R:R)
-    AUTO_BREAK_EVEN_TRIGGER_PIPS: float = float(os.getenv("AUTO_BREAK_EVEN_TRIGGER_PIPS", "15.0"))
-    BREAK_EVEN_BUFFER_PIPS: float = float(os.getenv("BREAK_EVEN_BUFFER_PIPS", "1.0"))
+    AUTO_BREAK_EVEN_TRIGGER_PIPS: float = float(os.getenv("AUTO_BREAK_EVEN_TRIGGER_PIPS", "0.0")) # Disabled aggressive break-even
+    BREAK_EVEN_BUFFER_PIPS: float = float(os.getenv("BREAK_EVEN_BUFFER_PIPS", "0.0"))
+    
+    # Trade Pacing & Anti-Churn Guards
+    EXECUTION_COOLDOWN_SECONDS: int = int(os.getenv("EXECUTION_COOLDOWN_SECONDS", "900")) # 15 minutes between trades
+    MIN_TRADE_HOLD_SECONDS: int = int(os.getenv("MIN_TRADE_HOLD_SECONDS", "300")) # 5 minutes minimum hold time
     
     # Trailing Stop Configuration: 'DISABLED', 'ATR_TRAILING', 'STRUCTURE_TRAILING', 'SWING_TRAILING'
     TRAILING_STOP_MODE: str = os.getenv("TRAILING_STOP_MODE", "DISABLED").upper()

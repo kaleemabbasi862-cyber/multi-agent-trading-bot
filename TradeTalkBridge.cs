@@ -20,9 +20,6 @@ namespace cAlgo.Robots
         [Parameter("Max Concurrent Positions", DefaultValue = 1, MinValue = 1, MaxValue = 10)]
         public int MaxConcurrentPositions { get; set; }
 
-        [Parameter("Auto Break-Even Pips", DefaultValue = 15.0, MinValue = 5.0, MaxValue = 50.0)]
-        public double AutoBreakEvenPips { get; set; }
-
         private HttpListener _listener;
         private CancellationTokenSource _cts;
         private Thread _listenerThread;
@@ -39,16 +36,8 @@ namespace cAlgo.Robots
             Print(string.Format("Account: #{0} ({1}) | Broker: {2}", Account.Number, Account.IsLive ? "LIVE" : "DEMO", Account.BrokerName));
             Print(string.Format(CultureInfo.InvariantCulture, "Balance: ${0:F2} | Equity: ${1:F2}", Account.Balance, Account.Equity));
             Print(string.Format("Listening on: http://127.0.0.1:{0}/trade/", Port));
-            Print(string.Format("Max Positions: {0} | Auto Break-Even: +{1} pips", MaxConcurrentPositions, AutoBreakEvenPips));
+            Print(string.Format("Max Positions: {0} | Min Hold Time: 5 min | Min SL Buffer: $2.50", MaxConcurrentPositions));
             Print("======================================================================");
-
-            // Start background timer for safety auto-break-even check
-            Timer.Start(2);
-        }
-
-        protected override void OnTimer()
-        {
-            ApplyAutoBreakEvenProtection();
         }
 
         private void StartHttpBridgeServer()
@@ -266,6 +255,9 @@ namespace cAlgo.Robots
                     if (sideStr == "CLOSE" || sideStr.Contains("CLOSE"))
                     {
                         string targetPosId = ExtractJsonValue(json, "position_id") ?? ExtractJsonValue(json, "id");
+                        string forceStr = ExtractJsonValue(json, "force") ?? "false";
+                        bool isForce = forceStr.ToLowerInvariant() == "true";
+
                         Position targetPos = null;
                         if (Positions != null)
                         {
@@ -281,6 +273,16 @@ namespace cAlgo.Robots
 
                         if (targetPos != null)
                         {
+                            double openDurationSec = (Server.TimeInUtc - targetPos.EntryTime).TotalSeconds;
+                            if (openDurationSec < 300.0 && !isForce)
+                            {
+                                Print(string.Format("⏳ [HOLD TIME GUARD] Rejected Close for #{0}. Position open for {1:F0}s (< 300s / 5m min hold time).", targetPos.Id, openDurationSec));
+                                httpStatus = 400;
+                                return string.Format(CultureInfo.InvariantCulture,
+                                    "{{\"status\":\"REJECTED\",\"error\":\"Minimum hold time (5m) not reached. Active for {0:F0}s / 300s.\"}}",
+                                    openDurationSec);
+                            }
+
                             var closeResult = ClosePosition(targetPos);
                             Print(string.Format("🛑 [CLOSED] Position #{0} ({1}) Closed via Webhook.", targetPos.Id, targetPos.SymbolName));
                             httpStatus = 200;
@@ -313,6 +315,8 @@ namespace cAlgo.Robots
 
                     // 4. Calculate Pips if exact price was provided
                     double pipSize = sym.PipSize > 0 ? sym.PipSize : 0.01;
+                    bool isGold = sym.Name.ToUpperInvariant().Contains("XAU") || sym.Name.ToUpperInvariant().Contains("GOLD");
+
                     if (slPips <= 0 && slPrice > 0)
                     {
                         double entryRef = tradeType == TradeType.Buy ? sym.Ask : sym.Bid;
@@ -324,9 +328,22 @@ namespace cAlgo.Robots
                         tpPips = Math.Abs(tpPrice - entryRef) / pipSize;
                     }
 
-                    // Default safe 1:2 R:R if not set
-                    if (slPips <= 0) slPips = 40;
-                    if (tpPips <= 0) tpPips = 80;
+                    // Minimum Stop Loss buffer enforcement (at least $2.50 breathing room on Gold)
+                    if (isGold)
+                    {
+                        double minGoldPips = 2.50 / pipSize; // Guarantee $2.50 price buffer
+                        if (slPips < minGoldPips) slPips = minGoldPips;
+                        if (tpPips < slPips * 2.0) tpPips = slPips * 2.0; // Maintain at least 1:2 R:R
+                    }
+                    else
+                    {
+                        if (slPips < 25.0) slPips = 25.0;
+                        if (tpPips < slPips * 2.0) tpPips = slPips * 2.0;
+                    }
+
+                    // Default safe 1:2 R:R if not set ($6.00 SL / $12.00 TP on Gold)
+                    if (slPips <= 0) slPips = isGold ? (6.00 / pipSize) : 40.0;
+                    if (tpPips <= 0) tpPips = slPips * 2.0;
 
                     Print(string.Format(CultureInfo.InvariantCulture,
                         "🚀 Executing Order on {0}: {1} {2} Lots ({3} units) | SL Pips: {4:F1}, TP Pips: {5:F1}",
@@ -372,54 +389,6 @@ namespace cAlgo.Robots
                 ?? Symbols.GetSymbol(clean + "_i")
                 ?? (clean.Contains("XAU") || clean.Contains("GOLD") ? (Symbols.GetSymbol("XAUUSD") ?? Symbols.GetSymbol("GOLD")) : null)
                 ?? Symbol;
-        }
-
-        private void ApplyAutoBreakEvenProtection()
-        {
-            try
-            {
-                if (Positions == null) return;
-                foreach (var pos in Positions)
-                {
-                    if (pos == null) continue;
-                    Symbol sym = Symbols.GetSymbol(pos.SymbolName) ?? Symbol;
-                    if (sym == null) continue;
-
-                    double pipSize = sym.PipSize > 0 ? sym.PipSize : 0.01;
-                    int digits = sym.Digits;
-
-                    if (pos.TradeType == TradeType.Buy)
-                    {
-                        double currentPips = (sym.Bid - pos.EntryPrice) / pipSize;
-                        if (currentPips >= AutoBreakEvenPips)
-                        {
-                            double breakEvenSl = Math.Round(pos.EntryPrice + (pipSize * 1.0), digits);
-                            if (pos.StopLoss == null || pos.StopLoss < pos.EntryPrice)
-                            {
-                                Print(string.Format("🛡️ [Auto Break-Even] Position #{0} gained +{1:F1} pips. Moving SL to {2}", pos.Id, currentPips, breakEvenSl));
-                                ModifyPosition(pos, breakEvenSl, pos.TakeProfit);
-                            }
-                        }
-                    }
-                    else if (pos.TradeType == TradeType.Sell)
-                    {
-                        double currentPips = (pos.EntryPrice - sym.Ask) / pipSize;
-                        if (currentPips >= AutoBreakEvenPips)
-                        {
-                            double breakEvenSl = Math.Round(pos.EntryPrice - (pipSize * 1.0), digits);
-                            if (pos.StopLoss == null || pos.StopLoss > pos.EntryPrice)
-                            {
-                                Print(string.Format("🛡️ [Auto Break-Even] Position #{0} gained +{1:F1} pips. Moving SL to {2}", pos.Id, currentPips, breakEvenSl));
-                                ModifyPosition(pos, breakEvenSl, pos.TakeProfit);
-                            }
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Print("Auto Break-Even note: " + ex.Message);
-            }
         }
 
         private void SendJsonResponse(HttpListenerResponse response, string json)

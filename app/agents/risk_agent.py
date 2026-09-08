@@ -93,11 +93,12 @@ class RiskManagementAgent:
                 reasons.append(veto_reason)
                 score = 0.0
                 
-            # 7. Broker Minimum Stop Distance Check (>= 3.0x Spread)
-            min_safe_sl_distance = max(spread * settings.MIN_SL_SPREAD_MULTIPLIER, pip_size * 40.0) # $0.40 min on Gold
+            # 7. Broker Minimum Stop Distance Check (>= 4.0x Spread & >= $2.50 breathing room on Gold)
+            is_gold = "XAU" in sym or "GOLD" in sym
+            min_safe_sl_distance = max(spread * settings.MIN_SL_SPREAD_MULTIPLIER, getattr(settings, "MIN_SL_BUFFER_GOLD", 2.50) if is_gold else (pip_size * 40.0))
             if sl_distance < min_safe_sl_distance:
                 passed = False
-                veto_reason = f"SL distance (${sl_distance:.2f}) too tight for broker spread. Must be >= ${min_safe_sl_distance:.2f} (3.0x Spread)"
+                veto_reason = f"SL distance (${sl_distance:.2f}) too tight for broker spread. Must be >= ${min_safe_sl_distance:.2f} (Breathing room guard)"
                 reasons.append(veto_reason)
                 score = 10.0
                 

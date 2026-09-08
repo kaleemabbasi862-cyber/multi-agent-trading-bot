@@ -77,7 +77,7 @@ async def get_live_consensus():
         "market": market_data,
         "macro": macro_data,
         "account": acc_status,
-        "consensus": consensus_res,
+        "consensus": consensus_res.dict() if hasattr(consensus_res, "dict") else consensus_res,
         "agents": [
             {
                 "id": "agent_1",

@@ -42,7 +42,9 @@ def get_market_snapshot(symbol: str = "XAUUSD", force_refresh: bool = False) -> 
 
     # 1. Primary: cBot Real-Time Stream
     cbot_price = cbot_bridge.get_cbot_live_price(sym_clean)
-    if cbot_price and (now_ts - cbot_price.get("updated_at", 0) < settings.MAX_MARKET_DATA_AGE_SECONDS):
+    cbot_updated_at = cbot_price.get("updated_at", 0) if cbot_price else 0
+    cbot_age = (now_ts - cbot_updated_at) if isinstance(cbot_updated_at, (int, float)) else 0.0
+    if cbot_price and (cbot_age < settings.MAX_MARKET_DATA_AGE_SECONDS):
         p = round(float(cbot_price["price"]), digits)
         bid = round(float(cbot_price["bid"]), digits)
         ask = round(float(cbot_price["ask"]), digits)
