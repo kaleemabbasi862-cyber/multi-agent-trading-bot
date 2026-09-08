@@ -54,9 +54,10 @@ class NoTradeGuardian:
         if data_age > settings.MAX_MARKET_DATA_AGE_SECONDS:
             return True, f"Rule 4 Violation: Stale market data quote ({data_age:.1f}s old > max {settings.MAX_MARKET_DATA_AGE_SECONDS}s)."
 
-        # Rule 5: Abnormal Spread Surge
-        if spread > settings.MAX_ALLOWED_SPREAD_XAUUSD:
-            return True, f"Rule 5 Violation: Abnormal spread surge (${spread:.2f} > max allowed ${settings.MAX_ALLOWED_SPREAD_XAUUSD:.2f})."
+        # Rule 5: Abnormal Spread Surge (Max 25 cents on Gold)
+        max_spread = 0.25 if ("XAU" in sym or "GOLD" in sym) else settings.MAX_ALLOWED_SPREAD_XAUUSD
+        if spread > max_spread:
+            return True, f"Rule 5 Violation: Abnormal spread surge (${spread:.2f}) exceeds maximum allowed threshold (${max_spread:.2f}) to prevent spread-bleed."
 
         # Rule 6: Upcoming High-Impact News Lockout (< 30m)
         if minutes_to_news <= settings.NEWS_PRE_BLOCK_MINUTES:
@@ -70,13 +71,16 @@ class NoTradeGuardian:
         if sl <= 0 or tp <= 0:
             return True, "Rule 8 Violation: Mandatory SL or TP is missing. Naked positions strictly prohibited."
 
-        # Rule 9: SL Broker Distance & Breathing Room Buffer
+        # Rule 9: SL & TP Breathing Room Targets ($2.00 min SL, $4.00 min TP on Gold)
         sl_dist = abs(p - sl)
         tp_dist = abs(tp - p)
         is_gold = "XAU" in sym or "GOLD" in sym
-        min_sl = max(spread * settings.MIN_SL_SPREAD_MULTIPLIER, getattr(settings, "MIN_SL_BUFFER_GOLD", 2.50) if is_gold else 0.40)
+        min_sl = max(spread * settings.MIN_SL_SPREAD_MULTIPLIER, getattr(settings, "MIN_SL_BUFFER_GOLD", 2.00) if is_gold else 0.40)
+        min_tp = getattr(settings, "MIN_TP_BUFFER_GOLD", 4.00) if is_gold else 0.80
         if sl_dist < min_sl:
             return True, f"Rule 9 Violation: SL distance (${sl_dist:.2f}) is tighter than minimum broker breathing buffer (${min_sl:.2f})."
+        if tp_dist < min_tp:
+            return True, f"Rule 9 Violation: TP distance (${tp_dist:.2f}) is tighter than minimum target threshold (${min_tp:.2f})."
 
         # Rule 10: Insufficient Risk-to-Reward (< 2.0)
         rr = round(tp_dist / (sl_dist + 1e-6), 2)
@@ -109,11 +113,11 @@ class NoTradeGuardian:
         if (act == "BUY" and sl >= p) or (act == "SELL" and sl <= p):
             return True, "Rule 16 Violation: Inverted Stop Loss logic detected."
 
-        # Rule 17: Trade Execution Cooldown (Anti-Churn Guard)
-        last_exec = account_status.get("last_execution_timestamp", 0)
-        if last_exec > 0 and (now_ts - last_exec) < settings.EXECUTION_COOLDOWN_SECONDS:
-            rem_sec = int(settings.EXECUTION_COOLDOWN_SECONDS - (now_ts - last_exec))
-            return True, f"Rule 17 Violation: Execution cooldown active ({rem_sec}s remaining of 15m cooldown)."
+        # Rule 17: Post-Trade Close Cooldown (30-minute pacing)
+        last_close = account_status.get("last_trade_close_timestamp", 0)
+        if last_close > 0 and (now_ts - last_close) < settings.TRADE_CLOSE_COOLDOWN_SECONDS:
+            rem_m = int((settings.TRADE_CLOSE_COOLDOWN_SECONDS - (now_ts - last_close)) / 60)
+            return True, f"Rule 17 Violation: Post-trade close cooldown active ({rem_m}m remaining of 30m window before evaluating new setups)."
 
         return False, None
 

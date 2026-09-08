@@ -856,21 +856,92 @@
 
         <!-- 5. AUTONOMOUS SIGNALS & EXECUTION LEDGER -->
         <div class="bg-dark-card border border-dark-border rounded-2xl overflow-hidden shadow-2xl">
-            <div class="px-6 py-4 border-b border-dark-border flex flex-wrap items-center justify-between gap-3 bg-slate-900/40">
-                <div class="flex items-center space-x-2">
-                    <span class="w-2.5 h-2.5 rounded-full bg-indigo-500 pulse-live"></span>
-                    <h2 class="font-bold text-white text-sm">Autonomous Signals & cTrader Order Execution Ledger</h2>
-                    <span class="text-xs text-slate-400 font-normal hidden sm:inline">(Live real-time feed)</span>
+            <!-- DUAL TAB HEADER -->
+            <div class="px-6 py-3.5 border-b border-dark-border flex flex-wrap items-center justify-between gap-3 bg-slate-900/40">
+                <div class="flex items-center space-x-3">
+                    <button @click="activeLedgerTab = 'trades'"
+                            class="flex items-center space-x-2 px-3.5 py-1.5 rounded-xl font-bold text-xs transition border"
+                            :class="activeLedgerTab === 'trades' ? 'bg-indigo-600/30 text-indigo-200 border-indigo-500/50 shadow-md shadow-indigo-600/20' : 'bg-slate-900/60 text-slate-400 border-dark-border hover:text-white'">
+                        <i class="fa-solid fa-receipt text-indigo-400"></i>
+                        <span>cTrader Closed Trades & Realized PnL</span>
+                        <span class="px-1.5 py-0.2 rounded-full text-[10px] font-extrabold bg-indigo-500/20 text-indigo-300" x-text="trades.length"></span>
+                    </button>
+                    <button @click="activeLedgerTab = 'signals'"
+                            class="flex items-center space-x-2 px-3.5 py-1.5 rounded-xl font-bold text-xs transition border"
+                            :class="activeLedgerTab === 'signals' ? 'bg-indigo-600/30 text-indigo-200 border-indigo-500/50 shadow-md shadow-indigo-600/20' : 'bg-slate-900/60 text-slate-400 border-dark-border hover:text-white'">
+                        <i class="fa-solid fa-network-wired text-emerald-400"></i>
+                        <span>7-Agent Signal Pipeline & AI Audit</span>
+                        <span class="px-1.5 py-0.2 rounded-full text-[10px] font-extrabold bg-emerald-500/20 text-emerald-300" x-text="signals.length"></span>
+                    </button>
                 </div>
                 <div class="flex items-center space-x-2 text-xs">
-                    <button @click="fetchSignals()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition flex items-center space-x-1.5">
+                    <button @click="refreshLedgerData()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition flex items-center space-x-1.5">
                         <i class="fa-solid fa-arrows-rotate" :class="isRefreshing ? 'fa-spin' : ''"></i>
                         <span>Refresh</span>
                     </button>
                 </div>
             </div>
 
-            <div class="overflow-x-auto">
+            <!-- TAB 1: REAL BROKER & EXECUTED TRADES -->
+            <div x-show="activeLedgerTab === 'trades'" class="overflow-x-auto">
+                <table class="w-full text-left text-xs text-slate-300">
+                    <thead class="bg-slate-900/90 text-slate-400 font-semibold uppercase tracking-wider border-b border-dark-border">
+                        <tr>
+                            <th class="py-3 px-4">Ticket</th>
+                            <th class="py-3 px-4">Closed Time</th>
+                            <th class="py-3 px-4">Symbol</th>
+                            <th class="py-3 px-4">Direction</th>
+                            <th class="py-3 px-4">Volume</th>
+                            <th class="py-3 px-4">Entry Price</th>
+                            <th class="py-3 px-4">Exit Price</th>
+                            <th class="py-3 px-4">SL / TP</th>
+                            <th class="py-3 px-4">Status</th>
+                            <th class="py-3 px-4 text-right">Net PnL ($)</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-dark-border">
+                        <template x-for="t in trades" :key="t.id || t.ticket_id">
+                            <tr class="hover:bg-dark-hover transition">
+                                <td class="py-3 px-4 font-mono text-indigo-300 font-bold whitespace-nowrap" x-text="'#' + (t.ticket_id || t.id)"></td>
+                                <td class="py-3 px-4 text-slate-400 whitespace-nowrap" x-text="formatTime(t.closed_at || t.opened_at)"></td>
+                                <td class="py-3 px-4 font-bold text-white whitespace-nowrap" x-text="t.symbol"></td>
+                                <td class="py-3 px-4 whitespace-nowrap">
+                                    <span class="px-2.5 py-0.5 rounded-md font-black text-[10px]"
+                                          :class="(t.direction || t.action) === 'BUY' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'"
+                                          x-text="t.direction || t.action || 'BUY'"></span>
+                                </td>
+                                <td class="py-3 px-4 font-mono text-slate-200" x-text="t.volume ? Number(t.volume).toFixed(2) : '0.01'"></td>
+                                <td class="py-3 px-4 font-mono text-slate-200" x-text="'$' + formatNumber(t.entry_price, t.symbol)"></td>
+                                <td class="py-3 px-4 font-mono text-slate-200" x-text="t.exit_price ? ('$' + formatNumber(t.exit_price, t.symbol)) : '--'"></td>
+                                <td class="py-3 px-4 font-mono text-slate-400 text-[11px] whitespace-nowrap">
+                                    <span class="text-rose-400 font-bold" x-text="t.stop_loss ? formatNumber(t.stop_loss, t.symbol) : '--'"></span> / 
+                                    <span class="text-emerald-400 font-bold" x-text="t.take_profit ? formatNumber(t.take_profit, t.symbol) : '--'"></span>
+                                </td>
+                                <td class="py-3 px-4 whitespace-nowrap">
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-bold"
+                                          :class="t.status === 'CLOSED' ? 'bg-slate-800 text-slate-300 border border-slate-700' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'"
+                                          x-text="t.status || 'CLOSED'"></span>
+                                </td>
+                                <td class="py-3 px-4 text-right font-mono font-black text-sm whitespace-nowrap">
+                                    <span :class="(parseFloat(t.profit_loss) || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'"
+                                          x-text="((parseFloat(t.profit_loss) || 0) >= 0 ? '+' : '') + '$' + formatMoney(t.profit_loss)"></span>
+                                </td>
+                            </tr>
+                        </template>
+                        <template x-if="trades.length === 0">
+                            <tr>
+                                <td colspan="10" class="text-center py-8 text-slate-500 text-xs">
+                                    <i class="fa-solid fa-receipt text-2xl mb-2 block opacity-40"></i>
+                                    No closed broker trades recorded in SQLite ledger yet.
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- TAB 2: 7-AGENT AUTONOMOUS SIGNAL PIPELINE -->
+            <div x-show="activeLedgerTab === 'signals'" class="overflow-x-auto">
                 <table class="w-full text-left text-xs text-slate-300">
                     <thead class="bg-slate-900/90 text-slate-400 font-semibold uppercase tracking-wider border-b border-dark-border">
                         <tr>
@@ -1164,6 +1235,8 @@
                 activeSignal: null,
                 activeDNA: null,
                 signals: [],
+                trades: [],
+                activeLedgerTab: 'trades',
                 rejectedSignals: [],
                 marketPrices: {},
                 priceFlashes: {},
@@ -1203,6 +1276,7 @@
                     this.fetchSettings();
                     this.fetchLivePrices();
                     this.fetchSignals();
+                    this.fetchTrades();
                     this.fetchCBotStatus();
                     this.fetchLiveConsensus();
 
@@ -1213,7 +1287,24 @@
                     setInterval(() => { this.fetchLivePrices(); }, 2500);
                     setInterval(() => { this.fetchCBotStatus(); }, 2000);
                     setInterval(() => { this.fetchSignals(); }, 4000);
+                    setInterval(() => { this.fetchTrades(); }, 3000);
                     setInterval(() => { this.fetchAccounts(); }, 5000);
+                },
+
+                async refreshLedgerData() {
+                    this.isRefreshing = true;
+                    await Promise.all([this.fetchSignals(), this.fetchTrades()]);
+                    setTimeout(() => { this.isRefreshing = false; }, 600);
+                },
+
+                async fetchTrades() {
+                    try {
+                        const res = await fetch('/api/trades?limit=100');
+                        if (res.ok) {
+                            const data = await res.json();
+                            this.trades = Array.isArray(data) ? data : [];
+                        }
+                    } catch (e) {}
                 },
 
                 async fetchLiveConsensus() {

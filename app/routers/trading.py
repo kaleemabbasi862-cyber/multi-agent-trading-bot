@@ -37,3 +37,10 @@ async def toggle_auto_trade():
         "status": "SUCCESS",
         "auto_trade_enabled": settings["auto_trade_enabled"]
     }
+
+@router.get("/trades")
+@router.get("/ledger")
+async def get_trades(limit: int = 100):
+    """Returns persistent broker and agent trades history from database."""
+    return db.get_recent_trades(limit=limit)
+

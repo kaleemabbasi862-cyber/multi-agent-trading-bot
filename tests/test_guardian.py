@@ -27,7 +27,7 @@ def test_guardian_blocks_upcoming_news():
         take_profit=2762.0
     )
     import time
-    market = {"spread": 0.35, "updated_at": time.time()}
+    market = {"spread": 0.20, "updated_at": time.time()}
     macro = {"minutes_to_next_high_impact_news": 10} # 10m to CPI
     acc = {"open_positions": [], "daily_loss": 0.0, "is_connected": True}
     

@@ -164,6 +164,22 @@ namespace cAlgo.Robots
                             }
                         }
 
+                        var histList = new List<string>();
+                        if (History != null)
+                        {
+                            int maxHist = 50;
+                            int histCount = 0;
+                            for (int i = History.Count - 1; i >= 0 && histCount < maxHist; i--)
+                            {
+                                var h = History[i];
+                                if (h == null) continue;
+                                histList.Add(string.Format(CultureInfo.InvariantCulture,
+                                    "{{\"id\":{0},\"position_id\":{0},\"symbol\":\"{1}\",\"side\":\"{2}\",\"lots\":{3},\"entry\":{4},\"close\":{5},\"pnl\":{6:F2},\"commission\":{7:F2},\"swap\":{8:F2},\"closed_at\":\"{9:O}\",\"entry_time\":\"{10:O}\",\"comment\":\"{11}\"}}",
+                                    h.PositionId, h.SymbolName ?? "", h.TradeType.ToString(), h.VolumeInUnits, h.EntryPrice, h.ClosingPrice, h.NetProfit, h.Commissions, h.Swap, h.ClosingTime, h.EntryTime, EscapeJson(h.Comment ?? "")));
+                                histCount++;
+                            }
+                        }
+
                         string accNum = Account != null ? Account.Number.ToString() : "5908018";
                         string broker = Account != null ? Account.BrokerName : "Spotware";
                         bool isLive = Account != null && Account.IsLive;
@@ -174,8 +190,8 @@ namespace cAlgo.Robots
                         int count = Positions != null ? Positions.Count : 0;
 
                         return string.Format(CultureInfo.InvariantCulture,
-                            "{{\"status\":\"ONLINE\",\"bridge\":\"TradeTalk Local cBot Webhook Bridge\",\"account_id\":\"{0}\",\"broker\":\"{1}\",\"is_live\":{2},\"balance\":{3:F2},\"equity\":{4:F2},\"margin\":{5:F2},\"free_margin\":{6:F2},\"open_positions_count\":{7},\"positions\":[{8}]}}",
-                            accNum, broker, isLive ? "true" : "false", bal, eq, marg, freeMarg, count, string.Join(",", posList));
+                            "{{\"status\":\"ONLINE\",\"bridge\":\"TradeTalk Local cBot Webhook Bridge\",\"account_id\":\"{0}\",\"broker\":\"{1}\",\"is_live\":{2},\"balance\":{3:F2},\"equity\":{4:F2},\"margin\":{5:F2},\"free_margin\":{6:F2},\"open_positions_count\":{7},\"positions\":[{8}],\"closed_trades\":[{9}]}}",
+                            accNum, broker, isLive ? "true" : "false", bal, eq, marg, freeMarg, count, string.Join(",", posList), string.Join(",", histList));
                     });
 
                     response.StatusCode = 200;
@@ -308,6 +324,17 @@ namespace cAlgo.Robots
                         return string.Format("{{\"status\":\"REJECTED\",\"error\":\"Symbol '{0}' not found on broker.\"}}", symbolStr);
                     }
 
+                    bool isGold = sym.Name.ToUpperInvariant().Contains("XAU") || sym.Name.ToUpperInvariant().Contains("GOLD");
+                    double spreadPrice = Math.Round(sym.Ask - sym.Bid, sym.Digits);
+                    if (isGold && spreadPrice > 0.25)
+                    {
+                        httpStatus = 400;
+                        Print(string.Format("🚨 [SPREAD GUARD] Order Vetoed: Gold spread is ${0:F2} (> $0.25 threshold).", spreadPrice));
+                        return string.Format(CultureInfo.InvariantCulture,
+                            "{{\"status\":\"REJECTED\",\"error\":\"Gold spread (${0:F2}) exceeds $0.25 max limit to prevent spread-bleed.\"}}",
+                            spreadPrice);
+                    }
+
                     TradeType tradeType = sideStr.Contains("BUY") ? TradeType.Buy : TradeType.Sell;
 
                     // 3. Convert Volume to Broker Units
@@ -315,7 +342,6 @@ namespace cAlgo.Robots
 
                     // 4. Calculate Pips if exact price was provided
                     double pipSize = sym.PipSize > 0 ? sym.PipSize : 0.01;
-                    bool isGold = sym.Name.ToUpperInvariant().Contains("XAU") || sym.Name.ToUpperInvariant().Contains("GOLD");
 
                     if (slPips <= 0 && slPrice > 0)
                     {
@@ -328,22 +354,23 @@ namespace cAlgo.Robots
                         tpPips = Math.Abs(tpPrice - entryRef) / pipSize;
                     }
 
-                    // Minimum Stop Loss buffer enforcement (at least $2.50 breathing room on Gold)
+                    // Minimum TP target >= 40 pips ($4.00 on Gold) and SL >= 20 pips ($2.00 on Gold, min 1:2 R:R)
                     if (isGold)
                     {
-                        double minGoldPips = 2.50 / pipSize; // Guarantee $2.50 price buffer
-                        if (slPips < minGoldPips) slPips = minGoldPips;
-                        if (tpPips < slPips * 2.0) tpPips = slPips * 2.0; // Maintain at least 1:2 R:R
+                        double minGoldSlPips = 2.00 / pipSize; // $2.00 SL minimum
+                        double minGoldTpPips = 4.00 / pipSize; // $4.00 TP minimum
+                        if (slPips < minGoldSlPips) slPips = minGoldSlPips;
+                        if (tpPips < minGoldTpPips) tpPips = Math.Max(minGoldTpPips, slPips * 2.0);
                     }
                     else
                     {
-                        if (slPips < 25.0) slPips = 25.0;
-                        if (tpPips < slPips * 2.0) tpPips = slPips * 2.0;
+                        if (slPips < 20.0) slPips = 20.0;
+                        if (tpPips < 40.0) tpPips = Math.Max(40.0, slPips * 2.0);
                     }
 
                     // Default safe 1:2 R:R if not set ($6.00 SL / $12.00 TP on Gold)
                     if (slPips <= 0) slPips = isGold ? (6.00 / pipSize) : 40.0;
-                    if (tpPips <= 0) tpPips = slPips * 2.0;
+                    if (tpPips <= 0) tpPips = isGold ? (12.00 / pipSize) : 80.0;
 
                     Print(string.Format(CultureInfo.InvariantCulture,
                         "🚀 Executing Order on {0}: {1} {2} Lots ({3} units) | SL Pips: {4:F1}, TP Pips: {5:F1}",

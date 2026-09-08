@@ -30,7 +30,8 @@ class Settings:
     
     # Stop Loss & Take Profit Defaults
     MIN_SL_SPREAD_MULTIPLIER: float = float(os.getenv("MIN_SL_SPREAD_MULTIPLIER", "4.0"))
-    MIN_SL_BUFFER_GOLD: float = float(os.getenv("MIN_SL_BUFFER_GOLD", "2.50")) # Mandatory $2.50 (25 pips) breathing room on Gold
+    MIN_SL_BUFFER_GOLD: float = float(os.getenv("MIN_SL_BUFFER_GOLD", "2.00")) # Mandatory min 20 pips ($2.00) SL on Gold
+    MIN_TP_BUFFER_GOLD: float = float(os.getenv("MIN_TP_BUFFER_GOLD", "4.00")) # Mandatory min 40 pips ($4.00) TP on Gold
     DEFAULT_SL_PIPS: float = float(os.getenv("DEFAULT_SL_PIPS", "60.0")) # $6.00 on Gold
     DEFAULT_TP_PIPS: float = float(os.getenv("DEFAULT_TP_PIPS", "120.0")) # $12.00 on Gold (1:2 R:R)
     AUTO_BREAK_EVEN_TRIGGER_PIPS: float = float(os.getenv("AUTO_BREAK_EVEN_TRIGGER_PIPS", "0.0")) # Disabled aggressive break-even
@@ -38,13 +39,16 @@ class Settings:
     
     # Trade Pacing & Anti-Churn Guards
     EXECUTION_COOLDOWN_SECONDS: int = int(os.getenv("EXECUTION_COOLDOWN_SECONDS", "900")) # 15 minutes between trades
+    TRADE_CLOSE_COOLDOWN_SECONDS: int = int(os.getenv("TRADE_CLOSE_COOLDOWN_SECONDS", "1800")) # 30 minutes after trade close
     MIN_TRADE_HOLD_SECONDS: int = int(os.getenv("MIN_TRADE_HOLD_SECONDS", "300")) # 5 minutes minimum hold time
     
     # Trailing Stop Configuration: 'DISABLED', 'ATR_TRAILING', 'STRUCTURE_TRAILING', 'SWING_TRAILING'
     TRAILING_STOP_MODE: str = os.getenv("TRAILING_STOP_MODE", "DISABLED").upper()
     
-    # Multi-Agent Scoring Thresholds
-    MIN_DECISION_SCORE: float = float(os.getenv("MIN_DECISION_SCORE", "75.0"))
+    # Multi-Agent Strict Consensus Thresholds (5 of 7 with > 80% Conviction)
+    MIN_CONSENSUS_AGENTS: int = int(os.getenv("MIN_CONSENSUS_AGENTS", "5"))
+    MIN_AGENT_CONFIDENCE: float = float(os.getenv("MIN_AGENT_CONFIDENCE", "80.0"))
+    MIN_DECISION_SCORE: float = float(os.getenv("MIN_DECISION_SCORE", "80.0"))
     HIGH_QUALITY_SCORE: float = float(os.getenv("HIGH_QUALITY_SCORE", "90.0"))
     
     # News & Macro Risk Windows
@@ -53,7 +57,7 @@ class Settings:
     
     # Market Data Constraints
     MAX_MARKET_DATA_AGE_SECONDS: int = int(os.getenv("MAX_MARKET_DATA_AGE_SECONDS", "30"))
-    MAX_ALLOWED_SPREAD_XAUUSD: float = float(os.getenv("MAX_ALLOWED_SPREAD_XAUUSD", "1.50"))
+    MAX_ALLOWED_SPREAD_XAUUSD: float = float(os.getenv("MAX_ALLOWED_SPREAD_XAUUSD", "0.25")) # Max $0.25 (25 cents) on Gold
     
     # Webhook Security
     WEBHOOK_SECRET_KEY: str = os.getenv("WEBHOOK_SECRET_KEY", "tradetalk_v2_secret_key_884920")

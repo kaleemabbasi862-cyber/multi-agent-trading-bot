@@ -63,41 +63,41 @@ class HeadDeskManagerAgent:
             )
             return decision_status, final_score, final_explanation
 
-        # 2. Dynamic Score-Based Categorization (Configurable via Settings Manager, Default 75%)
-        try:
-            threshold = float(settings_manager.get_min_confidence_threshold())
-        except Exception:
-            threshold = 75.0
+        # 2. Strict Multi-Agent Consensus Evaluation (At least 5 of 7 agents > 80%)
+        min_agents_required = getattr(settings, "MIN_CONSENSUS_AGENTS", 5)
+        min_confidence = getattr(settings, "MIN_AGENT_CONFIDENCE", 80.0)
+
+        agreeing_agents = [
+            d for d in agent_decisions 
+            if (d.direction in (signal.action, "PASS", "BUY" if signal.action == "BUY" else "SELL") or d.decision == "PASS")
+            and d.score >= min_confidence
+        ]
+        
+        # General's vote counts as the 7th arbiter if aggregate score >= threshold
+        general_agrees = (final_score >= min_confidence)
+        total_agreeing = len(agreeing_agents) + (1 if general_agrees else 0)
 
         vol = getattr(signal, "volume", 0.01) or 0.01
         lot_str = f"{vol:.2f} Lots"
         sym_str = getattr(signal, "symbol", "XAUUSD") or "XAUUSD"
 
-        if final_score >= threshold and risk_check.passed:
-            tier = "TIER 1" if final_score >= max(threshold + 10.0, 85.0) else "STANDARD"
+        if total_agreeing >= min_agents_required and final_score >= min_confidence and risk_check.passed:
             decision_status = "APPROVED"
             final_explanation = (
-                f"[DECISION: APPROVED — {tier}] 🎯 [CONSENSUS CLEARANCE GRANTED]\n"
-                f"• Decision Confidence Score: {final_score}% (Threshold >= {int(threshold)}% Met)\n"
+                f"[DECISION: APPROVED — HIGH CONVICTION] 🎯 [CONSENSUS CLEARANCE GRANTED]\n"
+                f"• Multi-Agent Consensus: {total_agreeing}/7 Agents in Full Agreement (>= {min_agents_required} Required)\n"
+                f"• Aggregate Decision Confidence Score: {final_score}% (Threshold >= {int(min_confidence)}% Met)\n"
                 f"• Risk-to-Reward: 1:{risk_check.rr_ratio:.2f} (>= 1:2.0 Verified) | Protected SL: ${signal.stop_loss:.2f} | TP: ${signal.take_profit:.2f}\n"
-                f"• {lot_str} on {sym_str} approved for immediate execution."
-            )
-        elif (threshold - 10.0) <= final_score < threshold:
-            decision_status = f"BLOCKED (<{int(threshold)}% Conviction)"
-            final_explanation = (
-                f"[DECISION: BLOCKED — CONVICTION < {int(threshold)}%] 🚫 [EXECUTION HALTED]\n"
-                f"• Decision Confidence Score: {final_score}% (Requires >= {int(threshold)}% for automatic execution)\n"
-                f"• Capital preserved. Trade rejected until >= {int(threshold)}% consensus conviction is reached."
+                f"• {lot_str} on {sym_str} approved for live execution."
             )
         else:
-            decision_status = "REJECTED"
+            decision_status = f"BLOCKED ({total_agreeing}/7 Consensus)"
             final_explanation = (
-                f"[DECISION: REJECTED] ❌ Insufficient edge or contradictory agent consensus.\n"
-                f"• Decision Confidence Score: {final_score}% (Below {int(threshold)}% threshold)\n"
-                f"• Signal discarded."
+                f"[DECISION: BLOCKED — INSUFFICIENT CONSENSUS] 🚫 [EXECUTION HALTED]\n"
+                f"• Multi-Agent Agreement: {total_agreeing}/7 Agents Agreed (Requires at least {min_agents_required}/7 with score >= {int(min_confidence)}%)\n"
+                f"• Aggregate Decision Score: {final_score}%\n"
+                f"• Capital preserved. Trade rejected until strict 5-agent quantitative agreement is achieved."
             )
-
-        return decision_status, final_score, final_explanation
 
         return decision_status, final_score, final_explanation
 

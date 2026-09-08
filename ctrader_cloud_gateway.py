@@ -128,6 +128,7 @@ PENDING_CBOT_ORDERS: List[Dict[str, Any]] = []
 
 # Trade Pacing & Cooldown Tracker
 LAST_EXECUTION_TIMESTAMP: float = 0.0
+LAST_TRADE_CLOSE_TIMESTAMP: float = 0.0
 
 # Executed Trade History & In-Memory Receipts
 EXECUTED_RECEIPTS: Dict[str, Dict[str, Any]] = {}
@@ -437,6 +438,19 @@ def execute_market_order(
                 "cooldown_remaining_seconds": remaining
             }
 
+    # Post-Trade Close Cooldown Check (30 Minutes / 1800 Seconds)
+    post_close_cd = getattr(settings, "TRADE_CLOSE_COOLDOWN_SECONDS", 1800)
+    if LAST_TRADE_CLOSE_TIMESTAMP > 0:
+        elapsed_close = now_ts - LAST_TRADE_CLOSE_TIMESTAMP
+        if elapsed_close < post_close_cd:
+            rem_m = int((post_close_cd - elapsed_close) / 60)
+            print(f"[cTrader Cloud] [!] REJECTED: Post-trade close cooldown active ({rem_m}m remaining).")
+            return {
+                "status": "REJECTED_POST_TRADE_COOLDOWN",
+                "error": f"Post-trade cooldown active: {rem_m}m remaining of 30m window.",
+                "cooldown_remaining_seconds": int(post_close_cd - elapsed_close)
+            }
+
     # 1. Strict Instrument Whitelist Validation
     if not any(sym_clean == s or sym_clean in s or s in sym_clean for s in ALLOWED_SYMBOLS):
         print(f"[cTrader Cloud] [!] REJECTED: {symbol} not in permitted whitelist.")
@@ -491,13 +505,27 @@ def execute_market_order(
     is_silver = "XAG" in sym_clean or "SILVER" in sym_clean
     units = int(final_lot * 100) if is_gold else (int(final_lot * 5000) if is_silver else int(final_lot * 100000))
 
-    # Breathing Room Buffer: Ensure minimum SL distance of at least $2.50 on Gold
+    # Spread Protection Check (Max 25 cents on Gold)
+    spread_val = float(live_feed.get("spread", 0.15)) if live_feed else 0.15
+    if is_gold and spread_val > getattr(settings, "MAX_ALLOWED_SPREAD_XAUUSD", 0.25):
+        print(f"[cTrader Cloud] [!] REJECTED: Gold spread (${spread_val:.2f}) > $0.25 max limit.")
+        return {
+            "status": "REJECTED_SPREAD_TOO_HIGH",
+            "error": f"Gold spread (${spread_val:.2f}) exceeds $0.25 maximum limit to prevent spread-bleed.",
+            "spread": spread_val
+        }
+
+    # Target Breathing Room: Ensure minimum SL target ($2.00) and TP target ($4.00, 1:2 R:R)
     if is_gold:
-        min_sl_dist = getattr(settings, "MIN_SL_BUFFER_GOLD", 2.50)
+        min_sl_dist = getattr(settings, "MIN_SL_BUFFER_GOLD", 2.00)
+        min_tp_dist = getattr(settings, "MIN_TP_BUFFER_GOLD", 4.00)
         curr_sl_dist = abs(fill_price - sl_price)
-        if curr_sl_dist < min_sl_dist:
-            sl_price = round((fill_price - 6.0) if act_upper == "BUY" else (fill_price + 6.0), 2)
-            tp_price = round((fill_price + 12.0) if act_upper == "BUY" else (fill_price - 12.0), 2)
+        curr_tp_dist = abs(tp_price - fill_price)
+        if curr_sl_dist < min_sl_dist or curr_tp_dist < min_tp_dist:
+            sl_dist_use = max(curr_sl_dist, 6.0)
+            tp_dist_use = max(curr_tp_dist, sl_dist_use * 2.0, 12.0)
+            sl_price = round((fill_price - sl_dist_use) if act_upper == "BUY" else (fill_price + sl_dist_use), 2)
+            tp_price = round((fill_price + tp_dist_use) if act_upper == "BUY" else (fill_price - tp_dist_use), 2)
 
     ticket_num = random.randint(710000, 999999)
     ticket_id = f"CT_{ticket_num}"
@@ -585,6 +613,28 @@ def execute_market_order(
         "comment": comment
     }
 
+    # Log to SQLite DB Ledger immediately
+    try:
+        from app.database.db import db
+        db.save_trade({
+            "id": str(ticket_id),
+            "signal_id": str(order_sig_id),
+            "mode": "LIVE" if GATEWAY_STATE.get("is_live") else "DEMO",
+            "broker_order_id": f"cTrader Order #{ticket_num}",
+            "ticket_id": str(ticket_num),
+            "symbol": sym_clean,
+            "direction": act_upper,
+            "entry_price": fill_price,
+            "stop_loss": sl_price,
+            "take_profit": tp_price,
+            "volume": final_lot,
+            "profit_loss": 0.0,
+            "status": "OPEN",
+            "opened_at": now_str
+        })
+    except Exception as e:
+        logger.debug(f"DB save_trade error: {e}")
+
     EXECUTED_RECEIPTS[order_sig_id] = receipt
     print(f"[cTrader Cloud] [+] 🟢 Authentic Server-Side Order Executed: #{ticket_num} ({ticket_id}) -> {act_upper} {final_lot} Lots of {sym_clean} @ ${fill_price}")
     return receipt
@@ -594,7 +644,7 @@ def close_position(position_id: Any, close_price: Optional[float] = None, force:
     Closes an open position server-side, updates balance/equity, and frees margin.
     Enforces minimum 5-minute hold time unless legitimate TP/SL hit or forced.
     """
-    global GATEWAY_STATE
+    global GATEWAY_STATE, LAST_TRADE_CLOSE_TIMESTAMP
     pos_id_str = str(position_id)
     target_pos = None
 
@@ -641,6 +691,22 @@ def close_position(position_id: Any, close_price: Optional[float] = None, force:
     GATEWAY_STATE["equity"] = GATEWAY_STATE["balance"]
     GATEWAY_STATE["total_unrealized_pnl"] = 0.0
     GATEWAY_STATE["last_sync"] = datetime.datetime.now(datetime.timezone.utc).strftime("%H:%M:%S UTC")
+
+    # Set 30-minute post-trade cooldown timestamp
+    LAST_TRADE_CLOSE_TIMESTAMP = time.time()
+
+    # Update SQLite DB Ledger with final Net PnL and exit price
+    try:
+        from app.database.db import db
+        db.update_trade_status(
+            trade_id=str(target_pos.get("id")),
+            status="CLOSED",
+            exit_price=float(close_price or target_pos.get("current_price", target_pos.get("entry_price", 0.0))),
+            profit_loss=realized_pnl,
+            close_reason="Closed via Gateway / Broker"
+        )
+    except Exception as e:
+        logger.debug(f"DB update_trade_status error: {e}")
 
     acc_id = str(GATEWAY_STATE.get("account_id"))
     if acc_id in LINKED_ACCOUNTS:
