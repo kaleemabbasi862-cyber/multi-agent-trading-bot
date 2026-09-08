@@ -573,8 +573,12 @@ def close_position(position_id: Any, close_price: Optional[float] = None) -> Dic
             target_pos = pos
             break
 
-    if not target_pos:
-        return {"status": "ERROR", "message": f"Position #{position_id} not found in active tracking"}
+    # If local cBot bridge is active, dispatch close request directly to cTrader
+    bridge_url = os.getenv("CBOT_BRIDGE_URL", "http://127.0.0.1:5001/trade/").strip()
+    try:
+        requests.post(bridge_url, json={"action": "CLOSE", "position_id": str(target_pos.get("id"))}, timeout=2)
+    except Exception:
+        pass
 
     realized_pnl = float(target_pos.get("net_profit", 0.0))
     GATEWAY_STATE["balance"] = round(GATEWAY_STATE["balance"] + realized_pnl, 2)
@@ -665,12 +669,117 @@ def update_live_market_prices(prices_map: Dict[str, Dict[str, Any]]) -> None:
     GATEWAY_STATE["equity"] = round(GATEWAY_STATE["balance"] + total_unrealized, 2)
     GATEWAY_STATE["free_margin"] = round(GATEWAY_STATE["equity"] - GATEWAY_STATE["margin"], 2)
 
-def get_gateway_status() -> Dict[str, Any]:
-    """Returns real-time server-side gateway status."""
+def sync_local_cbot_telemetry(timeout_sec: float = 1.0) -> Dict[str, Any]:
+    """
+    Directly queries the Local cBot Webhook Bridge (http://127.0.0.1:5001/trade/)
+    and synchronizes live broker positions, balance, equity, and margin directly into GATEWAY_STATE.
+    """
+    global GATEWAY_STATE, LINKED_ACCOUNTS
+    bridge_url = os.getenv("CBOT_BRIDGE_URL", "http://127.0.0.1:5001/trade/").strip()
+    
+    try:
+        res = requests.get(bridge_url, timeout=timeout_sec)
+        if res.status_code == 200:
+            data = res.json()
+            if data.get("status") == "ONLINE":
+                acc_id = str(data.get("account_id", "5908018")).strip().replace("#", "")
+                bal = float(data.get("balance", GATEWAY_STATE["balance"]))
+                eq = float(data.get("equity", bal))
+                marg = float(data.get("margin", 0.0))
+                f_marg = float(data.get("free_margin", eq))
+                broker = str(data.get("broker", "Spotware"))
+                is_live = bool(data.get("is_live", False))
+                
+                raw_positions = data.get("positions", [])
+                normalized_positions = []
+                total_unrealized = 0.0
+                
+                for p in raw_positions:
+                    p_id = p.get("id")
+                    sym = str(p.get("symbol", "XAUUSD")).upper()
+                    side = str(p.get("side", "BUY")).upper()
+                    entry_p = float(p.get("entry", 0.0))
+                    sl_p = float(p.get("sl", 0.0))
+                    tp_p = float(p.get("tp", 0.0))
+                    pnl_val = float(p.get("pnl", 0.0))
+                    total_unrealized += pnl_val
+                    
+                    lots = 0.01
+                    if "lots" in p:
+                        raw_lots = float(p["lots"])
+                        lots = raw_lots if raw_lots < 0.5 else 0.01
+                    
+                    be_locked = False
+                    if sl_p > 0:
+                        if side == "BUY" and sl_p >= entry_p:
+                            be_locked = True
+                        elif side == "SELL" and sl_p <= entry_p:
+                            be_locked = True
+
+                    norm_pos = {
+                        "id": p_id,
+                        "position_id": str(p_id),
+                        "ticket": p_id,
+                        "symbol": sym,
+                        "type": side,
+                        "action": side,
+                        "volume": lots,
+                        "lot_size": lots,
+                        "entry_price": entry_p,
+                        "sl": sl_p,
+                        "tp": tp_p,
+                        "current_price": entry_p,
+                        "net_profit": round(pnl_val, 2),
+                        "gross_profit": round(pnl_val, 2),
+                        "break_even_locked": be_locked,
+                        "comment": "TradeTalk cTrader Live"
+                    }
+                    normalized_positions.append(norm_pos)
+
+                GATEWAY_STATE["is_connected"] = True
+                GATEWAY_STATE["cloud_server_active"] = True
+                GATEWAY_STATE["local_bridge_online"] = True
+                GATEWAY_STATE["account_id"] = acc_id
+                GATEWAY_STATE["broker"] = broker
+                GATEWAY_STATE["is_live"] = is_live
+                GATEWAY_STATE["balance"] = round(bal, 2)
+                GATEWAY_STATE["equity"] = round(eq, 2)
+                GATEWAY_STATE["margin"] = round(marg, 2)
+                GATEWAY_STATE["free_margin"] = round(f_marg, 2)
+                GATEWAY_STATE["open_positions"] = normalized_positions
+                GATEWAY_STATE["total_unrealized_pnl"] = round(total_unrealized, 2)
+                GATEWAY_STATE["last_sync"] = datetime.datetime.now(datetime.timezone.utc).strftime("%H:%M:%S UTC")
+                GATEWAY_STATE["last_sync_timestamp"] = time.time()
+                GATEWAY_STATE["last_bridge_sync_timestamp"] = time.time()
+                
+                if acc_id not in LINKED_ACCOUNTS:
+                    LINKED_ACCOUNTS[acc_id] = {}
+                LINKED_ACCOUNTS[acc_id].update({
+                    "account_id": acc_id,
+                    "name": f"{broker} • #{acc_id}",
+                    "account_type": "LIVE" if is_live else "DEMO",
+                    "balance": round(bal, 2),
+                    "equity": round(eq, 2),
+                    "margin": round(marg, 2),
+                    "free_margin": round(f_marg, 2),
+                    "currency": "USD",
+                    "broker": broker,
+                    "is_live": is_live,
+                    "open_positions": normalized_positions,
+                    "last_seen": time.time()
+                })
+    except Exception as e:
+        logger.debug(f"[Local Bridge Sync Note]: {e}")
+        
+    return GATEWAY_STATE
+
+def get_gateway_status(force_local_sync: bool = False) -> Dict[str, Any]:
+    """Returns real-time server-side gateway status, proactively synchronizing with local bridge."""
     global GATEWAY_STATE
     GATEWAY_STATE["is_connected"] = True
     GATEWAY_STATE["cloud_server_active"] = True
-    GATEWAY_STATE["last_sync_timestamp"] = time.time()
+    if force_local_sync or (time.time() - GATEWAY_STATE.get("last_bridge_sync_timestamp", 0) > 1.0):
+        sync_local_cbot_telemetry(timeout_sec=0.8)
     return GATEWAY_STATE
 
 def get_pending_cbot_orders() -> List[Dict[str, Any]]:

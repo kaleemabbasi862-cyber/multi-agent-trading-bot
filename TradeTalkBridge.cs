@@ -262,6 +262,35 @@ namespace cAlgo.Robots
                     if (!string.IsNullOrEmpty(slPriceStr)) double.TryParse(slPriceStr, NumberStyles.Any, CultureInfo.InvariantCulture, out slPrice);
                     if (!string.IsNullOrEmpty(tpPriceStr)) double.TryParse(tpPriceStr, NumberStyles.Any, CultureInfo.InvariantCulture, out tpPrice);
 
+                    // 0. Handle Close Order Request
+                    if (sideStr == "CLOSE" || sideStr.Contains("CLOSE"))
+                    {
+                        string targetPosId = ExtractJsonValue(json, "position_id") ?? ExtractJsonValue(json, "id");
+                        Position targetPos = null;
+                        if (Positions != null)
+                        {
+                            foreach (var p in Positions)
+                            {
+                                if (string.IsNullOrEmpty(targetPosId) || p.Id.ToString() == targetPosId)
+                                {
+                                    targetPos = p;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (targetPos != null)
+                        {
+                            var closeResult = ClosePosition(targetPos);
+                            Print(string.Format("🛑 [CLOSED] Position #{0} ({1}) Closed via Webhook.", targetPos.Id, targetPos.SymbolName));
+                            httpStatus = 200;
+                            return string.Format("{{\"status\":\"SUCCESS\",\"message\":\"Position #{0} closed.\",\"position_id\":{0}}}", targetPos.Id);
+                        }
+
+                        httpStatus = 404;
+                        return "{\"status\":\"ERROR\",\"error\":\"Position not found to close.\"}";
+                    }
+
                     // 1. Position Count Limit Guard
                     if (Positions != null && Positions.Count >= MaxConcurrentPositions)
                     {

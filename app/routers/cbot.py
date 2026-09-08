@@ -18,6 +18,7 @@ async def cbot_heartbeat_stream(request: Request):
 
 @router.get("/stream")
 @router.get("/status")
+@router.get("/positions")
 async def get_cbot_status():
     return cbot_bridge.get_cbot_status()
 

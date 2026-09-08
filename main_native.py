@@ -170,8 +170,22 @@ async def autonomous_market_scanner_loop():
             logger.error(f"[Autonomous Scanner Error]: {e}")
         await asyncio.sleep(4)
 
+async def local_cbot_background_sync():
+    """
+    Dedicated ultra-fast background poller syncing live open positions & telemetry
+    directly from the Local cBot Webhook Bridge (port 5001) into the global state every 1.5s.
+    """
+    logger.info("[Local cBot Telemetry Worker] 🛰️ Initialized background sync polling (port 5001)...")
+    while True:
+        try:
+            ctrader_cloud_gateway.sync_local_cbot_telemetry(timeout_sec=1.0)
+        except Exception as e:
+            logger.debug(f"[Local cBot Sync Error]: {e}")
+        await asyncio.sleep(1.5)
+
 @app.on_event("startup")
 async def on_startup():
+    asyncio.create_task(local_cbot_background_sync())
     asyncio.create_task(cloud_gateway_background_sync())
     asyncio.create_task(autonomous_market_scanner_loop())
 
@@ -428,6 +442,8 @@ async def switch_active_account(req: ActiveAccountRequest):
 # cTrader Cloud Open API Gateway Endpoints
 # -------------------------------------------------------------
 @app.get("/api/ctrader/status")
+@app.get("/api/gateway/status")
+@app.get("/api/positions")
 async def get_ctrader_status():
     """Returns real-time server-side cTrader cloud status."""
     return ctrader_cloud_gateway.get_gateway_status()
