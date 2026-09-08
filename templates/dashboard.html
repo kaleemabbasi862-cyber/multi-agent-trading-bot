@@ -1373,7 +1373,7 @@
                 async submitTestSignal() {
                     this.loading = true;
                     try {
-                        const res = await fetch('/api/signals/simulate', {
+                        const res = await fetch('/api/signals/execute', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify(this.simForm)
@@ -1390,10 +1390,11 @@
                                 agent_decisions: data.agent_decisions,
                                 rejection_reason: data.full_analysis
                             };
-                            this.fetchSignals();
+                            await this.fetchSignals();
+                            await this.fetchCBotStatus();
                         }
                     } catch (e) {
-                        alert('Simulation error: ' + e);
+                        alert('Execution error: ' + e);
                     } finally {
                         this.loading = false;
                     }
