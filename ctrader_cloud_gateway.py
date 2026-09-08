@@ -355,6 +355,47 @@ def sync_with_spotware_cloud() -> Dict[str, Any]:
 
     return GATEWAY_STATE
 
+def dispatch_local_bridge_order(
+    symbol: str,
+    side: str,
+    volume: float = 0.01,
+    sl_pips: Optional[float] = None,
+    tp_pips: Optional[float] = None,
+    sl_price: Optional[float] = None,
+    tp_price: Optional[float] = None,
+    comment: str = "TradeTalk AI"
+) -> Dict[str, Any]:
+    """
+    Dispatches direct HTTP webhook order to Local cBot Bridge listening on port 5001.
+    Ultra-low latency execution without Spotware Open API cloud delays.
+    """
+    bridge_url = os.getenv("CBOT_BRIDGE_URL", "http://127.0.0.1:5001/trade/").strip()
+    payload = {
+        "symbol": symbol.upper().replace(".PRO", "").replace("_I", ""),
+        "side": side.upper(),
+        "action": side.upper(),
+        "volume": float(volume),
+        "lot_size": float(volume),
+        "stop_loss_pips": sl_pips or 40.0,
+        "take_profit_pips": tp_pips or 80.0,
+        "sl_price": float(sl_price or 0.0),
+        "tp_price": float(tp_price or 0.0),
+        "comment": comment
+    }
+    
+    try:
+        res = requests.post(bridge_url, json=payload, timeout=3)
+        if res.status_code == 200:
+            data = res.json()
+            print(f"[Local cBot Bridge] 🟢 Trade Dispatched & Executed on cTrader: Pos #{data.get('position_id')} @ ${data.get('entry_price')}")
+            return data
+        else:
+            print(f"[Local cBot Bridge] [!] Bridge returned HTTP {res.status_code}: {res.text}")
+            return {"status": "ERROR", "message": res.text}
+    except Exception as e:
+        logger.debug(f"Local cBot Bridge not reachable ({bridge_url}): {e}")
+        return {"status": "OFFLINE", "message": str(e)}
+
 def execute_market_order(
     symbol: str,
     action: str,
@@ -365,10 +406,10 @@ def execute_market_order(
     comment: str = "TradeTalk AI Server Execution"
 ) -> Dict[str, Any]:
     """
-    Executes a market order directly on the server in the cloud.
+    Executes a market order directly via Local cBot Webhook Bridge or Server Gateway.
     - Validates safety constraints (Whitelist, Max 1 Position, Anti-hedging, Mandatory SL/TP).
-    - If cTrader Open API token is available, dispatches to Spotware REST Gateway.
-    - Registers open position in server memory and calculates real-time PnL.
+    - Dispatches to Local cBot HTTP Webhook Bridge (http://127.0.0.1:5001/trade/).
+    - Registers open position in server memory and tracks real-time PnL.
     """
     global GATEWAY_STATE, EXECUTED_RECEIPTS
     now_ts = time.time()
@@ -422,16 +463,13 @@ def execute_market_order(
     # Estimate Fill Price from live prices or entry
     decimals = 4 if ("EUR" in sym_clean or "GBP" in sym_clean or "USD" in sym_clean and "JPY" not in sym_clean and "XAU" not in sym_clean and "XAG" not in sym_clean) else (3 if "JPY" in sym_clean or "XAG" in sym_clean else 2)
     
-    # Calculate execution fill price
     live_feed = GATEWAY_STATE.get("live_prices", {}).get(sym_clean, {})
     if live_feed and live_feed.get("price"):
         fill_price = round(float(live_feed["price"]), decimals)
     else:
-        # Fallback to calculated midpoint
         sl_dist = abs(sl_price - tp_price) / 3.0
         fill_price = round((sl_price + sl_dist) if act_upper == "BUY" else (sl_price - sl_dist), decimals)
 
-    # Convert volume to standard broker units
     is_gold = "XAU" in sym_clean or "GOLD" in sym_clean
     is_silver = "XAG" in sym_clean or "SILVER" in sym_clean
     units = int(final_lot * 100) if is_gold else (int(final_lot * 5000) if is_silver else int(final_lot * 100000))
@@ -439,79 +477,31 @@ def execute_market_order(
     ticket_num = random.randint(710000, 999999)
     ticket_id = f"CT_{ticket_num}"
 
-    # Queue for local/VPS cBot bridge execution
-    cbot_order_item = {
-        "id": ticket_id,
-        "ticket_id": ticket_id,
-        "symbol": sym_clean,
-        "action": act_upper,
-        "signal": act_upper,
-        "lot_size": final_lot,
-        "lots": final_lot,
-        "volume": final_lot,
-        "sl": sl_price,
-        "tp": tp_price,
-        "entry_price": fill_price,
-        "created_at": now_iso
-    }
-    PENDING_CBOT_ORDERS.append(cbot_order_item)
+    # Calculate pips for cBot bridge
+    pip_size = 0.01 if (is_gold or is_silver) else 0.0001
+    sl_pips = abs(fill_price - sl_price) / pip_size if sl_price > 0 else 40.0
+    tp_pips = abs(tp_price - fill_price) / pip_size if tp_price > 0 else 80.0
 
-    # Spotware Open API Direct Cloud Execution
-    token = CTRADER_CONFIG.get("access_token")
-    if token:
-        try:
-            target_account_int = int(GATEWAY_STATE["account_id"]) if str(GATEWAY_STATE["account_id"]).isdigit() else 5908018
-            sym_id = 1 if ("XAU" in sym_clean or "GOLD" in sym_clean or "EUR" in sym_clean) else (2 if ("GBP" in sym_clean or "XAG" in sym_clean) else 4)
-            
-            # Dispatch TLS Protobuf Order Request to Spotware Cloud
-            oa_client = ctrader_openapi.SpotwareOpenAPIClient(
-                client_id=CTRADER_CONFIG["client_id"],
-                client_secret=CTRADER_CONFIG["client_secret"],
-                is_live=GATEWAY_STATE.get("is_live", False),
-                timeout=5
-            )
-            
-            oa_res = oa_client.send_market_order(
-                account_id=target_account_int,
-                symbol_id=sym_id,
-                trade_side=act_upper,
-                volume=units,
-                sl_price=sl_price,
-                tp_price=tp_price,
-                comment=comment[:50]
-            )
-            
-            if oa_res.get("status") == "SUCCESS":
-                broker_order_id = oa_res.get("order_id") or ticket_num
-                broker_pos_id = oa_res.get("position_id") or ticket_num
-                ticket_num = broker_pos_id
-                ticket_id = f"CT_{broker_pos_id}"
-                if oa_res.get("execution_price"):
-                    fill_price = float(oa_res["execution_price"])
-                print(f"[cTrader Cloud] 🟢 Direct Spotware TLS Protobuf Order Executed: Pos #{broker_pos_id} / Ord #{broker_order_id} @ ${fill_price}")
-            elif oa_res.get("status") == "ERROR_BROKER_REJECTED":
-                err_desc = oa_res.get("error_description", oa_res.get("error_code", "Broker rejected"))
-                GATEWAY_STATE["last_error"] = err_desc
-                print(f"[cTrader Cloud] [!] Spotware Open API Order Rejected: {err_desc}")
-            else:
-                # Direct REST fallback attempt
-                order_req = {
-                    "ctidTraderAccountId": target_account_int,
-                    "symbolName": sym_clean,
-                    "tradeSide": "BUY" if act_upper == "BUY" else "SELL",
-                    "volume": units,
-                    "stopLoss": sl_price,
-                    "takeProfit": tp_price,
-                    "comment": comment[:50]
-                }
-                requests.post(
-                    "https://openapi.ctrader.com/apps/trader/v2/orders",
-                    headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-                    json=order_req,
-                    timeout=4
-                )
-        except Exception as e:
-            logger.debug(f"Direct Spotware TLS execution attempt note: {e}")
+    # 1. Primary: Dispatch to Ultra-Low Latency Local cBot Webhook Bridge
+    bridge_res = dispatch_local_bridge_order(
+        symbol=sym_clean,
+        side=act_upper,
+        volume=final_lot,
+        sl_pips=sl_pips,
+        tp_pips=tp_pips,
+        sl_price=sl_price,
+        tp_price=tp_price,
+        comment=comment
+    )
+
+    if bridge_res.get("status") == "SUCCESS":
+        real_pos_id = bridge_res.get("position_id") or bridge_res.get("order_id")
+        if real_pos_id:
+            ticket_num = real_pos_id
+            ticket_id = f"CT_{real_pos_id}"
+        if bridge_res.get("entry_price"):
+            fill_price = float(bridge_res["entry_price"])
+        print(f"[Local Bridge Execution] 🟢 Live cTrader Fill: Ticket #{ticket_num} @ ${fill_price}")
 
     # Create new live active position in server memory
     new_position = {

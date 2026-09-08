@@ -28,10 +28,22 @@ def get_cbot_live_price(symbol: str = "XAUUSD") -> Optional[Dict[str, Any]]:
     """Returns latest live price from cloud gateway."""
     return ctrader_cloud_gateway.get_live_price(symbol)
 
+def dispatch_local_bridge_order(symbol: str, side: str, volume: float = 0.01, sl_pips: Optional[float] = None, tp_pips: Optional[float] = None, sl_price: Optional[float] = None, tp_price: Optional[float] = None, comment: str = "TradeTalk AI") -> Dict[str, Any]:
+    """Dispatches order directly to Local cBot Webhook Bridge (port 5001)."""
+    return ctrader_cloud_gateway.dispatch_local_bridge_order(
+        symbol=symbol,
+        side=side,
+        volume=volume,
+        sl_pips=sl_pips,
+        tp_pips=tp_pips,
+        sl_price=sl_price,
+        tp_price=tp_price,
+        comment=comment
+    )
+
 def queue_trade_for_cbot(symbol: str, action: str, lot_size: float, sl_price: float, tp_price: float, signal_id: str) -> Dict[str, Any]:
     """
-    Executes an approved trade directly server-side in the cloud.
-    Eliminates the requirement for a local cBot desktop client.
+    Executes an approved trade directly server-side or via Local cBot Webhook Bridge.
     """
     return ctrader_cloud_gateway.execute_market_order(
         symbol=symbol,

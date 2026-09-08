@@ -2,8 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
-using System.Net.Http;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Globalization;
 using cAlgo.API;
@@ -14,163 +14,279 @@ namespace cAlgo.Robots
     [Robot(TimeZone = TimeZones.UTC, AccessRights = AccessRights.FullAccess)]
     public class TradeTalkBridge : Robot
     {
-        [Parameter("Server URL", DefaultValue = "https://multi-agent-trading-bot.onrender.com")]
-        public string ServerUrl { get; set; }
+        [Parameter("Port", DefaultValue = 5001, MinValue = 1024, MaxValue = 65535)]
+        public int Port { get; set; }
 
-        [Parameter("Sync Interval (Sec)", DefaultValue = 2, MinValue = 1, MaxValue = 10)]
-        public int SyncInterval { get; set; }
-
-        [Parameter("Enable Auto Execution", DefaultValue = true)]
-        public bool EnableAutoExecution { get; set; }
+        [Parameter("Max Concurrent Positions", DefaultValue = 1, MinValue = 1, MaxValue = 10)]
+        public int MaxConcurrentPositions { get; set; }
 
         [Parameter("Auto Break-Even Pips", DefaultValue = 15.0, MinValue = 5.0, MaxValue = 50.0)]
         public double AutoBreakEvenPips { get; set; }
 
-        // --- TRADETALK V2: STRICT GOLD-ONLY (XAUUSD) ULTRA-SAFE PARAMETERS ---
-        private const int MAX_CONCURRENT_POSITIONS = 1;          // Strictly 1 open position at all times
-        private const double FIXED_GOLD_LOT_SIZE = 0.01;         // Fixed 0.01 Micro-Lot strictly (No scaling)
-        private const double MIN_RR_RATIO = 2.0;                 // Minimum 1:2 Risk-to-Reward Ratio
-
-        private static readonly HttpClient httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
-        private readonly HashSet<string> _executedTickets = new HashSet<string>();
-        private readonly Dictionary<long, double> _failedModifications = new Dictionary<long, double>();
-        private Symbol _goldSymbol;
+        private HttpListener _listener;
+        private CancellationTokenSource _cts;
+        private Thread _listenerThread;
+        private readonly object _orderLock = new object();
 
         protected override void OnStart()
         {
-            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12 | SecurityProtocolType.Tls11 | SecurityProtocolType.Tls;
+            _cts = new CancellationTokenSource();
+            StartHttpBridgeServer();
 
-            // Resolve Gold symbol regardless of what chart bot is attached to
-            _goldSymbol = Symbols.GetSymbol("XAUUSD") 
-                       ?? Symbols.GetSymbol("GOLD") 
-                       ?? Symbols.GetSymbol("XAUUSDm") 
-                       ?? Symbols.GetSymbol("XAUUSD.pro") 
-                       ?? Symbols.GetSymbol("XAUUSD_i") 
-                       ?? Symbol;
+            Print("======================================================================");
+            Print("   TRADETALK AI - ULTRA-LOW LATENCY LOCAL CBOT WEBHOOK BRIDGE         ");
+            Print("======================================================================");
+            Print(string.Format("Account: #{0} ({1}) | Broker: {2}", Account.Number, Account.IsLive ? "LIVE" : "DEMO", Account.BrokerName));
+            Print(string.Format(CultureInfo.InvariantCulture, "Balance: ${0:F2} | Equity: ${1:F2}", Account.Balance, Account.Equity));
+            Print(string.Format("Listening on: http://127.0.0.1:{0}/trade/", Port));
+            Print(string.Format("Max Positions: {0} | Auto Break-Even: +{1} pips", MaxConcurrentPositions, AutoBreakEvenPips));
+            Print("======================================================================");
 
-            string assetName = "USD";
-            try
-            {
-                if (Account.Asset != null && !string.IsNullOrEmpty(Account.Asset.Name))
-                {
-                    assetName = Account.Asset.Name;
-                }
-            }
-            catch
-            {
-                assetName = "USD";
-            }
-
-            string envName = Account.IsLive ? "LIVE REAL FUNDS" : "DEMO (Paper / Metric Verification Mode)";
-
-            Print("=================================================");
-            Print("TradeTalk.AI V2 - STRICT GOLD (XAUUSD) EXECUTION BRIDGE");
-            Print("Environment: " + envName);
-            Print("Account Number: " + Account.Number);
-            Print(string.Format(CultureInfo.InvariantCulture, "Balance: ${0:F2} {1} | Equity: ${2:F2}", Account.Balance, assetName, Account.Equity));
-            Print("Target Instrument: " + _goldSymbol.Name + " (Gold Only)");
-            Print("Position Sizing: EXACTLY 0.01 Lots Fixed");
-            Print("Max Open Positions: " + MAX_CONCURRENT_POSITIONS);
-            Print("Dynamic Auto Break-Even Guard: +" + AutoBreakEvenPips + " Pips");
-            Print("Target Server: " + ServerUrl);
-
-            if (!Symbol.Name.ToUpperInvariant().Contains("XAU") && !Symbol.Name.ToUpperInvariant().Contains("GOLD"))
-            {
-                Print(string.Format("⚠️ [CHART NOTICE] Bot instance is attached to '{0}' chart. All execution will automatically route to '{1}'.", Symbol.Name, _goldSymbol.Name));
-            }
-
-            Print("=================================================");
-
-            EnsureAllPositionsProtected();
-            SendTelemetry();
-            Timer.Start(SyncInterval);
+            // Start background timer for safety auto-break-even check
+            Timer.Start(2);
         }
 
         protected override void OnTimer()
         {
-            try
-            {
-                // 1. Mandatory SL Verification: Ensure open Gold trade is protected or close immediately
-                EnsureAllPositionsProtected();
-
-                // 2. Dynamic Auto Break-Even: Lock in profit to Break-Even at +15 Pips
-                ApplyAutoBreakEvenProtection();
-
-                // 3. Send live Gold telemetry (Price, Balance, Open Positions)
-                SendTelemetry();
-
-                // 4. Poll & Execute pending approved Gold orders
-                if (EnableAutoExecution)
-                {
-                    PollOrders();
-                }
-            }
-            catch (Exception ex)
-            {
-                Print("Timer exception: " + ex.Message);
-            }
+            ApplyAutoBreakEvenProtection();
         }
 
-        /// <summary>
-        /// Ensures all open positions have verified Stop Loss.
-        /// If Stop Loss attachment fails or is rejected, IMMEDIATELY CLOSES POSITION to prevent naked risk.
-        /// </summary>
-        private void EnsureAllPositionsProtected()
+        private void StartHttpBridgeServer()
         {
             try
             {
-                var openPositions = new List<Position>(Positions);
+                _listener = new HttpListener();
+                string prefix1 = string.Format("http://127.0.0.1:{0}/trade/", Port);
+                string prefix2 = string.Format("http://localhost:{0}/trade/", Port);
 
-                foreach (var pos in openPositions)
+                _listener.Prefixes.Add(prefix1);
+                try
                 {
-                    if (pos.StopLoss == null || pos.StopLoss <= 0)
-                    {
-                        Symbol sym = Symbols.GetSymbol(pos.SymbolName) ?? Symbol;
-                        int digits = sym.Digits;
-                        double pipSize = sym.PipSize > 0 ? sym.PipSize : 0.01;
-
-                        double minDistance = Math.Max(sym.Spread * 3.0, pipSize * 40.0);
-                        double targetSl = 0.0;
-                        double targetTp = 0.0;
-
-                        if (pos.TradeType == TradeType.Buy)
-                        {
-                            targetSl = Math.Round(sym.Bid - Math.Max(minDistance, pipSize * 60.0), digits);
-                            targetTp = Math.Round(sym.Ask + Math.Max(minDistance * 2.0, pipSize * 120.0), digits);
-                        }
-                        else
-                        {
-                            targetSl = Math.Round(sym.Ask + Math.Max(minDistance, pipSize * 60.0), digits);
-                            targetTp = Math.Round(sym.Bid - Math.Max(minDistance * 2.0, pipSize * 120.0), digits);
-                        }
-
-                        Print(string.Format("🛡️ [Emergency SL Attachment] Securing #{0} ({1} {2}): SL={3}, TP={4}", 
-                            pos.Id, pos.SymbolName, pos.TradeType, targetSl, targetTp));
-
-                        TradeResult modResult = ModifyPosition(pos, targetSl, targetTp);
-
-                        // If modify failed, FAIL-SAFE EMERGENCY AUTO-CLOSE: NEVER leave any trade unprotected
-                        if (modResult == null || !modResult.IsSuccessful || pos.StopLoss == null || pos.StopLoss <= 0)
-                        {
-                            Print(string.Format("🚨 [FAIL-SAFE AUTO-CLOSE] Position #{0} is unprotected and broker rejected SL. Closing immediately!", pos.Id));
-                            ClosePosition(pos);
-                        }
-                        else
-                        {
-                            Print(string.Format("✅ [Protection Verified] #{0} secured with SL: {1}, TP: {2}", pos.Id, pos.StopLoss, pos.TakeProfit));
-                        }
-                    }
+                    _listener.Prefixes.Add(prefix2);
                 }
+                catch { }
+
+                _listener.Start();
+
+                _listenerThread = new Thread(ListenLoop)
+                {
+                    IsBackground = true,
+                    Name = "TradeTalkBridgeListener"
+                };
+                _listenerThread.Start();
+                Print(string.Format("🟢 HTTP Webhook Bridge active at {0}", prefix1));
             }
             catch (Exception ex)
             {
-                Print("EnsureAllPositionsProtected error: " + ex.Message);
+                Print("🚨 Failed to start HTTP Bridge listener: " + ex.Message);
             }
         }
 
-        /// <summary>
-        /// Moves Stop Loss to Entry Price (+1 pip buffer) as soon as position gains >= 15 pips profit ($1.50)
-        /// </summary>
+        private void ListenLoop()
+        {
+            while (_listener != null && _listener.IsListening && !_cts.Token.IsCancellationRequested)
+            {
+                try
+                {
+                    var context = _listener.GetContext();
+                    ThreadPool.QueueUserWorkItem(ProcessRequest, context);
+                }
+                catch (HttpListenerException)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    Print("Listener loop note: " + ex.Message);
+                }
+            }
+        }
+
+        private void ProcessRequest(object state)
+        {
+            var context = (HttpListenerContext)state;
+            var request = context.Request;
+            var response = context.Response;
+
+            // CORS headers
+            response.Headers.Add("Access-Control-Allow-Origin", "*");
+            response.Headers.Add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+            response.Headers.Add("Access-Control-Allow-Headers", "Content-Type, Authorization");
+            response.ContentType = "application/json";
+
+            try
+            {
+                if (request.HttpMethod == "OPTIONS")
+                {
+                    response.StatusCode = 200;
+                    SendJsonResponse(response, "{\"status\": \"OK\"}");
+                    return;
+                }
+
+                if (request.HttpMethod == "GET")
+                {
+                    // Status / Healthcheck endpoint
+                    var posList = new List<string>();
+                    foreach (var p in Positions)
+                    {
+                        posList.Add(string.Format(CultureInfo.InvariantCulture,
+                            "{{\"id\":{0},\"symbol\":\"{1}\",\"side\":\"{2}\",\"lots\":{3},\"entry\":{4},\"sl\":{5},\"tp\":{6},\"pnl\":{7:F2}}}",
+                            p.Id, p.SymbolName, p.TradeType, p.Quantity, p.EntryPrice, p.StopLoss ?? 0, p.TakeProfit ?? 0, p.NetProfit));
+                    }
+
+                    string statusJson = string.Format(CultureInfo.InvariantCulture,
+                        "{{\"status\":\"ONLINE\",\"bridge\":\"TradeTalk Local cBot Webhook Bridge\",\"account_id\":\"{0}\",\"broker\":\"{1}\",\"is_live\":{2},\"balance\":{3:F2},\"equity\":{4:F2},\"margin\":{5:F2},\"free_margin\":{6:F2},\"open_positions_count\":{7},\"positions\":[{8}]}}",
+                        Account.Number, Account.BrokerName, Account.IsLive ? "true" : "false", Account.Balance, Account.Equity, Account.Margin, Account.FreeMargin, Positions.Count, string.Join(",", posList));
+
+                    response.StatusCode = 200;
+                    SendJsonResponse(response, statusJson);
+                    return;
+                }
+
+                if (request.HttpMethod == "POST")
+                {
+                    string requestBody;
+                    using (var reader = new StreamReader(request.InputStream, request.ContentEncoding))
+                    {
+                        requestBody = reader.ReadToEnd();
+                    }
+
+                    Print("📥 Incoming Bridge Trade Request: " + requestBody);
+                    string executionResultJson = HandleTradeExecution(requestBody, out int httpStatus);
+                    response.StatusCode = httpStatus;
+                    SendJsonResponse(response, executionResultJson);
+                    return;
+                }
+
+                response.StatusCode = 405;
+                SendJsonResponse(response, "{\"status\":\"ERROR\",\"message\":\"Method Not Allowed\"}");
+            }
+            catch (Exception ex)
+            {
+                Print("Request processing error: " + ex.Message);
+                response.StatusCode = 500;
+                SendJsonResponse(response, string.Format("{{\"status\":\"ERROR\",\"message\":\"{0}\"}}", EscapeJson(ex.Message)));
+            }
+        }
+
+        private string HandleTradeExecution(string json, out int httpStatus)
+        {
+            lock (_orderLock)
+            {
+                try
+                {
+                    // Parse simple JSON parameters
+                    string symbolStr = ExtractJsonValue(json, "symbol") ?? "XAUUSD";
+                    string sideStr = (ExtractJsonValue(json, "side") ?? ExtractJsonValue(json, "action") ?? "BUY").ToUpperInvariant();
+                    string comment = ExtractJsonValue(json, "comment") ?? "TradeTalk AI";
+                    
+                    double volumeLots = 0.01;
+                    string volStr = ExtractJsonValue(json, "volume") ?? ExtractJsonValue(json, "lot_size") ?? ExtractJsonValue(json, "lots");
+                    if (!string.IsNullOrEmpty(volStr))
+                    {
+                        double.TryParse(volStr, NumberStyles.Any, CultureInfo.InvariantCulture, out volumeLots);
+                    }
+                    if (volumeLots <= 0) volumeLots = 0.01;
+
+                    // Parse SL and TP pips or price targets
+                    double slPips = 0;
+                    double tpPips = 0;
+                    string slPipsStr = ExtractJsonValue(json, "stop_loss_pips") ?? ExtractJsonValue(json, "sl_pips");
+                    string tpPipsStr = ExtractJsonValue(json, "take_profit_pips") ?? ExtractJsonValue(json, "tp_pips");
+                    
+                    if (!string.IsNullOrEmpty(slPipsStr)) double.TryParse(slPipsStr, NumberStyles.Any, CultureInfo.InvariantCulture, out slPips);
+                    if (!string.IsNullOrEmpty(tpPipsStr)) double.TryParse(tpPipsStr, NumberStyles.Any, CultureInfo.InvariantCulture, out tpPips);
+
+                    double slPrice = 0;
+                    double tpPrice = 0;
+                    string slPriceStr = ExtractJsonValue(json, "sl_price") ?? ExtractJsonValue(json, "sl");
+                    string tpPriceStr = ExtractJsonValue(json, "tp_price") ?? ExtractJsonValue(json, "tp");
+                    if (!string.IsNullOrEmpty(slPriceStr)) double.TryParse(slPriceStr, NumberStyles.Any, CultureInfo.InvariantCulture, out slPrice);
+                    if (!string.IsNullOrEmpty(tpPriceStr)) double.TryParse(tpPriceStr, NumberStyles.Any, CultureInfo.InvariantCulture, out tpPrice);
+
+                    // 1. Position Count Limit Guard
+                    if (Positions.Count >= MaxConcurrentPositions)
+                    {
+                        httpStatus = 400;
+                        return string.Format("{{\"status\":\"REJECTED\",\"error\":\"Max positions limit ({0}) reached.\",\"open_positions\":{1}}}", MaxConcurrentPositions, Positions.Count);
+                    }
+
+                    // 2. Resolve Symbol on Broker
+                    Symbol sym = ResolveSymbol(symbolStr);
+                    if (sym == null)
+                    {
+                        httpStatus = 400;
+                        return string.Format("{{\"status\":\"REJECTED\",\"error\":\"Symbol '{0}' not found on broker.\"}}", symbolStr);
+                    }
+
+                    TradeType tradeType = sideStr.Contains("BUY") ? TradeType.Buy : TradeType.Sell;
+
+                    // 3. Convert Volume to Broker Units
+                    double volumeInUnits = sym.QuantityToVolumeInUnits(volumeLots);
+
+                    // 4. Calculate Pips if exact price was provided
+                    double pipSize = sym.PipSize > 0 ? sym.PipSize : 0.01;
+                    if (slPips <= 0 && slPrice > 0)
+                    {
+                        double entryRef = tradeType == TradeType.Buy ? sym.Ask : sym.Bid;
+                        slPips = Math.Abs(entryRef - slPrice) / pipSize;
+                    }
+                    if (tpPips <= 0 && tpPrice > 0)
+                    {
+                        double entryRef = tradeType == TradeType.Buy ? sym.Ask : sym.Bid;
+                        tpPips = Math.Abs(tpPrice - entryRef) / pipSize;
+                    }
+
+                    // Default safe 1:2 R:R if not set
+                    if (slPips <= 0) slPips = 40;
+                    if (tpPips <= 0) tpPips = 80;
+
+                    Print(string.Format(CultureInfo.InvariantCulture,
+                        "🚀 Executing Order on {0}: {1} {2} Lots ({3} units) | SL Pips: {4:F1}, TP Pips: {5:F1}",
+                        sym.Name, tradeType, volumeLots, volumeInUnits, slPips, tpPips));
+
+                    TradeResult result = ExecuteMarketOrder(tradeType, sym.Name, volumeInUnits, comment, slPips, tpPips);
+
+                    if (result != null && result.IsSuccessful && result.Position != null)
+                    {
+                        var pos = result.Position;
+                        Print(string.Format(CultureInfo.InvariantCulture,
+                            "✅ [ORDER FILLED] Position #{0} | Symbol: {1} | Side: {2} | Entry: {3} | SL: {4} | TP: {5}",
+                            pos.Id, pos.SymbolName, pos.TradeType, pos.EntryPrice, pos.StopLoss, pos.TakeProfit));
+
+                        httpStatus = 200;
+                        return string.Format(CultureInfo.InvariantCulture,
+                            "{{\"status\":\"SUCCESS\",\"position_id\":{0},\"order_id\":{0},\"symbol\":\"{1}\",\"side\":\"{2}\",\"lots\":{3},\"volume\":{4},\"entry_price\":{5},\"sl\":{6},\"tp\":{7},\"comment\":\"{8}\",\"account_id\":\"{9}\"}}",
+                            pos.Id, pos.SymbolName, pos.TradeType, volumeLots, pos.VolumeInUnits, pos.EntryPrice, pos.StopLoss ?? 0, pos.TakeProfit ?? 0, EscapeJson(comment), Account.Number);
+                    }
+                    else
+                    {
+                        string err = result != null ? result.Error.ToString() : "Execution returned null";
+                        Print("🚨 Execution Failed: " + err);
+                        httpStatus = 400;
+                        return string.Format("{{\"status\":\"ERROR\",\"error\":\"{0}\"}}", EscapeJson(err));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Print("ExecuteMarketOrder Exception: " + ex.Message);
+                    httpStatus = 500;
+                    return string.Format("{{\"status\":\"ERROR\",\"error\":\"{0}\"}}", EscapeJson(ex.Message));
+                }
+            }
+        }
+
+        private Symbol ResolveSymbol(string symbolStr)
+        {
+            string clean = symbolStr.ToUpperInvariant().Trim();
+            return Symbols.GetSymbol(clean)
+                ?? Symbols.GetSymbol(clean + ".pro")
+                ?? Symbols.GetSymbol(clean + "m")
+                ?? Symbols.GetSymbol(clean + "_i")
+                ?? (clean.Contains("XAU") || clean.Contains("GOLD") ? (Symbols.GetSymbol("XAUUSD") ?? Symbols.GetSymbol("GOLD")) : null)
+                ?? Symbol;
+        }
+
         private void ApplyAutoBreakEvenProtection()
         {
             try
@@ -189,8 +305,7 @@ namespace cAlgo.Robots
                             double breakEvenSl = Math.Round(pos.EntryPrice + (pipSize * 1.0), digits);
                             if (pos.StopLoss == null || pos.StopLoss < pos.EntryPrice)
                             {
-                                Print(string.Format("🎯 [Auto Break-Even Triggered] Position #{0} (+{1:F1} pips). Moving SL to Entry: {2}", 
-                                    pos.Id, currentPips, breakEvenSl));
+                                Print(string.Format("🛡️ [Auto Break-Even] Position #{0} gained +{1:F1} pips. Moving SL to {2}", pos.Id, currentPips, breakEvenSl));
                                 ModifyPosition(pos, breakEvenSl, pos.TakeProfit);
                             }
                         }
@@ -203,255 +318,83 @@ namespace cAlgo.Robots
                             double breakEvenSl = Math.Round(pos.EntryPrice - (pipSize * 1.0), digits);
                             if (pos.StopLoss == null || pos.StopLoss > pos.EntryPrice)
                             {
-                                Print(string.Format("🎯 [Auto Break-Even Triggered] Position #{0} (+{1:F1} pips). Moving SL to Entry: {2}", 
-                                    pos.Id, currentPips, breakEvenSl));
+                                Print(string.Format("🛡️ [Auto Break-Even] Position #{0} gained +{1:F1} pips. Moving SL to {2}", pos.Id, currentPips, breakEvenSl));
                                 ModifyPosition(pos, breakEvenSl, pos.TakeProfit);
                             }
                         }
                     }
                 }
             }
-            catch {}
-        }
-
-        private async void SendTelemetry()
-        {
-            try
-            {
-                string url = ServerUrl.TrimEnd('/') + "/api/cbot/stream";
-                string assetName = Account.Asset != null ? (Account.Asset.Name ?? "USD") : "USD";
-                string symClean = Symbol.Name.ToUpperInvariant().Replace("M", "").Replace(".PRO", "").Replace("_I", "");
-
-                var positionsJson = new StringBuilder("[");
-                bool first = true;
-                foreach (var pos in Positions)
-                {
-                    if (!first) positionsJson.Append(",");
-                    positionsJson.Append(string.Format(CultureInfo.InvariantCulture,
-                        "{{\"id\":{0},\"symbol\":\"{1}\",\"type\":\"{2}\",\"entry_price\":{3},\"volume\":{4},\"sl\":{5},\"tp\":{6},\"net_profit\":{7},\"pips\":{8}}}",
-                        pos.Id, pos.SymbolName, pos.TradeType.ToString().ToUpperInvariant(),
-                        pos.EntryPrice, pos.VolumeInUnits,
-                        pos.StopLoss.HasValue ? pos.StopLoss.Value.ToString(CultureInfo.InvariantCulture) : "null",
-                        pos.TakeProfit.HasValue ? pos.TakeProfit.Value.ToString(CultureInfo.InvariantCulture) : "null",
-                        pos.NetProfit, pos.Pips));
-                    first = false;
-                }
-                positionsJson.Append("]");
-
-                string json = string.Format(CultureInfo.InvariantCulture,
-                    "{{\"account_id\":\"{0}\",\"balance\":{1},\"equity\":{2},\"margin\":{3},\"freeMargin\":{4},\"currency\":\"{5}\",\"broker\":\"{6}\",\"symbol\":\"{7}\",\"bid\":{8},\"ask\":{9},\"live_price\":{10},\"is_live\":{11},\"open_positions\":{12}}}",
-                    Account.Number, Account.Balance, Account.Equity, Account.Margin, Account.FreeMargin, 
-                    assetName, Account.BrokerName ?? "cTrader", symClean, Symbol.Bid, Symbol.Ask, Symbol.Bid,
-                    Account.IsLive ? "true" : "false", positionsJson.ToString());
-
-                var content = new StringContent(json, Encoding.UTF8, "application/json");
-                var res = await httpClient.PostAsync(url, content);
-                if (res.IsSuccessStatusCode && EnableAutoExecution)
-                {
-                    string replyJson = await res.Content.ReadAsStringAsync();
-                    if (!string.IsNullOrEmpty(replyJson) && (replyJson.Contains("\"signal\"") || replyJson.Contains("\"pending_orders\"")))
-                    {
-                        BeginInvokeOnMainThread(() => ProcessOrders(replyJson));
-                    }
-                }
-            }
-            catch {}
-        }
-
-        private async void PollOrders()
-        {
-            try
-            {
-                string url = ServerUrl.TrimEnd('/') + "/api/cbot/orders";
-                var response = await httpClient.GetAsync(url);
-                if (response.IsSuccessStatusCode)
-                {
-                    string json = await response.Content.ReadAsStringAsync();
-                    if (!string.IsNullOrEmpty(json) && json != "[]" && json.Contains("symbol"))
-                    {
-                        BeginInvokeOnMainThread(() => ProcessOrders(json));
-                    }
-                }
-            }
-            catch {}
-        }
-
-        private void ProcessOrders(string json)
-        {
-            try
-            {
-                // Handle Close position command
-                if (json.Contains("\"action\":\"CLOSE\""))
-                {
-                    string posIdStr = ExtractJsonValue(json, "position_id");
-                    long posId;
-                    if (long.TryParse(posIdStr, out posId))
-                    {
-                        foreach (var pos in Positions)
-                        {
-                            if (pos.Id == posId)
-                            {
-                                Print("Executing Close command for Position #" + posId);
-                                ClosePosition(pos);
-                                return;
-                            }
-                        }
-                    }
-                    return;
-                }
-
-                string symbolStr = ExtractJsonValue(json, "symbol");
-                string action = ExtractJsonValue(json, "signal");
-                if (string.IsNullOrEmpty(action)) action = ExtractJsonValue(json, "action");
-                action = action.ToUpperInvariant();
-                string signalId = ExtractJsonValue(json, "ticket_id");
-                if (string.IsNullOrEmpty(symbolStr) || (action != "BUY" && action != "SELL")) return;
-
-                // 1. Strict Instrument Whitelist (Metals & Major FX)
-                string symClean = symbolStr.ToUpperInvariant().Replace("M", "").Replace(".PRO", "").Replace("_I", "");
-                bool isAllowed = symClean.Contains("XAU") || symClean.Contains("GOLD") ||
-                                 symClean.Contains("XAG") || symClean.Contains("SILVER") ||
-                                 symClean.Contains("EURUSD") || symClean.Contains("GBPUSD") ||
-                                 symClean.Contains("USDJPY") || symClean.Contains("AUDUSD") ||
-                                 symClean.Contains("USDCHF");
-
-                if (!isAllowed)
-                {
-                    Print(string.Format("🚫 [REJECTED] {0} is blocked. Asset is not in active whitelist.", symbolStr));
-                    return;
-                }
-
-                // 2. Strict Duplicate Check
-                if (!string.IsNullOrEmpty(signalId) && _executedTickets.Contains(signalId)) return;
-
-                // 3. Max 1 Position Hard Cap
-                if (Positions.Count >= MAX_CONCURRENT_POSITIONS)
-                {
-                    Print(string.Format("🚫 [MAX POSITIONS REACHED] Cannot execute {0} {1}: {2} active position already running.", action, symbolStr, Positions.Count));
-                    return;
-                }
-
-                // 4. Parse SL, TP, and Configurable Lot Size
-                double rawSl = 0, rawTp = 0, targetLotSize = 0.01;
-                double.TryParse(ExtractJsonValue(json, "sl"), NumberStyles.Any, CultureInfo.InvariantCulture, out rawSl);
-                double.TryParse(ExtractJsonValue(json, "tp"), NumberStyles.Any, CultureInfo.InvariantCulture, out rawTp);
-
-                string lotStr = ExtractJsonValue(json, "lot_size");
-                if (string.IsNullOrEmpty(lotStr)) lotStr = ExtractJsonValue(json, "lots");
-                if (double.TryParse(lotStr, NumberStyles.Any, CultureInfo.InvariantCulture, out double parsedLot) && parsedLot > 0)
-                {
-                    targetLotSize = Math.Max(0.01, Math.Min(1.00, parsedLot));
-                }
-
-                if (rawSl <= 0 || rawTp <= 0)
-                {
-                    Print("🚫 [REJECTED] Order rejected: Missing or invalid SL/TP.");
-                    return;
-                }
-
-                Symbol targetSymbol = Symbols.GetSymbol(symbolStr) ?? Symbols.GetSymbol(symbolStr + "m") ?? Symbols.GetSymbol(symbolStr + ".pro") ?? Symbol;
-                TradeType tradeType = action == "BUY" ? TradeType.Buy : TradeType.Sell;
-
-                // Dynamic Volume Calculation (Handles Metals & FX)
-                double volumeMultiplier = targetSymbol.LotSize > 0 ? targetSymbol.LotSize : 100.0;
-                double volumeInUnits = targetSymbol.NormalizeVolumeInUnits(targetLotSize * volumeMultiplier);
-                if (volumeInUnits <= 0) volumeInUnits = targetSymbol.VolumeInUnitsMin;
-
-                int digits = targetSymbol.Digits;
-                double pipSize = targetSymbol.PipSize > 0 ? targetSymbol.PipSize : (digits == 5 || digits == 3 ? 0.0001 : 0.01);
-                double minDistance = Math.Max(targetSymbol.Spread * 3.0, pipSize * 40.0);
-                double currentRefPrice = tradeType == TradeType.Buy ? targetSymbol.Ask : targetSymbol.Bid;
-
-                double validSl = rawSl;
-                double validTp = rawTp;
-
-                if (tradeType == TradeType.Buy)
-                {
-                    if (validSl <= 0 || validSl >= (currentRefPrice - minDistance))
-                        validSl = currentRefPrice - Math.Max(minDistance, pipSize * 60.0);
-                    if (validTp <= 0 || validTp <= (currentRefPrice + minDistance))
-                        validTp = currentRefPrice + Math.Max(minDistance * 2.0, pipSize * 120.0);
-                }
-                else
-                {
-                    if (validSl <= 0 || validSl <= (currentRefPrice + minDistance))
-                        validSl = currentRefPrice + Math.Max(minDistance, pipSize * 60.0);
-                    if (validTp <= 0 || validTp >= (currentRefPrice - minDistance))
-                        validTp = currentRefPrice - Math.Max(minDistance * 2.0, pipSize * 120.0);
-                }
-
-                validSl = Math.Round(validSl, digits);
-                validTp = Math.Round(validTp, digits);
-
-                double slPips = Math.Round(Math.Abs(currentRefPrice - validSl) / pipSize, 1);
-                double tpPips = Math.Round(Math.Abs(validTp - currentRefPrice) / pipSize, 1);
-
-                Print(string.Format("🚀 [Executing Verified AI Trade] {0} {1} ({2:F2} lots / {3} units) | SL: {4} ({5} pips) | TP: {6} ({7} pips)",
-                    action, targetSymbol.Name, targetLotSize, volumeInUnits, validSl, slPips, validTp, tpPips));
-
-                TradeResult result = ExecuteMarketOrder(tradeType, targetSymbol.Name, volumeInUnits, "TradeTalk.AI.V2", slPips, tpPips);
-                if (!result.IsSuccessful)
-                {
-                    result = ExecuteMarketOrder(tradeType, targetSymbol.Name, volumeInUnits, "TradeTalk.AI.V2");
-                }
-
-                if (result.IsSuccessful && result.Position != null)
-                {
-                    Position pos = result.Position;
-                    if (!string.IsNullOrEmpty(signalId)) _executedTickets.Add(signalId);
-
-                    if (pos.StopLoss == null || pos.TakeProfit == null)
-                    {
-                        ModifyPosition(pos, validSl, validTp);
-                    }
-
-                    // Strict protection check: If still no SL, fail-safe close
-                    if (pos.StopLoss == null || pos.StopLoss <= 0)
-                    {
-                        Print(string.Format("🚨 [FAIL-SAFE AUTO-CLOSE] Broker failed to attach SL on position #{0}. Emergency closing now!", pos.Id));
-                        ClosePosition(pos);
-                        return;
-                    }
-
-                    Print(string.Format("✅ [Order Filled Successfully] Ticket #{0} for {1} @ {2} | Verified SL: {3}",
-                        pos.Id, targetSymbol.Name, pos.EntryPrice, pos.StopLoss));
-
-                    ReportOrderFilled(signalId, pos.Id, pos.EntryPrice, targetSymbol.Name, action);
-                }
-                else
-                {
-                    Print(string.Format("❌ [Execution Failed] Broker error: {0}", result.Error));
-                }
-            }
             catch (Exception ex)
             {
-                Print("ProcessOrders exception: " + ex.Message);
+                Print("Auto Break-Even note: " + ex.Message);
             }
         }
 
-        private async void ReportOrderFilled(string signalId, long posId, double fillPrice, string symbol, string action)
+        private void SendJsonResponse(HttpListenerResponse response, string json)
         {
-            try
+            byte[] buffer = Encoding.UTF8.GetBytes(json);
+            response.ContentLength64 = buffer.Length;
+            using (var output = response.OutputStream)
             {
-                string url = ServerUrl.TrimEnd('/') + "/api/cbot/order-filled";
-                string json = string.Format(CultureInfo.InvariantCulture,
-                    "{{\"id\":\"{0}\",\"ticket_id\":\"CT_{1}\",\"position_id\":\"{1}\",\"fill_price\":{2},\"symbol\":\"{3}\",\"action\":\"{4}\",\"status\":\"FILLED\"}}",
-                    signalId, posId, fillPrice, symbol, action);
-                await httpClient.PostAsync(url, new StringContent(json, Encoding.UTF8, "application/json"));
+                output.Write(buffer, 0, buffer.Length);
             }
-            catch {}
         }
 
         private string ExtractJsonValue(string json, string key)
         {
-            string search = "\"" + key + "\":";
-            int idx = json.IndexOf(search, StringComparison.OrdinalIgnoreCase);
-            if (idx == -1) return "";
-            int start = idx + search.Length;
-            while (start < json.Length && (json[start] == ' ' || json[start] == '"')) start++;
-            int end = start;
-            while (end < json.Length && json[end] != '"' && json[end] != ',' && json[end] != '}') end++;
-            return json.Substring(start, end - start).Trim('"', ' ');
+            if (string.IsNullOrEmpty(json) || string.IsNullOrEmpty(key)) return null;
+            string pattern = "\"" + key + "\"";
+            int idx = json.IndexOf(pattern, StringComparison.OrdinalIgnoreCase);
+            if (idx == -1) return null;
+
+            int colonIdx = json.IndexOf(':', idx + pattern.Length);
+            if (colonIdx == -1) return null;
+
+            int valStart = colonIdx + 1;
+            while (valStart < json.Length && (json[valStart] == ' ' || json[valStart] == '\t' || json[valStart] == '\r' || json[valStart] == '\n'))
+                valStart++;
+
+            if (valStart >= json.Length) return null;
+
+            if (json[valStart] == '"')
+            {
+                int endQuote = json.IndexOf('"', valStart + 1);
+                if (endQuote != -1)
+                    return json.Substring(valStart + 1, endQuote - valStart - 1);
+            }
+            else
+            {
+                int endIdx = valStart;
+                while (endIdx < json.Length && json[endIdx] != ',' && json[endIdx] != '}' && json[endIdx] != ']' && json[endIdx] != '\r' && json[endIdx] != '\n')
+                    endIdx++;
+                return json.Substring(valStart, endIdx - valStart).Trim();
+            }
+            return null;
+        }
+
+        private string EscapeJson(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            return s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "\\r");
+        }
+
+        protected override void OnStop()
+        {
+            try
+            {
+                _cts?.Cancel();
+                if (_listener != null && _listener.IsListening)
+                {
+                    _listener.Stop();
+                    _listener.Close();
+                }
+                Print("🛑 TradeTalk Local cBot Webhook Bridge Stopped Cleanly.");
+            }
+            catch (Exception ex)
+            {
+                Print("OnStop Exception: " + ex.Message);
+            }
         }
     }
 }
