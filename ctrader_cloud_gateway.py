@@ -10,6 +10,7 @@ from typing import Dict, Any, List, Optional
 from dotenv import load_dotenv
 import ctrader_openapi
 from app.config import settings
+from app.database.db import db
 
 if sys.platform == "win32":
     try:
@@ -866,6 +867,13 @@ def sync_local_cbot_telemetry(timeout_sec: float = 1.0) -> Dict[str, Any]:
                 GATEWAY_STATE["last_sync_timestamp"] = time.time()
                 GATEWAY_STATE["last_bridge_sync_timestamp"] = time.time()
                 
+                raw_closed = data.get("closed_trades", [])
+                for c in raw_closed:
+                    try:
+                        db.sync_cbot_closed_trade(c)
+                    except Exception as ce:
+                        logger.debug(f"[Closed Trade Sync Error]: {ce}")
+
                 if acc_id not in LINKED_ACCOUNTS:
                     LINKED_ACCOUNTS[acc_id] = {}
                 LINKED_ACCOUNTS[acc_id].update({

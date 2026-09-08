@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 import shutil
 import subprocess
 import argparse
@@ -32,16 +33,30 @@ def find_browser_executable() -> str:
             return c
     raise FileNotFoundError("Neither Google Chrome nor Microsoft Edge could be found on the system.")
 
+def terminate_stale_desktop_processes():
+    print("[*] Terminating any existing TradeTalk Desktop App instances...")
+    try:
+        subprocess.run(["taskkill", "/F", "/IM", "chrome_proxy.exe"], capture_output=True)
+    except Exception:
+        pass
+
+    try:
+        ps_cmd = '$list = Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like "*TradeTalk_Desktop_Profile*" -or $_.CommandLine -like "*--app=http*8000*" -or $_.CommandLine -like "*mnljojcfakgjgfcmkjdeapjkmahllgoa*" }; foreach ($p in $list) { Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue }'
+        subprocess.run(["powershell", "-NoProfile", "-Command", ps_cmd], capture_output=True)
+        time.sleep(0.6)
+        print("[+] Stale desktop processes terminated.")
+    except Exception as e:
+        print(f"[!] Note on process termination: {e}")
+
 def purge_desktop_cache():
     print(f"[*] Purging Desktop Application Cache and Stale Storage at {PROFILE_DIR}...")
     if PROFILE_DIR.exists():
         try:
-            # Purge cache subdirectories
-            for sub in ["Cache", "Code Cache", "GPUCache", "Session Storage", "Local Storage", "IndexedDB", "Service Worker"]:
-                target = PROFILE_DIR / "Default" / sub
-                if target.exists():
-                    shutil.rmtree(target, ignore_errors=True)
-            print("[+] Desktop cache successfully purged.")
+            # Delete and recreate to guarantee zero stale cache
+            shutil.rmtree(PROFILE_DIR, ignore_errors=True)
+            time.sleep(0.3)
+            PROFILE_DIR.mkdir(parents=True, exist_ok=True)
+            print("[+] Desktop cache and storage completely purged.")
         except Exception as e:
             print(f"[!] Note on cache purge: {e}")
     else:
@@ -73,14 +88,14 @@ $sc.Save()
         print(f"[!] Could not update shortcut: {e}")
 
 def launch_app(browser_path: str, url: str, wait: bool = False):
-    print(f"\\n========================================================")
+    print(f"\n========================================================")
     print(f"  TRADETALK AI - AUTONOMOUS DESKTOP APP LAUNCHER")
     print(f"========================================================")
     print(f"  Target URL      : {url}")
     print(f"  Engine Mode     : {'LOCAL ENGINE (localhost:8000)' if '8000' in url else 'RENDER CLOUD'}")
     print(f"  Profile Storage : {PROFILE_DIR}")
     print(f"  Browser Binary  : {browser_path}")
-    print(f"========================================================\\n")
+    print(f"========================================================\n")
     
     cmd = [
         browser_path,
@@ -96,7 +111,7 @@ def launch_app(browser_path: str, url: str, wait: bool = False):
         subprocess.run(cmd)
     else:
         subprocess.Popen(cmd)
-        print("[+] TradeTalk Desktop App successfully launched as a native standalone window!")
+        print("[+] TradeTalk Desktop App successfully launched fresh as a native standalone window!")
 
 def main():
     parser = argparse.ArgumentParser(description="TradeTalk AI Desktop Launcher")
@@ -108,11 +123,16 @@ def main():
 
     browser = find_browser_executable()
     
-    if args.purge or True:  # Always purge by default to clear stale blocked state
-        purge_desktop_cache()
+    # 1. Kill stale instances
+    terminate_stale_desktop_processes()
 
+    # 2. Always purge cache for fresh launch
+    purge_desktop_cache()
+
+    # 3. Update shortcut
     update_desktop_shortcut(browser, args.url)
 
+    # 4. Launch clean fresh app
     if not args.shortcut_only:
         launch_app(browser, args.url, wait=args.wait)
 

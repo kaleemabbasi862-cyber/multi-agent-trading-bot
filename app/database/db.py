@@ -180,6 +180,83 @@ class DatabaseManager:
             conn.commit()
 
     @staticmethod
+    def sync_cbot_closed_trade(item: Dict[str, Any]):
+        """
+        Inserts or updates a closed broker trade from cBot history into the database,
+        mapping real PnL, exit price, commission, swap, and setting status to 'CLOSED'.
+        """
+        ticket_id = str(item.get("position_id") or item.get("id") or "").strip()
+        if not ticket_id:
+            return
+        
+        sym = str(item.get("symbol", "XAUUSD")).upper()
+        direction = str(item.get("side", "BUY")).upper()
+        entry_p = float(item.get("entry", 0.0))
+        exit_p = float(item.get("close", 0.0))
+        pnl = float(item.get("pnl", 0.0))
+        comm = float(item.get("commission", 0.0))
+        swap = float(item.get("swap", 0.0))
+        raw_lots = float(item.get("lots", 1))
+        vol = round(raw_lots / 100.0 if raw_lots >= 1.0 else raw_lots, 2)
+        closed_at = item.get("closed_at")
+        opened_at = item.get("entry_time", closed_at)
+
+        # Calculate pips
+        pips = 0.0
+        if "XAU" in sym or "GOLD" in sym:
+            pips = round((exit_p - entry_p) * 10, 1) if direction == "BUY" else round((entry_p - exit_p) * 10, 1)
+        
+        with _lock, get_db_connection() as conn:
+            existing = conn.execute("SELECT id FROM trades WHERE ticket_id = ? OR id = ?", (ticket_id, f"TRD_{ticket_id}")).fetchone()
+            if existing:
+                conn.execute(
+                    """
+                    UPDATE trades
+                    SET status = 'CLOSED',
+                        exit_price = ?,
+                        profit_loss = ?,
+                        pips = ?,
+                        commission = ?,
+                        swap = ?,
+                        closed_at = COALESCE(?, closed_at)
+                    WHERE ticket_id = ? OR id = ?
+                    """,
+                    (exit_p, pnl, pips, comm, swap, closed_at, ticket_id, ticket_id)
+                )
+            else:
+                trade_id = f"TRD_{ticket_id}"
+                conn.execute(
+                    """
+                    INSERT INTO trades
+                    (id, signal_id, mode, broker_order_id, ticket_id, symbol, direction, entry_price, exit_price, stop_loss, take_profit, volume, profit_loss, pips, commission, swap, status, close_reason, opened_at, closed_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        trade_id,
+                        "",
+                        settings.TRADING_MODE,
+                        f"cBot History #{ticket_id}",
+                        ticket_id,
+                        sym,
+                        direction,
+                        entry_p,
+                        exit_p,
+                        0.0,
+                        0.0,
+                        vol,
+                        pnl,
+                        pips,
+                        comm,
+                        swap,
+                        "CLOSED",
+                        "Broker History Sync",
+                        opened_at,
+                        closed_at
+                    )
+                )
+            conn.commit()
+
+    @staticmethod
     def get_recent_signals(limit: int = 50) -> List[Dict[str, Any]]:
         with get_db_connection() as conn:
             rows = conn.execute(
