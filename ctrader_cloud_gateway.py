@@ -37,31 +37,46 @@ DEFAULT_ACCOUNT_ID = _resolve_initial_account_id()
 LINKED_ACCOUNTS: Dict[str, Dict[str, Any]] = {
     "5908018": {
         "account_id": "5908018",
-        "name": "Qartal Markets Live / cTrader #5908018",
-        "account_type": "LIVE",
-        "environment": "Live",
+        "name": "Spotware • Demo • #5908018",
+        "account_type": "DEMO",
+        "environment": "Demo",
         "balance": 1018.96,
         "equity": 1018.96,
         "margin": 0.0,
         "free_margin": 1018.96,
         "currency": "USD",
-        "broker": "Qartal Markets cTrader Live",
+        "broker": "Spotware",
+        "is_live": False,
+        "open_positions": [],
+        "last_seen": time.time()
+    },
+    "abu_sarim": {
+        "account_id": "abu_sarim",
+        "name": "Qartal Markets • Live • Abu sarim",
+        "account_type": "LIVE",
+        "environment": "Live",
+        "balance": 0.72,
+        "equity": 0.72,
+        "margin": 0.0,
+        "free_margin": 0.72,
+        "currency": "USD",
+        "broker": "Qartal Markets",
         "is_live": True,
         "open_positions": [],
         "last_seen": time.time()
     },
     "1005621": {
         "account_id": "1005621",
-        "name": "cTrader Demo #1005621",
-        "account_type": "DEMO",
-        "environment": "Demo",
-        "balance": 39.05,
-        "equity": 39.05,
+        "name": "Qartal Markets • Live • #1005621",
+        "account_type": "LIVE",
+        "environment": "Live",
+        "balance": 21.19,
+        "equity": 21.19,
         "margin": 0.0,
-        "free_margin": 39.05,
+        "free_margin": 21.19,
         "currency": "USD",
-        "broker": "Spotware cTrader Demo",
-        "is_live": False,
+        "broker": "Qartal Markets",
+        "is_live": True,
         "open_positions": [],
         "last_seen": time.time()
     }
@@ -74,7 +89,7 @@ CTRADER_CONFIG = {
     "client_id": os.getenv("CTRADER_CLIENT_ID", "38205_uwQq76FzYirpd9qMjjrPqcO7VcT1CqFHkDx8GXwzMBxratuPNT").strip('"'),
     "client_secret": os.getenv("CTRADER_CLIENT_SECRET", "al5kdBjwDuPX6CCgrJ0o3AholHFhCGAPuN2lj75UUV3NxEHFTm").strip('"'),
     "account_id": DEFAULT_ACCOUNT_ID,
-    "environment": _initial_acc.get("environment", "Live"),
+    "environment": _initial_acc.get("environment", "Demo"),
     "access_token": os.getenv("CTRADER_ACCESS_TOKEN", "").strip('"'),
     "refresh_token": os.getenv("CTRADER_REFRESH_TOKEN", "").strip('"')
 }
@@ -88,14 +103,14 @@ GATEWAY_STATE: Dict[str, Any] = {
     "cloud_server_active": True,
     "mode": "CLOUD_OPEN_API",
     "account_id": DEFAULT_ACCOUNT_ID,
-    "account_type": _initial_acc.get("account_type", "LIVE"),
-    "is_live": _initial_acc.get("is_live", True),
-    "balance": 1018.96,
-    "equity": 1018.96,
-    "margin": 0.0,
-    "free_margin": 1018.96,
-    "currency": "USD",
-    "broker": "Qartal Markets cTrader Live",
+    "account_type": _initial_acc.get("account_type", "DEMO"),
+    "is_live": _initial_acc.get("is_live", False),
+    "balance": _initial_acc.get("balance", 1018.96),
+    "equity": _initial_acc.get("equity", 1018.96),
+    "margin": _initial_acc.get("margin", 0.0),
+    "free_margin": _initial_acc.get("free_margin", 1018.96),
+    "currency": _initial_acc.get("currency", "USD"),
+    "broker": _initial_acc.get("broker", "Spotware"),
     "open_positions": [],
     "total_unrealized_pnl": 0.0,
     "target_symbol": "XAUUSD",
@@ -113,7 +128,7 @@ PENDING_CBOT_ORDERS: List[Dict[str, Any]] = []
 EXECUTED_RECEIPTS: Dict[str, Dict[str, Any]] = {}
 
 def get_all_accounts() -> Dict[str, Any]:
-    """Returns all available and linked cTrader accounts."""
+    """Returns all available and linked cTrader accounts with accurate broker metadata."""
     active_id = str(GATEWAY_STATE.get("account_id", DEFAULT_ACCOUNT_ID)).strip().replace("#", "")
     accounts_list = []
     for acc_id, acc_info in LINKED_ACCOUNTS.items():
@@ -121,17 +136,25 @@ def get_all_accounts() -> Dict[str, Any]:
         # Update active account info from GATEWAY_STATE if active
         bal = GATEWAY_STATE["balance"] if is_active else acc_info.get("balance", 0.0)
         eq = GATEWAY_STATE["equity"] if is_active else acc_info.get("equity", 0.0)
+        broker_name = acc_info.get("broker", "Spotware" if "5908" in acc_id else "Qartal Markets")
+        acc_type = acc_info.get("account_type", "DEMO" if "5908" in acc_id else "LIVE")
+        
+        if acc_id == "abu_sarim" or "sarim" in acc_id.lower():
+            label = f"{broker_name} • {acc_type} • Abu sarim (${bal:,.2f})"
+        else:
+            label = f"{broker_name} • {acc_type} • #{acc_id} (${bal:,.2f})"
+            
         accounts_list.append({
             "account_id": acc_id,
-            "name": acc_info.get("name", f"cTrader #{acc_id}"),
-            "label": f"{acc_info.get('account_type', 'LIVE')} #{acc_id} (${bal:,.2f})",
-            "account_type": acc_info.get("account_type", "LIVE"),
-            "environment": acc_info.get("environment", "Live"),
+            "name": acc_info.get("name", label),
+            "label": label,
+            "account_type": acc_type,
+            "environment": acc_info.get("environment", "Live" if acc_type == "LIVE" else "Demo"),
             "balance": round(float(bal), 2),
             "equity": round(float(eq), 2),
             "currency": acc_info.get("currency", "USD"),
-            "broker": acc_info.get("broker", "IC Markets cTrader"),
-            "is_live": acc_info.get("is_live", True),
+            "broker": broker_name,
+            "is_live": acc_info.get("is_live", acc_type == "LIVE"),
             "is_active": is_active
         })
     return {
@@ -147,33 +170,40 @@ def switch_active_account(account_id: str) -> Dict[str, Any]:
     clean_id = str(account_id).strip().replace("#", "")
 
     if clean_id not in LINKED_ACCOUNTS:
-        is_live = "5908" in clean_id or "live" in clean_id.lower()
-        LINKED_ACCOUNTS[clean_id] = {
-            "account_id": clean_id,
-            "name": f"cTrader #{clean_id}",
-            "account_type": "LIVE" if is_live else "DEMO",
-            "environment": "Live" if is_live else "Demo",
-            "balance": 1007.44 if "5908" in clean_id else 39.05,
-            "equity": 1007.44 if "5908" in clean_id else 39.05,
-            "margin": 0.0,
-            "free_margin": 1007.44 if "5908" in clean_id else 39.05,
-            "currency": "USD",
-            "broker": "IC Markets cTrader",
-            "is_live": is_live,
-            "open_positions": [],
-            "last_seen": time.time()
-        }
+        if "sarim" in clean_id.lower() or clean_id == "abu_sarim":
+            clean_id = "abu_sarim"
+        elif "1005" in clean_id:
+            clean_id = "1005621"
+        elif "5908" in clean_id:
+            clean_id = "5908018"
+        else:
+            is_live = "live" in clean_id.lower()
+            LINKED_ACCOUNTS[clean_id] = {
+                "account_id": clean_id,
+                "name": f"cTrader #{clean_id}",
+                "account_type": "LIVE" if is_live else "DEMO",
+                "environment": "Live" if is_live else "Demo",
+                "balance": 21.19 if is_live else 1018.96,
+                "equity": 21.19 if is_live else 1018.96,
+                "margin": 0.0,
+                "free_margin": 21.19 if is_live else 1018.96,
+                "currency": "USD",
+                "broker": "Qartal Markets" if is_live else "Spotware",
+                "is_live": is_live,
+                "open_positions": [],
+                "last_seen": time.time()
+            }
 
     acc_data = LINKED_ACCOUNTS[clean_id]
     GATEWAY_STATE["account_id"] = clean_id
     GATEWAY_STATE["account_type"] = acc_data.get("account_type", "LIVE")
     GATEWAY_STATE["is_live"] = acc_data.get("is_live", True)
-    GATEWAY_STATE["balance"] = round(float(acc_data.get("balance", 1007.44)), 2)
-    GATEWAY_STATE["equity"] = round(float(acc_data.get("equity", 1007.44)), 2)
+    GATEWAY_STATE["balance"] = round(float(acc_data.get("balance", 1018.96)), 2)
+    GATEWAY_STATE["equity"] = round(float(acc_data.get("equity", 1018.96)), 2)
     GATEWAY_STATE["margin"] = round(float(acc_data.get("margin", 0.0)), 2)
     GATEWAY_STATE["free_margin"] = round(float(acc_data.get("free_margin", GATEWAY_STATE["equity"])), 2)
     GATEWAY_STATE["currency"] = acc_data.get("currency", "USD")
-    GATEWAY_STATE["broker"] = acc_data.get("broker", "IC Markets cTrader")
+    GATEWAY_STATE["broker"] = acc_data.get("broker", "Spotware")
     GATEWAY_STATE["open_positions"] = acc_data.get("open_positions", [])
     GATEWAY_STATE["last_sync"] = datetime.datetime.now(datetime.timezone.utc).strftime("%H:%M:%S UTC")
     GATEWAY_STATE["last_sync_timestamp"] = time.time()

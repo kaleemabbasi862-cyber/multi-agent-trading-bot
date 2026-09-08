@@ -67,22 +67,29 @@ def test_ctrader_cloud_order_execution():
     acc_data = ctrader_cloud_gateway.get_all_accounts()
     assert acc_data["status"] == "success"
     accounts = acc_data["accounts"]
-    assert len(accounts) >= 2
+    assert len(accounts) >= 3
     acc_ids = [str(a["account_id"]) for a in accounts]
     assert "5908018" in acc_ids
     assert "1005621" in acc_ids
+    assert "abu_sarim" in acc_ids
 
     # Switch to 1005621
     switch_res = ctrader_cloud_gateway.switch_active_account("1005621")
     assert switch_res["status"] == "SUCCESS"
     assert switch_res["active_account_id"] == "1005621"
-    assert switch_res["gateway_state"]["balance"] == 39.05
+    assert switch_res["gateway_state"]["balance"] == 21.19
     assert ctrader_cloud_gateway.get_gateway_status()["account_id"] == "1005621"
+
+    # Switch to abu_sarim
+    switch_sarim = ctrader_cloud_gateway.switch_active_account("abu_sarim")
+    assert switch_sarim["status"] == "SUCCESS"
+    assert switch_sarim["active_account_id"] == "abu_sarim"
+    assert switch_sarim["gateway_state"]["balance"] == 0.72
 
     # Switch back to 5908018
     switch_back = ctrader_cloud_gateway.switch_active_account("5908018")
     assert switch_back["status"] == "SUCCESS"
     assert switch_back["active_account_id"] == "5908018"
-    assert switch_back["gateway_state"]["balance"] >= 1000.0
+    assert switch_back["gateway_state"]["balance"] == 1018.96
     assert ctrader_cloud_gateway.get_gateway_status()["account_id"] == "5908018"
 
