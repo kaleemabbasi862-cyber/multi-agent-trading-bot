@@ -238,6 +238,13 @@ app.include_router(backtest.router)
 app.include_router(cbot.router)
 app.include_router(system.router)
 
+@app.get("/api/trades")
+@app.get("/api/ledger")
+async def get_trades_direct(limit: int = 100):
+    """Returns persistent broker and agent trades history directly."""
+    return db.get_recent_trades(limit=limit)
+
+
 # -------------------------------------------------------------
 # Webhook Gateway (TradingView with HMAC & Replay Security)
 # -------------------------------------------------------------
