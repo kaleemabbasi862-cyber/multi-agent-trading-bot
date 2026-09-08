@@ -290,10 +290,10 @@
                     <span>cTrader Live Balance</span>
                     <i class="fa-solid fa-wallet text-emerald-400"></i>
                 </div>
-                <div class="font-mono font-black text-xl text-white tracking-tight" x-text="'$' + formatMoney(cbotStatus.balance || 39.05)"></div>
+                <div class="font-mono font-black text-xl text-white tracking-tight" x-text="'$' + formatMoney(cbotStatus.balance || 0.00)"></div>
                 <div class="mt-2 text-[11px] font-bold text-emerald-400 flex items-center space-x-1">
                     <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1 pulse-live"></span>
-                    <span x-text="'Real Equity: $' + formatMoney(cbotStatus.equity || 39.05)"></span>
+                    <span x-text="'Real Equity: $' + formatMoney(cbotStatus.equity || 0.00)"></span>
                 </div>
             </div>
 

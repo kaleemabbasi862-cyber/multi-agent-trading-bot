@@ -54,8 +54,8 @@ class NoTradeGuardian:
         if data_age > settings.MAX_MARKET_DATA_AGE_SECONDS:
             return True, f"Rule 4 Violation: Stale market data quote ({data_age:.1f}s old > max {settings.MAX_MARKET_DATA_AGE_SECONDS}s)."
 
-        # Rule 5: Abnormal Spread Surge (Max 25 cents on Gold)
-        max_spread = 0.25 if ("XAU" in sym or "GOLD" in sym) else settings.MAX_ALLOWED_SPREAD_XAUUSD
+        # Rule 5: Abnormal Spread Surge (Max 55 cents on Gold)
+        max_spread = settings.MAX_ALLOWED_SPREAD_XAUUSD if ("XAU" in sym or "GOLD" in sym) else 0.0005
         if spread > max_spread:
             return True, f"Rule 5 Violation: Abnormal spread surge (${spread:.2f}) exceeds maximum allowed threshold (${max_spread:.2f}) to prevent spread-bleed."
 

@@ -57,7 +57,7 @@ class Settings:
     
     # Market Data Constraints
     MAX_MARKET_DATA_AGE_SECONDS: int = int(os.getenv("MAX_MARKET_DATA_AGE_SECONDS", "30"))
-    MAX_ALLOWED_SPREAD_XAUUSD: float = float(os.getenv("MAX_ALLOWED_SPREAD_XAUUSD", "0.25")) # Max $0.25 (25 cents) on Gold
+    MAX_ALLOWED_SPREAD_XAUUSD: float = float(os.getenv("MAX_ALLOWED_SPREAD_XAUUSD", "0.55")) # Max $0.55 (55 cents) on Gold
     
     # Webhook Security
     WEBHOOK_SECRET_KEY: str = os.getenv("WEBHOOK_SECRET_KEY", "tradetalk_v2_secret_key_884920")
