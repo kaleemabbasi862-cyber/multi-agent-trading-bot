@@ -37,15 +37,15 @@ DEFAULT_ACCOUNT_ID = _resolve_initial_account_id()
 LINKED_ACCOUNTS: Dict[str, Dict[str, Any]] = {
     "5908018": {
         "account_id": "5908018",
-        "name": "IC Markets Live / Demo #5908018",
+        "name": "Qartal Markets Live / cTrader #5908018",
         "account_type": "LIVE",
         "environment": "Live",
-        "balance": 1007.44,
-        "equity": 1007.44,
+        "balance": 1018.50,
+        "equity": 1018.50,
         "margin": 0.0,
-        "free_margin": 1007.44,
+        "free_margin": 1018.50,
         "currency": "USD",
-        "broker": "IC Markets cTrader",
+        "broker": "Qartal Markets cTrader Live",
         "is_live": True,
         "open_positions": [],
         "last_seen": time.time()
