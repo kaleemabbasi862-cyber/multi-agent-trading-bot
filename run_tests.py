@@ -1,5 +1,6 @@
 import sys
 import os
+import unittest
 
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
@@ -14,6 +15,12 @@ from tests.test_guardian import test_guardian_blocks_high_spread, test_guardian_
 from tests.test_webhook_security import test_webhook_security_valid_token, test_webhook_security_invalid_token
 from tests.test_backtester import test_strategy_lab_backtest_execution
 from tests.test_ctrader_cloud import test_ctrader_cloud_order_execution
+from tests.test_ctrader_openapi import TestCTraderOpenAPI
+
+def run_ctrader_openapi_tests():
+    suite = unittest.TestLoader().loadTestsFromTestCase(TestCTraderOpenAPI)
+    result = unittest.TextTestRunner(verbosity=0).run(suite)
+    assert result.wasSuccessful(), "cTrader Open API Protobuf test failures"
 
 def main():
     tests = [
@@ -23,6 +30,7 @@ def main():
         ("Pair & Lot: Dynamic Selector & Lot Stepper", test_dynamic_pair_settings_and_lot_controls),
         ("7 Agents: Complete Consensus Pipeline", test_all_7_agents_evaluate_valid_setup),
         ("cTrader Cloud: Server-Side Open API Execution", test_ctrader_cloud_order_execution),
+        ("cTrader Open API: Wire Protocol & Framing", run_ctrader_openapi_tests),
         ("No-Trade Guardian: High Spread Blocker", test_guardian_blocks_high_spread),
         ("No-Trade Guardian: High Impact News Blocker", test_guardian_blocks_upcoming_news),
         ("Webhook Security: Valid Token Authorization", test_webhook_security_valid_token),

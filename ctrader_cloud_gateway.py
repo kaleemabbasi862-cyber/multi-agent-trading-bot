@@ -8,6 +8,7 @@ import requests
 import urllib.parse
 from typing import Dict, Any, List, Optional
 from dotenv import load_dotenv
+import ctrader_openapi
 
 if sys.platform == "win32":
     try:
@@ -437,30 +438,62 @@ def execute_market_order(
     }
     PENDING_CBOT_ORDERS.append(cbot_order_item)
 
-    # If Spotware OAuth token is present, attempt direct REST execution
+    # Spotware Open API Direct Cloud Execution
     token = CTRADER_CONFIG.get("access_token")
     if token:
         try:
             target_account_int = int(GATEWAY_STATE["account_id"]) if str(GATEWAY_STATE["account_id"]).isdigit() else 5908018
-            order_req = {
-                "ctidTraderAccountId": target_account_int,
-                "symbolName": sym_clean,
-                "tradeSide": "BUY" if act_upper == "BUY" else "SELL",
-                "volume": units,
-                "stopLoss": sl_price,
-                "takeProfit": tp_price,
-                "comment": comment[:50]
-            }
-            # Attempt Spotware API endpoint
-            res = requests.post(
-                "https://openapi.ctrader.com/apps/trader/v2/orders",
-                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-                json=order_req,
+            sym_id = 1 if ("XAU" in sym_clean or "GOLD" in sym_clean or "EUR" in sym_clean) else (2 if ("GBP" in sym_clean or "XAG" in sym_clean) else 4)
+            
+            # Dispatch TLS Protobuf Order Request to Spotware Cloud
+            oa_client = ctrader_openapi.SpotwareOpenAPIClient(
+                client_id=CTRADER_CONFIG["client_id"],
+                client_secret=CTRADER_CONFIG["client_secret"],
+                is_live=GATEWAY_STATE.get("is_live", False),
                 timeout=5
             )
-            print(f"[cTrader Cloud] 🟢 Spotware Open API Order Dispatched to #{target_account_int}: {act_upper} {final_lot} Lots of {sym_clean} (Status: {res.status_code})")
+            
+            oa_res = oa_client.send_market_order(
+                account_id=target_account_int,
+                symbol_id=sym_id,
+                trade_side=act_upper,
+                volume=units,
+                sl_price=sl_price,
+                tp_price=tp_price,
+                comment=comment[:50]
+            )
+            
+            if oa_res.get("status") == "SUCCESS":
+                broker_order_id = oa_res.get("order_id") or ticket_num
+                broker_pos_id = oa_res.get("position_id") or ticket_num
+                ticket_num = broker_pos_id
+                ticket_id = f"CT_{broker_pos_id}"
+                if oa_res.get("execution_price"):
+                    fill_price = float(oa_res["execution_price"])
+                print(f"[cTrader Cloud] 🟢 Direct Spotware TLS Protobuf Order Executed: Pos #{broker_pos_id} / Ord #{broker_order_id} @ ${fill_price}")
+            elif oa_res.get("status") == "ERROR_BROKER_REJECTED":
+                err_desc = oa_res.get("error_description", oa_res.get("error_code", "Broker rejected"))
+                GATEWAY_STATE["last_error"] = err_desc
+                print(f"[cTrader Cloud] [!] Spotware Open API Order Rejected: {err_desc}")
+            else:
+                # Direct REST fallback attempt
+                order_req = {
+                    "ctidTraderAccountId": target_account_int,
+                    "symbolName": sym_clean,
+                    "tradeSide": "BUY" if act_upper == "BUY" else "SELL",
+                    "volume": units,
+                    "stopLoss": sl_price,
+                    "takeProfit": tp_price,
+                    "comment": comment[:50]
+                }
+                requests.post(
+                    "https://openapi.ctrader.com/apps/trader/v2/orders",
+                    headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                    json=order_req,
+                    timeout=4
+                )
         except Exception as e:
-            logger.debug(f"Direct Spotware HTTP attempt note: {e}")
+            logger.debug(f"Direct Spotware TLS execution attempt note: {e}")
 
     # Create new live active position in server memory
     new_position = {
