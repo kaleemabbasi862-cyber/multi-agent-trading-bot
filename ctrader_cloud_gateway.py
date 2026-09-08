@@ -586,7 +586,6 @@ def close_position(position_id: Any, close_price: Optional[float] = None) -> Dic
     if not target_pos:
         return {"status": "ERROR", "message": f"Position #{position_id} not found in active tracking"}
 
-    # Calculate final realized PnL
     realized_pnl = float(target_pos.get("net_profit", 0.0))
     GATEWAY_STATE["balance"] = round(GATEWAY_STATE["balance"] + realized_pnl, 2)
     GATEWAY_STATE["open_positions"] = [p for p in GATEWAY_STATE["open_positions"] if str(p.get("id")) != str(target_pos.get("id"))]
@@ -595,6 +594,12 @@ def close_position(position_id: Any, close_price: Optional[float] = None) -> Dic
     GATEWAY_STATE["equity"] = GATEWAY_STATE["balance"]
     GATEWAY_STATE["total_unrealized_pnl"] = 0.0
     GATEWAY_STATE["last_sync"] = datetime.datetime.now(datetime.timezone.utc).strftime("%H:%M:%S UTC")
+
+    acc_id = str(GATEWAY_STATE.get("account_id"))
+    if acc_id in LINKED_ACCOUNTS:
+        LINKED_ACCOUNTS[acc_id]["open_positions"] = list(GATEWAY_STATE["open_positions"])
+        LINKED_ACCOUNTS[acc_id]["balance"] = GATEWAY_STATE["balance"]
+        LINKED_ACCOUNTS[acc_id]["equity"] = GATEWAY_STATE["equity"]
 
     print(f"[cTrader Cloud] [✓] Closed Position #{target_pos.get('id')} ({target_pos.get('symbol')}). Realized PnL: ${realized_pnl:.2f} | New Balance: ${GATEWAY_STATE['balance']:.2f}")
     return {
