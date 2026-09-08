@@ -87,8 +87,8 @@ _initial_acc = LINKED_ACCOUNTS.get(DEFAULT_ACCOUNT_ID, LINKED_ACCOUNTS["5908018"
 
 # Spotware cTrader Open API Configuration
 CTRADER_CONFIG = {
-    "client_id": os.getenv("CTRADER_CLIENT_ID", "38205_uwQq76FzYirpd9qMjjrPqcO7VcT1CqFHkDx8GXwzMBxratuPNT").strip('"').strip(),
-    "client_secret": os.getenv("CTRADER_CLIENT_SECRET", "al5kdBjwDuPX6CCgrj0o3AholHFhCGAPuN2lj75UUV3NxEHFTm").strip('"').strip(),
+    "client_id": os.getenv("CTRADER_CLIENT_ID", "39195_4Gr4AwHTdQX7XVxMccP1mfzwU9RE99BDPQCiF6Y5vGotQpwdtC").strip('"').strip(),
+    "client_secret": os.getenv("CTRADER_CLIENT_SECRET", "2hV6fK7gHwQcdNkmLyazI1xA84Xmps5GezuCh3xJo9FMD9yqpF").strip('"').strip(),
     "account_id": DEFAULT_ACCOUNT_ID,
     "environment": _initial_acc.get("environment", "Demo"),
     "access_token": os.getenv("CTRADER_ACCESS_TOKEN", "").strip('"').strip(),
