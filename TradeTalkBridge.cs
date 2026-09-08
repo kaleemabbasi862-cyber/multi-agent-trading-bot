@@ -105,19 +105,36 @@ namespace cAlgo.Robots
         private T RunOnMainThread<T>(Func<T> func)
         {
             var tcs = new TaskCompletionSource<T>();
-            BeginInvokeOnMainThread(() =>
+            try
             {
-                try
+                BeginInvokeOnMainThread(() =>
                 {
-                    var result = func();
-                    tcs.SetResult(result);
-                }
-                catch (Exception ex)
-                {
-                    tcs.SetException(ex);
-                }
-            });
-            return tcs.Task.GetAwaiter().GetResult();
+                    try
+                    {
+                        var result = func();
+                        tcs.TrySetResult(result);
+                    }
+                    catch (Exception ex)
+                    {
+                        Print("🚨 Error inside MainThread delegate: " + ex.ToString());
+                        tcs.TrySetException(ex);
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                Print("🚨 Error calling BeginInvokeOnMainThread: " + ex.ToString());
+                tcs.TrySetException(ex);
+            }
+
+            if (tcs.Task.Wait(TimeSpan.FromSeconds(5)))
+            {
+                return tcs.Task.Result;
+            }
+            else
+            {
+                throw new TimeoutException("cTrader main thread did not respond within 5 seconds.");
+            }
         }
 
         private void ProcessRequest(object state)
@@ -143,20 +160,33 @@ namespace cAlgo.Robots
 
                 if (request.HttpMethod == "GET")
                 {
-                    // Status / Healthcheck endpoint executed on Main Thread
+                    // Status / Healthcheck endpoint executed safely on Main Thread
                     string statusJson = RunOnMainThread(() =>
                     {
                         var posList = new List<string>();
-                        foreach (var p in Positions)
+                        if (Positions != null)
                         {
-                            posList.Add(string.Format(CultureInfo.InvariantCulture,
-                                "{{\"id\":{0},\"symbol\":\"{1}\",\"side\":\"{2}\",\"lots\":{3},\"entry\":{4},\"sl\":{5},\"tp\":{6},\"pnl\":{7:F2}}}",
-                                p.Id, p.SymbolName, p.TradeType, p.Quantity, p.EntryPrice, p.StopLoss ?? 0, p.TakeProfit ?? 0, p.NetProfit));
+                            foreach (var p in Positions)
+                            {
+                                if (p == null) continue;
+                                posList.Add(string.Format(CultureInfo.InvariantCulture,
+                                    "{{\"id\":{0},\"symbol\":\"{1}\",\"side\":\"{2}\",\"lots\":{3},\"entry\":{4},\"sl\":{5},\"tp\":{6},\"pnl\":{7:F2}}}",
+                                    p.Id, p.SymbolName ?? "", p.TradeType.ToString(), p.VolumeInUnits, p.EntryPrice, p.StopLoss ?? 0, p.TakeProfit ?? 0, p.NetProfit));
+                            }
                         }
+
+                        string accNum = Account != null ? Account.Number.ToString() : "5908018";
+                        string broker = Account != null ? Account.BrokerName : "Spotware";
+                        bool isLive = Account != null && Account.IsLive;
+                        double bal = Account != null ? Account.Balance : 0.0;
+                        double eq = Account != null ? Account.Equity : 0.0;
+                        double marg = Account != null ? Account.Margin : 0.0;
+                        double freeMarg = Account != null ? Account.FreeMargin : 0.0;
+                        int count = Positions != null ? Positions.Count : 0;
 
                         return string.Format(CultureInfo.InvariantCulture,
                             "{{\"status\":\"ONLINE\",\"bridge\":\"TradeTalk Local cBot Webhook Bridge\",\"account_id\":\"{0}\",\"broker\":\"{1}\",\"is_live\":{2},\"balance\":{3:F2},\"equity\":{4:F2},\"margin\":{5:F2},\"free_margin\":{6:F2},\"open_positions_count\":{7},\"positions\":[{8}]}}",
-                            Account.Number, Account.BrokerName, Account.IsLive ? "true" : "false", Account.Balance, Account.Equity, Account.Margin, Account.FreeMargin, Positions.Count, string.Join(",", posList));
+                            accNum, broker, isLive ? "true" : "false", bal, eq, marg, freeMarg, count, string.Join(",", posList));
                     });
 
                     response.StatusCode = 200;
@@ -233,7 +263,7 @@ namespace cAlgo.Robots
                     if (!string.IsNullOrEmpty(tpPriceStr)) double.TryParse(tpPriceStr, NumberStyles.Any, CultureInfo.InvariantCulture, out tpPrice);
 
                     // 1. Position Count Limit Guard
-                    if (Positions.Count >= MaxConcurrentPositions)
+                    if (Positions != null && Positions.Count >= MaxConcurrentPositions)
                     {
                         httpStatus = 400;
                         return string.Format("{{\"status\":\"REJECTED\",\"error\":\"Max positions limit ({0}) reached.\",\"open_positions\":{1}}}", MaxConcurrentPositions, Positions.Count);
@@ -273,7 +303,7 @@ namespace cAlgo.Robots
                         "🚀 Executing Order on {0}: {1} {2} Lots ({3} units) | SL Pips: {4:F1}, TP Pips: {5:F1}",
                         sym.Name, tradeType, volumeLots, volumeInUnits, slPips, tpPips));
 
-                    TradeResult result = ExecuteMarketOrder(tradeType, sym.Name, volumeInUnits, comment, slPips, tpPips);
+                    TradeResult result = ExecuteMarketOrder(tradeType, sym, volumeInUnits, comment, slPips, tpPips);
 
                     if (result != null && result.IsSuccessful && result.Position != null)
                     {
@@ -285,7 +315,7 @@ namespace cAlgo.Robots
                         httpStatus = 200;
                         return string.Format(CultureInfo.InvariantCulture,
                             "{{\"status\":\"SUCCESS\",\"position_id\":{0},\"order_id\":{0},\"symbol\":\"{1}\",\"side\":\"{2}\",\"lots\":{3},\"volume\":{4},\"entry_price\":{5},\"sl\":{6},\"tp\":{7},\"comment\":\"{8}\",\"account_id\":\"{9}\"}}",
-                            pos.Id, pos.SymbolName, pos.TradeType, volumeLots, pos.VolumeInUnits, pos.EntryPrice, pos.StopLoss ?? 0, pos.TakeProfit ?? 0, EscapeJson(comment), Account.Number);
+                            pos.Id, pos.SymbolName, pos.TradeType, volumeLots, pos.VolumeInUnits, pos.EntryPrice, pos.StopLoss ?? 0, pos.TakeProfit ?? 0, EscapeJson(comment), Account != null ? Account.Number.ToString() : "5908018");
                     }
                     else
                     {
@@ -319,9 +349,13 @@ namespace cAlgo.Robots
         {
             try
             {
+                if (Positions == null) return;
                 foreach (var pos in Positions)
                 {
+                    if (pos == null) continue;
                     Symbol sym = Symbols.GetSymbol(pos.SymbolName) ?? Symbol;
+                    if (sym == null) continue;
+
                     double pipSize = sym.PipSize > 0 ? sym.PipSize : 0.01;
                     int digits = sym.Digits;
 

@@ -14,16 +14,24 @@ def test_ctrader_cloud_order_execution():
     # Clean any leftover test positions
     ctrader_cloud_gateway.GATEWAY_STATE["open_positions"] = []
 
-    # 2. Test Server-Side Execution of Gold Order
-    res = ctrader_cloud_gateway.execute_market_order(
-        symbol="XAUUSD",
-        action="BUY",
-        lot_size=0.01,
-        sl_price=2744.00,
-        tp_price=2762.00,
-        signal_id="SIG_TEST_CLOUD_001",
-        comment="Unit Test Cloud Order"
-    )
+    # 2. Test Server-Side Execution of Gold Order (with unit test bridge mock)
+    orig_dispatch = ctrader_cloud_gateway.dispatch_local_bridge_order
+    ctrader_cloud_gateway.dispatch_local_bridge_order = lambda *args, **kwargs: {
+        "status": "SUCCESS", "position_id": 99999, "entry_price": 2750.00, "symbol": "XAUUSD"
+    }
+
+    try:
+        res = ctrader_cloud_gateway.execute_market_order(
+            symbol="XAUUSD",
+            action="BUY",
+            lot_size=0.01,
+            sl_price=2744.00,
+            tp_price=2762.00,
+            signal_id="SIG_TEST_CLOUD_001",
+            comment="Unit Test Cloud Order"
+        )
+    finally:
+        ctrader_cloud_gateway.dispatch_local_bridge_order = orig_dispatch
 
     assert res["status"] == "SUCCESS"
     assert res["mode"] == "CLOUD_SERVER_OPEN_API"
