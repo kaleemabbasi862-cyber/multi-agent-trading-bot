@@ -38,8 +38,8 @@ def test_local_cbot_bridge():
         "symbol": "XAUUSD",
         "side": "BUY",
         "volume": 0.01,
-        "stop_loss_pips": 40,
-        "take_profit_pips": 80,
+        "stop_loss_pips": 600,
+        "take_profit_pips": 1200,
         "comment": "TradeTalk Smoke Test"
     }
 

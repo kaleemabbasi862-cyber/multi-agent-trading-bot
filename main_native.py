@@ -173,12 +173,31 @@ async def autonomous_market_scanner_loop():
 async def local_cbot_background_sync():
     """
     Dedicated ultra-fast background poller syncing live open positions & telemetry
-    directly from the Local cBot Webhook Bridge (port 5001) into the global state every 1.5s.
+    directly from the Local cBot Webhook Bridge (port 5001) into the local state
+    and relaying to Render Cloud (https://multi-agent-trading-bot.onrender.com).
     """
-    logger.info("[Local cBot Telemetry Worker] 🛰️ Initialized background sync polling (port 5001)...")
+    logger.info("[Local cBot Telemetry Worker] 🛰️ Initialized background sync polling (port 5001 & Render Cloud Relay)...")
+    cloud_url = os.getenv("RENDER_CLOUD_URL", "https://multi-agent-trading-bot.onrender.com").rstrip("/")
     while True:
         try:
-            ctrader_cloud_gateway.sync_local_cbot_telemetry(timeout_sec=1.0)
+            state = ctrader_cloud_gateway.sync_local_cbot_telemetry(timeout_sec=1.0)
+            if state and state.get("local_bridge_online"):
+                try:
+                    payload = {
+                        "account_id": state.get("account_id", "5908018"),
+                        "broker": state.get("broker", "Spotware"),
+                        "balance": state.get("balance", 1017.10),
+                        "equity": state.get("equity", 1017.10),
+                        "margin": state.get("margin", 0.0),
+                        "free_margin": state.get("free_margin", 1017.10),
+                        "is_live": state.get("is_live", False),
+                        "open_positions": state.get("open_positions", []),
+                        "total_unrealized_pnl": state.get("total_unrealized_pnl", 0.0),
+                        "local_bridge_online": True,
+                    }
+                    requests.post(f"{cloud_url}/api/cbot/heartbeat", json=payload, timeout=2.5)
+                except Exception:
+                    pass
         except Exception as e:
             logger.debug(f"[Local cBot Sync Error]: {e}")
         await asyncio.sleep(1.5)
