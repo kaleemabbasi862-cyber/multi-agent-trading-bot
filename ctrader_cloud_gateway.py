@@ -235,46 +235,64 @@ def get_oauth_auth_url(redirect_uri: str = "https://multi-agent-trading-bot.onre
     return f"{SPOTWARE_AUTH_URL}?{urllib.parse.urlencode(params)}"
 
 def exchange_oauth_code(code: str, redirect_uri: str) -> Dict[str, Any]:
-    """Exchanges Spotware OAuth authorization code for real Access Token."""
+    """
+    Exchanges Spotware OAuth authorization code for real Access Token.
+    Automatically tries all registered app credentials (self-healing).
+    """
     global CTRADER_CONFIG, GATEWAY_STATE
-    try:
-        payload = {
-            "grant_type": "authorization_code",
-            "client_id": CTRADER_CONFIG["client_id"],
-            "client_secret": CTRADER_CONFIG["client_secret"],
-            "redirect_uri": redirect_uri,
-            "code": code
-        }
-        res = requests.post(SPOTWARE_TOKEN_URL, data=payload, timeout=10)
-        data = res.json()
+    clean_code = str(code).strip()
+    
+    app_pairs = [
+        (CTRADER_CONFIG["client_id"], CTRADER_CONFIG["client_secret"]),
+        ("38205_uwQq76FzYirpd9qMjjrPqcO7VcT1CqFHkDx8GXwzMBxratuPNT", "al5kdBjwDuPX6CCgrj0o3AholHFhCGAPuN2lj75UUV3NxEHFTm"),
+        ("39195_4Gr4AwHTdQX7XVxMccP1mfzwU9RE99BDPQCiF6Y5vGotQpwdtC", "2hV6fK7gHwQcdNkmLyazI1xA84Xmps5GezuCh3xJo9FMD9yqpF"),
+    ]
 
-        if "accessToken" in data or "access_token" in data:
-            token = data.get("accessToken") or data.get("access_token")
-            r_token = data.get("refreshToken") or data.get("refresh_token", "")
-            
-            CTRADER_CONFIG["access_token"] = token
-            CTRADER_CONFIG["refresh_token"] = r_token
-            GATEWAY_STATE["access_token"] = token
-            
-            # Persist token to disk if possible
-            try:
-                import settings_manager
-                s = settings_manager.load_settings()
-                s["ctrader_access_token"] = token
-                s["ctrader_refresh_token"] = r_token
-                settings_manager.save_settings(s)
-            except Exception:
-                pass
+    last_err = "No response"
+    for cid, csec in app_pairs:
+        try:
+            payload = {
+                "grant_type": "authorization_code",
+                "client_id": cid,
+                "client_secret": csec,
+                "redirect_uri": redirect_uri,
+                "code": clean_code
+            }
+            res = requests.post(SPOTWARE_TOKEN_URL, data=payload, timeout=8)
+            data = res.json()
 
-            sync_with_spotware_cloud()
-            return {"status": "SUCCESS", "access_token": token, "account_id": GATEWAY_STATE["account_id"]}
-        else:
-            err_msg = data.get("error_description", str(data))
-            GATEWAY_STATE["last_error"] = err_msg
-            return {"status": "ERROR", "message": err_msg}
-    except Exception as e:
-        GATEWAY_STATE["last_error"] = str(e)
-        return {"status": "ERROR", "message": str(e)}
+            if "accessToken" in data or "access_token" in data:
+                token = data.get("accessToken") or data.get("access_token")
+                r_token = data.get("refreshToken") or data.get("refresh_token", "")
+                
+                CTRADER_CONFIG["client_id"] = cid
+                CTRADER_CONFIG["client_secret"] = csec
+                CTRADER_CONFIG["access_token"] = token
+                CTRADER_CONFIG["refresh_token"] = r_token
+                GATEWAY_STATE["access_token"] = token
+                
+                # Persist token to disk
+                try:
+                    import settings_manager
+                    s = settings_manager.load_settings()
+                    s["ctrader_client_id"] = cid
+                    s["ctrader_client_secret"] = csec
+                    s["ctrader_access_token"] = token
+                    s["ctrader_refresh_token"] = r_token
+                    settings_manager.save_settings(s)
+                except Exception:
+                    pass
+
+                print(f"[cTrader Cloud] 🟢 Successfully exchanged OAuth code using App {cid[:10]}...!")
+                sync_with_spotware_cloud()
+                return {"status": "SUCCESS", "access_token": token, "account_id": GATEWAY_STATE["account_id"]}
+            else:
+                last_err = data.get("error_description", str(data))
+        except Exception as e:
+            last_err = str(e)
+
+    GATEWAY_STATE["last_error"] = last_err
+    return {"status": "ERROR", "message": last_err}
 
 def sync_with_spotware_cloud() -> Dict[str, Any]:
     """
