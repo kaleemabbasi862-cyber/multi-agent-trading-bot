@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import shutil
+import urllib.request
 import subprocess
 import argparse
 from pathlib import Path
@@ -20,6 +21,47 @@ DEFAULT_LOCAL_URL = "http://127.0.0.1:8000"
 DEFAULT_CLOUD_URL = "https://multi-agent-trading-bot.onrender.com"
 
 TARGET_URL = os.getenv("DESKTOP_APP_URL", DEFAULT_LOCAL_URL if USE_LOCAL_ENGINE else DEFAULT_CLOUD_URL)
+
+def is_server_healthy(url: str, timeout: float = 1.0) -> bool:
+    try:
+        health_url = url.rstrip("/") + "/api/health"
+        req = urllib.request.Request(health_url, headers={"User-Agent": "TradeTalk-Launcher"})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.status == 200
+    except Exception:
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "TradeTalk-Launcher"})
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return resp.status == 200
+        except Exception:
+            return False
+
+def ensure_backend_running(url: str):
+    if not ("127.0.0.1" in url or "localhost" in url):
+        return
+    
+    if is_server_healthy(url):
+        print(f"[+] Local TradeTalk Backend is already running healthy at {url}")
+        return
+
+    print(f"[*] Local backend not detected. Auto-spawning uvicorn server on port 8000...")
+    # Spawn background uvicorn process
+    python_exe = sys.executable
+    cmd = [python_exe, "-m", "uvicorn", "main_native:app", "--host", "0.0.0.0", "--port", "8000"]
+    subprocess.Popen(
+        cmd,
+        cwd=str(WORKSPACE_DIR),
+        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
+        close_fds=True
+    )
+
+    # Wait up to 10 seconds for the server to come online
+    for i in range(20):
+        time.sleep(0.5)
+        if is_server_healthy(url):
+            print(f"[+] Local backend successfully started and verified healthy at {url}!")
+            return
+    print("[!] Warning: Backend spawned but healthcheck timed out. Proceeding to launch UI.")
 
 def find_browser_executable() -> str:
     candidates = [
@@ -123,18 +165,22 @@ def main():
 
     browser = find_browser_executable()
     
-    # 1. Kill stale instances
+    # 1. Ensure backend is running if target is local
+    ensure_backend_running(args.url)
+
+    # 2. Kill stale instances
     terminate_stale_desktop_processes()
 
-    # 2. Always purge cache for fresh launch
+    # 3. Always purge cache for fresh launch
     purge_desktop_cache()
 
-    # 3. Update shortcut
+    # 4. Update shortcut
     update_desktop_shortcut(browser, args.url)
 
-    # 4. Launch clean fresh app
+    # 5. Launch clean fresh app
     if not args.shortcut_only:
         launch_app(browser, args.url, wait=args.wait)
 
 if __name__ == "__main__":
     main()
+

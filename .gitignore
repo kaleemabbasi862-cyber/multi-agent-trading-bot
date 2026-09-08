@@ -8,4 +8,7 @@ venv/
 cloudflared.exe
 *.log
 *.db
+*.db-shm
+*.db-wal
 .DS_Store
+
