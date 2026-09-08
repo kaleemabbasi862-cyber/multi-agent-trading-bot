@@ -244,8 +244,12 @@ class SpotwareOpenAPIClient:
         """
         Sends ProtoOAApplicationAuthReq (payloadType 2100).
         """
-        # ProtoOAApplicationAuthReq: field 1: clientId, field 2: clientSecret
-        payload = enc_field_str(1, self.client_id) + enc_field_str(2, self.client_secret)
+        # ProtoOAApplicationAuthReq: field 1: payloadType (2100), field 2: clientId, field 3: clientSecret
+        payload = (
+            enc_field_int(1, PAYLOAD_PROTO_OA_APPLICATION_AUTH_REQ) +
+            enc_field_str(2, self.client_id) +
+            enc_field_str(3, self.client_secret)
+        )
         res = self._send_and_receive(PAYLOAD_PROTO_OA_APPLICATION_AUTH_REQ, payload, "APP_AUTH")
         
         if not res:
@@ -257,8 +261,8 @@ class SpotwareOpenAPIClient:
             return True, "APPLICATION_AUTH_SUCCESS"
         elif ptype == PAYLOAD_PROTO_OA_ERROR_RES:
             fields = decode_proto_fields(res["payload"])
-            err_code = fields.get(1, [b""])[0]
-            err_desc = fields.get(2, [b""])[0]
+            err_code = fields.get(3, [b""])[0]
+            err_desc = fields.get(4, [b""])[0]
             code_str = err_code.decode("utf-8", errors="ignore") if isinstance(err_code, bytes) else str(err_code)
             desc_str = err_desc.decode("utf-8", errors="ignore") if isinstance(err_desc, bytes) else str(err_desc)
             err_msg = f"{code_str}: {desc_str}".strip(": ")
@@ -276,8 +280,12 @@ class SpotwareOpenAPIClient:
             if not app_ok:
                 return False, f"Application Auth failed: {app_msg}"
                 
-        # ProtoOAAccountAuthReq: field 1: ctidTraderAccountId (int64), field 2: accessToken (string)
-        payload = enc_field_int(1, int(account_id)) + enc_field_str(2, access_token)
+        # ProtoOAAccountAuthReq: field 1: payloadType (2102), field 2: ctidTraderAccountId (int64), field 3: accessToken (string)
+        payload = (
+            enc_field_int(1, PAYLOAD_PROTO_OA_ACCOUNT_AUTH_REQ) +
+            enc_field_int(2, int(account_id)) +
+            enc_field_str(3, access_token)
+        )
         res = self._send_and_receive(PAYLOAD_PROTO_OA_ACCOUNT_AUTH_REQ, payload, "ACC_AUTH")
         
         if not res:
@@ -289,8 +297,8 @@ class SpotwareOpenAPIClient:
             return True, "ACCOUNT_AUTH_SUCCESS"
         elif ptype == PAYLOAD_PROTO_OA_ERROR_RES:
             fields = decode_proto_fields(res["payload"])
-            err_code = fields.get(1, [b""])[0]
-            err_desc = fields.get(2, [b""])[0]
+            err_code = fields.get(3, [b""])[0]
+            err_desc = fields.get(4, [b""])[0]
             code_str = err_code.decode("utf-8", errors="ignore") if isinstance(err_code, bytes) else str(err_code)
             desc_str = err_desc.decode("utf-8", errors="ignore") if isinstance(err_desc, bytes) else str(err_desc)
             err_msg = f"{code_str}: {desc_str}".strip(": ")
@@ -315,26 +323,28 @@ class SpotwareOpenAPIClient:
         side_val = 1 if trade_side.upper() == "BUY" else 2
         
         # ProtoOANewOrderReq fields:
-        # 1: ctidTraderAccountId (int64)
-        # 2: symbolId (int64)
-        # 3: orderType (1 = MARKET)
-        # 4: tradeSide (1 = BUY, 2 = SELL)
-        # 5: volume (int64)
-        # 10: stopLoss (double)
-        # 11: takeProfit (double)
-        # 13: comment (string)
+        # 1: payloadType (2106)
+        # 2: ctidTraderAccountId (int64)
+        # 3: symbolId (int64)
+        # 4: orderType (1 = MARKET)
+        # 5: tradeSide (1 = BUY, 2 = SELL)
+        # 6: volume (int64)
+        # 11: stopLoss (double)
+        # 12: takeProfit (double)
+        # 14: comment (string)
         payload = bytearray()
-        payload.extend(enc_field_int(1, int(account_id)))
-        payload.extend(enc_field_int(2, int(symbol_id)))
-        payload.extend(enc_field_int(3, 1)) # MARKET
-        payload.extend(enc_field_int(4, side_val))
-        payload.extend(enc_field_int(5, int(volume)))
+        payload.extend(enc_field_int(1, PAYLOAD_PROTO_OA_NEW_ORDER_REQ))
+        payload.extend(enc_field_int(2, int(account_id)))
+        payload.extend(enc_field_int(3, int(symbol_id)))
+        payload.extend(enc_field_int(4, 1)) # MARKET
+        payload.extend(enc_field_int(5, side_val))
+        payload.extend(enc_field_int(6, int(volume)))
         if sl_price > 0:
-            payload.extend(enc_field_double(10, float(sl_price)))
+            payload.extend(enc_field_double(11, float(sl_price)))
         if tp_price > 0:
-            payload.extend(enc_field_double(11, float(tp_price)))
+            payload.extend(enc_field_double(12, float(tp_price)))
         if comment:
-            payload.extend(enc_field_str(13, comment[:50]))
+            payload.extend(enc_field_str(14, comment[:50]))
             
         res = self._send_and_receive(PAYLOAD_PROTO_OA_NEW_ORDER_REQ, bytes(payload), f"ORD_{int(time.time())}")
         
