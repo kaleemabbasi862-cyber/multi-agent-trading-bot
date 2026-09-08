@@ -15,6 +15,10 @@ timeout /t 3 >nul
 echo [*] Starting Autonomous Playwright TradingView Monitor...
 start "TradeTalk AI - TradingView Monitor" cmd /k "python tradingview_live_monitor.py --symbol OANDA:XAUUSD --interval 3"
 
+:: 3. Launch Standalone Desktop App Window
+echo [*] Launching Native Desktop App Window (localhost:8000)...
+start "TradeTalk AI Desktop" python launch_desktop_app.py
+
 echo.
 echo ================================================================
 echo [+] Full System is running!
@@ -23,3 +27,4 @@ echo     - Cloud Dashboard: https://multi-agent-trading-bot.onrender.com
 echo ================================================================
 echo.
 pause
+

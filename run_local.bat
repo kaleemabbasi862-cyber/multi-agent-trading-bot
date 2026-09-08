@@ -49,6 +49,10 @@ if exist cloudflared.exe (
 )
 
 echo.
+echo [*] Launching Native Desktop App Window (localhost:8000)...
+start "TradeTalk AI Desktop" python launch_desktop_app.py
+
+echo.
 echo ================================================================
 echo [+] System started!
 echo     - Local Endpoint: http://localhost:8000/webhook/tradingview
@@ -57,3 +61,4 @@ echo     - Use that HTTPS URL in your TradingView Webhook alert settings
 echo ================================================================
 echo.
 pause
+
