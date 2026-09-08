@@ -31,8 +31,9 @@ logger = logging.getLogger("CleanEngine")
 BRIDGE_URL = "http://127.0.0.1:5001"
 SYMBOL = "XAUUSD"
 LOT_SIZE = 0.01
-SL_PIPS = 35.0   # $3.50 on Gold
-TP_PIPS = 70.0   # $7.00 on Gold (1:2 R:R)
+# 350 pips on Gold (where pipSize=0.01) = $3.50 price distance
+SL_PIPS = 350.0   # $3.50 on Gold
+TP_PIPS = 700.0   # $7.00 on Gold (1:2 R:R)
 TRADE_COOLDOWN_SECONDS = 900  # 15 minutes
 SCAN_INTERVAL_SECONDS = 30    # Scan interval for candle close check
 
@@ -65,7 +66,6 @@ state: Dict[str, Any] = {
 def add_log(msg: str):
     timestamp = datetime.datetime.now().strftime("%H:%M:%S")
     log_entry = f"[{timestamp}] {msg}"
-    # Sanitized logging for terminal output
     safe_msg = msg.encode("ascii", "replace").decode("ascii")
     try:
         logger.info(safe_msg)
@@ -202,7 +202,13 @@ def forward_trade_to_bridge(payload: Dict[str, Any]) -> tuple[int, Dict[str, Any
     """Forward trade payload directly to local cBot bridge at http://127.0.0.1:5001/trade."""
     action = payload.get("action", "BUY").upper()
     sym = payload.get("symbol", SYMBOL)
-    add_log(f"[DISPATCH] Direct Forward to Bridge: {action} {sym}")
+    # Ensure minimum 350 pips ($3.50 on Gold)
+    if "sl_pips" not in payload or payload["sl_pips"] < 100:
+        payload["sl_pips"] = SL_PIPS
+    if "tp_pips" not in payload or payload["tp_pips"] < 200:
+        payload["tp_pips"] = TP_PIPS
+
+    add_log(f"[DISPATCH] Direct Forward to Bridge: {action} {sym} (SL {payload['sl_pips']} pips / TP {payload['tp_pips']} pips)")
     try:
         r = requests.post(f"{BRIDGE_URL}/trade", json=payload, timeout=5)
         try:
@@ -804,8 +810,8 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                     action: action,
                     symbol: "XAUUSD",
                     volume: 0.01,
-                    sl_pips: 35,
-                    tp_pips: 70,
+                    sl_pips: 350,
+                    tp_pips: 700,
                     comment: "Manual UI " + action
                 };
                 const res = await fetch('/trade', {

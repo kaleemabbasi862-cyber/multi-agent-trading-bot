@@ -244,6 +244,34 @@ async def get_trades_direct(limit: int = 100):
     """Returns persistent broker and agent trades history directly."""
     return db.get_recent_trades(limit=limit)
 
+@app.get("/api/status")
+@app.get("/status")
+@app.get("/health")
+@app.get("/api/health")
+async def get_system_status():
+    return ctrader_cloud_gateway.get_gateway_status()
+
+@app.get("/trade")
+@app.get("/trade/")
+@app.post("/trade")
+@app.post("/trade/")
+async def trade_bridge_proxy(request: Request):
+    """Bridge proxy endpoint returning status and pending queue for cBot."""
+    if request.method == "POST":
+        try:
+            body = await request.json()
+            return ctrader_cloud_gateway.execute_market_order(
+                symbol=body.get("symbol", "XAUUSD"),
+                action=body.get("action", "BUY"),
+                volume=float(body.get("volume", 0.01)),
+                stop_loss=float(body.get("stop_loss", 0.0)),
+                take_profit=float(body.get("take_profit", 0.0))
+            )
+        except Exception as e:
+            return {"status": "ERROR", "message": str(e)}
+    return ctrader_cloud_gateway.get_gateway_status()
+
+
 
 # -------------------------------------------------------------
 # Webhook Gateway (TradingView with HMAC & Replay Security)
