@@ -1,5 +1,6 @@
 import os
 import json
+import tempfile
 
 SETTINGS_FILE = os.path.join(os.path.dirname(__file__), "user_settings.json")
 _IN_MEMORY_SETTINGS = None
@@ -45,7 +46,7 @@ def load_settings() -> dict:
     if os.path.exists(SETTINGS_FILE):
         try:
             with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
+                data = {**DEFAULT_SETTINGS, **json.load(f)}
                 
                 # Normalize active_symbol
                 act_sym = str(data.get("active_symbol", "XAUUSD")).upper()
@@ -88,11 +89,15 @@ def save_settings(settings: dict) -> dict:
     if os.environ.get("TESTING") == "1":
         _IN_MEMORY_SETTINGS = dict(settings)
         return settings
+    temp_path = None
     try:
-        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=os.path.dirname(SETTINGS_FILE), delete=False) as f:
+            temp_path = f.name
             json.dump(settings, f, indent=2)
-    except Exception as e:
-        print(f"[SettingsManager] Error saving settings: {e}")
+        os.replace(temp_path, SETTINGS_FILE)
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            os.remove(temp_path)
     return settings
 
 def get_active_symbol() -> str:

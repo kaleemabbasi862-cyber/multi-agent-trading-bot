@@ -2963,7 +2963,7 @@
                 ],
                 selectedAccountId: '5908018',
                 cbotStatus: { mode: 'DEMO', is_connected: true, balance: 1018.96, equity: 1018.96, account_id: '5908018', currency: 'USD', is_live: false, broker: 'Spotware cTrader' },
-                systemState: { auto_trade_enabled: true },
+                systemState: { auto_trade_enabled: false },
                 selectedSymbol: 'XAUUSD',
                 selectedLotSize: 0.01,
                 minConfidenceThreshold: 75,
@@ -3499,8 +3499,7 @@
                             body: JSON.stringify({
                                 active_symbol: this.selectedSymbol,
                                 active_lot_size: this.selectedLotSize,
-                                min_confidence_threshold: this.minConfidenceThreshold,
-                                auto_trade_enabled: this.systemState.auto_trade_enabled
+                                min_confidence_threshold: this.minConfidenceThreshold
                             })
                         });
                         if (res.ok) {
@@ -3538,9 +3537,18 @@
 
                 async toggleAutoTrade() {
                     try {
-                        this.systemState.auto_trade_enabled = !this.systemState.auto_trade_enabled;
-                        await this.saveSettings();
-                    } catch (e) {}
+                        const res = await fetch('/api/settings/update', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ auto_trade_enabled: !this.systemState.auto_trade_enabled })
+                        });
+                        if (!res.ok) throw new Error('Auto-trade setting was not saved');
+                        const data = await res.json();
+                        this.systemState.auto_trade_enabled = data.auto_trade_enabled;
+                    } catch (e) {
+                        await this.fetchSettings();
+                        console.error('Auto-trade update failed:', e);
+                    }
                 },
 
                 async triggerScanNow() {

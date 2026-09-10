@@ -4,6 +4,7 @@ import time
 import datetime
 import random
 import logging
+import math
 import threading
 import requests
 import urllib.parse
@@ -240,6 +241,8 @@ def switch_active_account(account_id: str) -> Dict[str, Any]:
             }
 
     acc_data = LINKED_ACCOUNTS[clean_id]
+    GATEWAY_STATE["positions_snapshot_valid"] = False
+    GATEWAY_STATE["local_bridge_online"] = False
     GATEWAY_STATE["account_id"] = clean_id
     GATEWAY_STATE["account_type"] = acc_data.get("account_type", "LIVE")
     GATEWAY_STATE["is_live"] = acc_data.get("is_live", True)
@@ -906,7 +909,7 @@ def update_live_market_prices(prices_map: Dict[str, Dict[str, Any]]) -> None:
     """
     global GATEWAY_STATE
     GATEWAY_STATE["live_prices"].update(prices_map)
-    is_live_bridge = GATEWAY_STATE.get("local_bridge_online", False)
+    is_live_bridge = GATEWAY_STATE.get("broker_snapshot_received", False) or GATEWAY_STATE.get("local_bridge_online", False)
 
     total_unrealized = 0.0
     for pos in list(GATEWAY_STATE.get("open_positions", [])):
@@ -972,7 +975,20 @@ def sync_local_cbot_telemetry(timeout_sec: float = 1.0) -> Dict[str, Any]:
         if res.status_code == 200:
             data = res.json()
             if data.get("status") == "ONLINE":
-                acc_id = str(data.get("account_id", "5908018")).strip().replace("#", "")
+                # Missing/malformed telemetry is not evidence that the account is flat.
+                if not isinstance(data.get("positions"), list):
+                    raise ValueError("Broker positions snapshot is missing or invalid")
+                acc_id = str(data.get("account_id") or "").strip().replace("#", "")
+                if not acc_id or not isinstance(data.get("is_live"), bool):
+                    raise ValueError("Broker account identity is missing")
+                for field in ("balance", "equity", "margin", "free_margin"):
+                    if not math.isfinite(float(data[field])):
+                        raise ValueError(f"Invalid broker {field}")
+                if any(not isinstance(p, dict) or not (p.get("id") or p.get("position_id")) for p in data["positions"]):
+                    raise ValueError("Broker position identity is missing")
+                raw_closed = data.get("closed_trades") or data.get("history", [])
+                if not isinstance(raw_closed, list):
+                    raw_closed = []
                 bal = float(data.get("balance", GATEWAY_STATE["balance"]))
                 eq = float(data.get("equity", bal))
                 marg = float(data.get("margin", 0.0))
@@ -1092,13 +1108,15 @@ def sync_local_cbot_telemetry(timeout_sec: float = 1.0) -> Dict[str, Any]:
                 GATEWAY_STATE["margin"] = round(marg, 2)
                 GATEWAY_STATE["free_margin"] = round(f_marg, 2)
                 GATEWAY_STATE["open_positions"] = normalized_positions
+                GATEWAY_STATE["positions_snapshot_valid"] = True
+                GATEWAY_STATE["positions_snapshot_account_id"] = acc_id
+                GATEWAY_STATE["broker_snapshot_received"] = True
                 GATEWAY_STATE["total_unrealized_pnl"] = round(total_unrealized, 2)
                 GATEWAY_STATE["last_sync"] = datetime.datetime.now(datetime.timezone.utc).strftime("%H:%M:%S UTC")
                 GATEWAY_STATE["last_sync_timestamp"] = time.time()
                 GATEWAY_STATE["last_bridge_sync_timestamp"] = time.time()
                 
                 # Auto-reconcile open/closed positions between cTrader and DB
-                raw_closed = data.get("closed_trades") or data.get("history", [])
                 for c in raw_closed:
                     try:
                         db.sync_cbot_closed_trade(c)
@@ -1109,7 +1127,10 @@ def sync_local_cbot_telemetry(timeout_sec: float = 1.0) -> Dict[str, Any]:
                 try:
                     from app.database.db import get_db_connection, _lock
                     with _lock, get_db_connection() as conn:
-                        open_db_trades = conn.execute("SELECT id, ticket_id FROM trades WHERE status = 'OPEN' AND mode = 'LIVE'").fetchall()
+                        open_db_trades = conn.execute(
+                            "SELECT id, ticket_id FROM trades WHERE status = 'OPEN' AND mode = ? AND broker_account_id = ?",
+                            ("LIVE" if is_live else "DEMO", acc_id),
+                        ).fetchall()
                         open_cbot_ids = {str(p.get("id")) for p in normalized_positions}
                         for tr in open_db_trades:
                             t_id = str(tr["ticket_id"] or tr["id"]).replace("TRD_", "").replace("CT_", "")
@@ -1138,7 +1159,14 @@ def sync_local_cbot_telemetry(timeout_sec: float = 1.0) -> Dict[str, Any]:
                     "open_positions": normalized_positions,
                     "last_seen": time.time()
                 })
+            else:
+                raise ValueError("Broker bridge is not ONLINE")
+        else:
+            raise ValueError(f"Broker bridge HTTP {res.status_code}")
     except Exception as e:
+        GATEWAY_STATE["positions_snapshot_valid"] = False
+        GATEWAY_STATE["local_bridge_online"] = False
+        GATEWAY_STATE["is_connected"] = False
         logger.debug(f"[Local Bridge Sync Note]: {e}")
         
     return GATEWAY_STATE
@@ -1146,8 +1174,6 @@ def sync_local_cbot_telemetry(timeout_sec: float = 1.0) -> Dict[str, Any]:
 def get_gateway_status(force_local_sync: bool = False) -> Dict[str, Any]:
     """Returns real-time server-side gateway status, proactively synchronizing with local bridge."""
     global GATEWAY_STATE
-    GATEWAY_STATE["is_connected"] = True
-    GATEWAY_STATE["cloud_server_active"] = True
     if force_local_sync or (time.time() - GATEWAY_STATE.get("last_bridge_sync_timestamp", 0) > 1.0):
         sync_local_cbot_telemetry(timeout_sec=0.8)
     return GATEWAY_STATE
@@ -1166,13 +1192,18 @@ def update_heartbeat(data: dict) -> dict:
     now_str = datetime.datetime.now(datetime.timezone.utc).strftime("%H:%M:%S UTC")
 
     acc_id = str(data.get("account_id") or data.get("accountNumber") or data.get("accountId") or GATEWAY_STATE["account_id"]).strip().replace("#", "")
-    bal = float(data.get("balance", data.get("Balance", GATEWAY_STATE["balance"])))
-    eq = float(data.get("equity", data.get("Equity", bal)))
-    marg = float(data.get("margin", data.get("Margin", 0.0)))
-    f_marg = float(data.get("free_margin", data.get("freeMargin", eq)))
+    previous = GATEWAY_STATE if acc_id == GATEWAY_STATE.get("account_id") else LINKED_ACCOUNTS.get(acc_id, {})
+    bal = float(data.get("balance", data.get("Balance", previous.get("balance", 0.0))))
+    eq = float(data.get("equity", data.get("Equity", previous.get("equity", bal))))
+    marg = float(data.get("margin", data.get("Margin", previous.get("margin", 0.0))))
+    f_marg = float(data.get("free_margin", data.get("freeMargin", previous.get("free_margin", eq))))
     curr = str(data.get("currency", data.get("Currency", "USD")))
     broker = str(data.get("broker", data.get("brokerName", "IC Markets cTrader")))
-    is_live = bool(data.get("is_live", True))
+    is_live = bool(data.get("is_live", previous.get("is_live", True)))
+    open_pos = data.get("open_positions", data.get("positions"))
+    positions_valid = isinstance(open_pos, list) and all(
+        isinstance(p, dict) and (p.get("id") or p.get("position_id") or p.get("ticket")) for p in open_pos
+    )
 
     # Keep registry of linked accounts up to date
     if acc_id not in LINKED_ACCOUNTS:
@@ -1189,7 +1220,7 @@ def update_heartbeat(data: dict) -> dict:
         "currency": curr,
         "broker": broker,
         "is_live": is_live,
-        "open_positions": data.get("open_positions", data.get("positions", [])),
+        "open_positions": open_pos if positions_valid else previous.get("open_positions", []),
         "last_seen": now_ts
     })
 
@@ -1210,9 +1241,11 @@ def update_heartbeat(data: dict) -> dict:
             }
         })
 
-    open_pos = data.get("open_positions", data.get("positions", []))
-    if open_pos or acc_id == GATEWAY_STATE.get("account_id"):
+    if positions_valid and (acc_id == GATEWAY_STATE.get("account_id") or not GATEWAY_STATE.get("account_id")):
         GATEWAY_STATE["open_positions"] = open_pos
+        GATEWAY_STATE["positions_snapshot_valid"] = True
+        GATEWAY_STATE["positions_snapshot_account_id"] = acc_id
+        GATEWAY_STATE["broker_snapshot_received"] = True
 
     if acc_id == GATEWAY_STATE.get("account_id") or not GATEWAY_STATE.get("account_id"):
         GATEWAY_STATE["account_id"] = acc_id

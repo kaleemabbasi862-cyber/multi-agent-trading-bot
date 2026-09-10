@@ -1,4 +1,5 @@
 import datetime
+import os
 import json
 import logging
 import threading
@@ -85,6 +86,8 @@ class EconomicCalendarService:
 
     def _initial_sync(self):
         """Attempts initial live calendar sync on startup."""
+        if os.getenv("TESTING") == "1":
+            return
         try:
             threading.Thread(target=self.sync_live_calendar, daemon=True).start()
         except Exception as e:
@@ -277,7 +280,7 @@ class EconomicCalendarService:
             now = datetime.datetime.now(datetime.timezone.utc)
 
         # Trigger background refresh if stale
-        if time.time() - self._last_sync_timestamp > 1800.0:
+        if os.getenv("TESTING") != "1" and time.time() - self._last_sync_timestamp > 1800.0:
             threading.Thread(target=self.sync_live_calendar, daemon=True).start()
 
         # Clean symbol name

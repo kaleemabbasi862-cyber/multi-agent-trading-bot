@@ -1,7 +1,7 @@
 import time
 import datetime
 import logging
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 from app.services.symbol_resolver import symbol_resolver
 from app.database.db import get_db_connection
 

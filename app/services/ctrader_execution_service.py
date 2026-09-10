@@ -332,7 +332,12 @@ class CTraderExecutionService:
         Compares local execution service cache against actual broker/gateway positions.
         Returns reconciliation status and flags any discrepancies.
         """
-        gw_positions = self.gateway.GATEWAY_STATE.get("open_positions", [])
+        state = self.gateway.GATEWAY_STATE
+        if not state.get("positions_snapshot_valid") or state.get("positions_snapshot_account_id") != state.get("account_id"):
+            return {"is_synced": False, "status": "TELEMETRY_UNAVAILABLE",
+                    "broker_position_count": None, "cached_position_count": len(self._positions_cache),
+                    "orphaned_cleaned": []}
+        gw_positions = state["open_positions"]
         gw_ids = {str(p.get("id") or p.get("position_id") or p.get("ticket")).replace("CT_", "") for p in gw_positions}
         cache_ids = set(self._positions_cache.keys())
 
@@ -341,6 +346,11 @@ class CTraderExecutionService:
         for orphaned_id in orphaned_in_cache:
             logger.warning(f"[Reconciliation] Removing orphaned position #{orphaned_id} from local cache.")
             self._positions_cache.pop(orphaned_id, None)
+
+        self._positions_cache = {
+            str(p.get("id") or p.get("position_id") or p.get("ticket")).replace("CT_", ""): dict(p)
+            for p in gw_positions
+        }
 
         is_synced = (len(self._positions_cache) == len(gw_positions))
         return {
@@ -354,6 +364,10 @@ class CTraderExecutionService:
     def get_open_positions(self) -> List[Dict[str, Any]]:
         """Returns all live open positions tracked by the gateway and execution service."""
         gw_positions = self.gateway.GATEWAY_STATE.get("open_positions", [])
+        if self.gateway.GATEWAY_STATE.get("broker_snapshot_received"):
+            if self.gateway.GATEWAY_STATE.get("positions_snapshot_valid"):
+                self.reconcile_positions()
+            return gw_positions
         if gw_positions:
             return gw_positions
         return list(self._positions_cache.values())

@@ -1,4 +1,5 @@
 import datetime
+import os
 import re
 import json
 import logging
@@ -148,6 +149,8 @@ class NewsEngine:
 
     def _initial_sync(self):
         """Attempts initial live news sync on startup."""
+        if os.getenv("TESTING") == "1":
+            return
         try:
             threading.Thread(target=self.sync_live_news, daemon=True).start()
         except Exception as e:
@@ -351,7 +354,7 @@ class NewsEngine:
 
     def get_live_sentiment(self, symbol: str = "XAUUSD") -> Dict[str, Any]:
         """Fetches aggregated sentiment metrics from database for symbol."""
-        if time.time() - self._last_sync_timestamp > 1800.0:
+        if os.getenv("TESTING") != "1" and time.time() - self._last_sync_timestamp > 1800.0:
             threading.Thread(target=self.sync_live_news, daemon=True).start()
         return db.get_market_sentiment_summary(symbol=symbol)
 

@@ -24,7 +24,7 @@ async def set_trading_mode(req: ModeChangeRequest):
 @router.post("/auto-trade/toggle")
 async def toggle_auto_trade():
     settings = settings_manager.load_settings()
-    current = settings.get("auto_trade_enabled", True)
+    current = settings.get("auto_trade_enabled", False)
     settings["auto_trade_enabled"] = not current
     settings_manager.save_settings(settings)
     

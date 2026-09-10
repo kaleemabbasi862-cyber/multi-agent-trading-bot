@@ -123,7 +123,7 @@ async def autonomous_market_scanner_loop():
             if now - last_scan_ts >= 10.0:
                 last_scan_ts = now
                 cur_settings = settings_manager.load_settings()
-                if cur_settings.get("auto_trade_enabled", True):
+                if cur_settings.get("auto_trade_enabled", False):
                     # 1. Execution Cooldown Check (Paced between trades)
                     last_exec = getattr(ctrader_cloud_gateway, "LAST_EXECUTION_TIMESTAMP", 0.0)
                     time_since_exec = now - last_exec
@@ -479,7 +479,7 @@ class ActiveAccountRequest(BaseModel):
 @app.post("/api/copilot/chat")
 async def chat_copilot(req: CopilotChatRequest):
     sys_state = {
-        "auto_trade_enabled": settings_manager.load_settings().get("auto_trade_enabled", True),
+        "auto_trade_enabled": settings_manager.load_settings().get("auto_trade_enabled", False),
         "trading_mode": execution_engine.mode,
         "active_pairs": settings_manager.get_active_pairs(),
         "active_symbol": settings_manager.get_active_symbol(),
@@ -540,7 +540,7 @@ async def trigger_manual_scan():
         account_status=acc_status
     )
 
-    if consensus_res.decision_status == "APPROVED" and cur_settings.get("auto_trade_enabled", True):
+    if consensus_res.decision_status == "APPROVED" and cur_settings.get("auto_trade_enabled", False):
         exec_res = execution_engine.dispatch_trade(consensus_res, sig)
         consensus_res.execution_result = exec_res
 
@@ -617,7 +617,7 @@ async def get_pairs_settings():
         "active_lot_size": s.get("active_lot_size", 0.01),
         "fixed_lot_size": s.get("active_lot_size", 0.01),
         "min_confidence_threshold": s.get("min_confidence_threshold", 75.0),
-        "auto_trade_enabled": s.get("auto_trade_enabled", True),
+        "auto_trade_enabled": s.get("auto_trade_enabled", False),
         "account_id": acc_id,
         "active_account_id": acc_id,
         "trading_mode": execution_engine.mode,
@@ -647,7 +647,7 @@ async def update_settings(req: SettingsUpdateRequest):
         "active_symbol": updated.get("active_symbol", "XAUUSD"),
         "active_lot_size": updated.get("active_lot_size", 0.01),
         "min_confidence_threshold": updated.get("min_confidence_threshold", 75.0),
-        "auto_trade_enabled": updated.get("auto_trade_enabled", True),
+        "auto_trade_enabled": updated.get("auto_trade_enabled", False),
         "account_id": updated.get("account_id", "5908018"),
         "active_account_id": updated.get("account_id", "5908018"),
         "message": f"Settings updated: {updated.get('active_symbol')} @ {updated.get('active_lot_size')} Lots | Account #{updated.get('account_id', '5908018')} | Gate: {updated.get('min_confidence_threshold')}%"

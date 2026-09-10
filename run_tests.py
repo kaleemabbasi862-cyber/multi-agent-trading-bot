@@ -5,7 +5,8 @@ import atexit
 import unittest
 
 os.environ["TESTING"] = "1"
-_test_db_fd, _test_db_path = tempfile.mkstemp(prefix="tradetalk_test_", suffix=".db")
+_test_runtime = tempfile.TemporaryDirectory(prefix="tradetalk_test_", ignore_cleanup_errors=True)
+_test_db_fd, _test_db_path = tempfile.mkstemp(dir=_test_runtime.name, suffix=".db")
 os.close(_test_db_fd)
 os.environ["DATABASE_PATH"] = _test_db_path
 
@@ -121,6 +122,15 @@ from tests.test_phase2_hardening import TestPhase2CoreHardening
 from tests.test_phase3_soak import TestPhase3DemoSoakValidation
 from tests.test_broker_provenance_integrity import TestBrokerProvenanceIntegrity
 from tests.test_phase6_source_integrity import TestPhase6SourceIntegrity
+from tests.test_broker_reconciliation import TestBrokerReconciliation, TestAutoTradePersistence
+
+def run_broker_reconciliation_tests():
+    suite = unittest.TestSuite([
+        unittest.TestLoader().loadTestsFromTestCase(TestBrokerReconciliation),
+        unittest.TestLoader().loadTestsFromTestCase(TestAutoTradePersistence),
+    ])
+    result = unittest.TextTestRunner(verbosity=0).run(suite)
+    assert result.wasSuccessful(), "Broker reconciliation and settings regression failures"
 
 def run_production_hardening_tests():
     suite = unittest.TestLoader().loadTestsFromTestCase(ProductionHardeningAndIntegrityTests)
@@ -149,6 +159,7 @@ def run_broker_provenance_integrity_tests():
 
 def main():
     tests = [
+        ("Broker snapshots, DEMO/LIVE reconciliation and auto-trade persistence", run_broker_reconciliation_tests),
         ("Phase 1: Windows DPAPI & Secure Credential Store", test_dpapi_credential_store),
         ("Phase 1: Structured Logger & Secret Masking Filter", test_secret_masking_logger),
         ("Phase 1: Expanded Database Schema & Auto-Migrations", test_expanded_database_schema),
