@@ -515,6 +515,14 @@ def execute_market_order(
     act_upper = action.upper()
     order_sig_id = signal_id or f"SIG_{int(now_ts)}"
 
+    # Phase 6 safety invariant: this candidate is DEMO-only.
+    # Do not allow any gateway path to place an order while a LIVE account is active.
+    if GATEWAY_STATE.get("is_live", True) or str(GATEWAY_STATE.get("account_type", "")).upper() == "LIVE":
+        return {
+            "status": "REJECTED_DEMO_ONLY_CANDIDATE",
+            "error": "Phase 6 candidate is DEMO-only; LIVE account execution is disabled."
+        }
+
     # 0. Execution Cooldown Check (30 Seconds Debounce)
     cooldown_window = getattr(settings, "EXECUTION_COOLDOWN_SECONDS", 30)
     if LAST_EXECUTION_TIMESTAMP > 0:
@@ -585,11 +593,12 @@ def execute_market_order(
     decimals = 4 if ("EUR" in sym_clean or "GBP" in sym_clean or "USD" in sym_clean and "JPY" not in sym_clean and "XAU" not in sym_clean and "XAG" not in sym_clean) else (3 if "JPY" in sym_clean or "XAG" in sym_clean else 2)
     
     live_feed = GATEWAY_STATE.get("live_prices", {}).get(sym_clean, {})
-    if live_feed and live_feed.get("price"):
-        fill_price = round(float(live_feed["price"]), decimals)
-    else:
-        sl_dist = abs(sl_price - tp_price) / 3.0
-        fill_price = round((sl_price + sl_dist) if act_upper == "BUY" else (sl_price - sl_dist), decimals)
+    if not (live_feed and live_feed.get("price")):
+        return {
+            "status": "REJECTED_UNVERIFIED_MARKET_DATA",
+            "error": f"No broker/live gateway price is available for {sym_clean}; synthetic fill prices are prohibited."
+        }
+    fill_price = round(float(live_feed["price"]), decimals)
 
     is_gold = "XAU" in sym_clean or "GOLD" in sym_clean
     is_silver = "XAG" in sym_clean or "SILVER" in sym_clean
@@ -663,6 +672,25 @@ def execute_market_order(
         if bridge_res.get("entry_price"):
             fill_price = float(bridge_res["entry_price"])
         print(f"[Local Bridge Execution] 🟢 Live cTrader Fill: Ticket #{ticket_num} @ ${fill_price}")
+
+    # Broker/cBot acknowledgement is authoritative. Never create a local position
+    # or SUCCESS receipt when the execution transport did not confirm a fill.
+    if bridge_res.get("status") != "SUCCESS":
+        return {
+            "status": "REJECTED_BROKER_EXECUTION_UNCONFIRMED",
+            "error": "Broker/cBot did not confirm execution; local position creation aborted.",
+            "broker_response": bridge_res
+        }
+    if not (bridge_res.get("position_id") or bridge_res.get("order_id")):
+        return {
+            "status": "REJECTED_BROKER_RECEIPT_INCOMPLETE",
+            "error": "Broker/cBot returned SUCCESS without a position/order id; local position creation aborted."
+        }
+    if bridge_res.get("entry_price") is None:
+        return {
+            "status": "REJECTED_BROKER_RECEIPT_INCOMPLETE",
+            "error": "Broker/cBot returned SUCCESS without an entry price; local position creation aborted."
+        }
 
     # Set last execution timestamp
     LAST_EXECUTION_TIMESTAMP = now_ts
