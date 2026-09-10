@@ -149,7 +149,7 @@ def is_pair_whitelisted(symbol: str) -> bool:
 
 def get_active_account_id() -> str:
     """Returns currently selected cTrader Account ID."""
-    return str(load_settings().get("account_id", "5908018")).strip()
+    return str(load_settings().get("account_id", "")).strip()
 
 def set_active_account_id(account_id: str) -> str:
     """Updates selected cTrader Account ID."""
