@@ -94,7 +94,7 @@ class Settings:
     @property
     def CTRADER_ACCOUNT_ID(self) -> str:
         from app.services.credential_store import credential_store
-        return credential_store.get_secret("CTRADER_ACCOUNT_ID", "5908018")
+        return credential_store.get_secret("CTRADER_ACCOUNT_ID", os.getenv("CTRADER_ACCOUNT_ID", ""))
 
     @property
     def CTRADER_ACCESS_TOKEN(self) -> str:
