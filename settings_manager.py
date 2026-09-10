@@ -20,13 +20,13 @@ DEFAULT_SETTINGS = {
     "active_pairs": ["XAUUSD"],
     "active_lot_size": 0.01,
     "fixed_lot_size": 0.01,
-    "auto_trade_enabled": True,
+    "auto_trade_enabled": False,
     "scanner_active": True,
     "max_risk_percent": 1.0,
     "min_confidence_threshold": 75.0,
     "min_consensus_agents": 4,
-    "trading_mode": "LIVE",
-    "account_id": "5908018",
+    "trading_mode": "DEMO",
+    "account_id": "",
     "environment_mode": "MULTI_ASSET_QUANT"
 }
 
