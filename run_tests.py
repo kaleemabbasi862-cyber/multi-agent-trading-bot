@@ -106,6 +106,7 @@ from tests.test_production_hardening_and_integrity import ProductionHardeningAnd
 from tests.test_phase2_hardening import TestPhase2CoreHardening
 from tests.test_phase3_soak import TestPhase3DemoSoakValidation
 from tests.test_broker_provenance_integrity import TestBrokerProvenanceIntegrity
+from tests.test_phase6_source_integrity import TestPhase6SourceIntegrity
 
 def run_production_hardening_tests():
     suite = unittest.TestLoader().loadTestsFromTestCase(ProductionHardeningAndIntegrityTests)
@@ -122,6 +123,11 @@ def run_phase3_soak_validation_tests():
     result = unittest.TextTestRunner(verbosity=0).run(suite)
     assert result.wasSuccessful(), "Phase 3 demo soak validation test failures"
 
+def run_phase6_source_integrity_tests():
+    suite = unittest.TestLoader().loadTestsFromTestCase(TestPhase6SourceIntegrity)
+    result = unittest.TextTestRunner(verbosity=0).run(suite)
+    assert result.wasSuccessful(), "Phase 6 source-integrity regression failures"
+
 def run_broker_provenance_integrity_tests():
     suite = unittest.TestLoader().loadTestsFromTestCase(TestBrokerProvenanceIntegrity)
     result = unittest.TextTestRunner(verbosity=0).run(suite)
@@ -135,6 +141,7 @@ def main():
         ("Phase 1: Emergency Kill Switch & Safety Block", test_emergency_kill_switch_blocks_trade),
         ("Phase 2 Core: Agent Criticality, Constants Provenance, Idempotency & Zero-Tolerance Matrix", run_phase2_core_hardening_tests),
         ("Phase 3 Soak: Demo Enforcement, Traceability, Evidence Chain, Reconciliation & Safety Counters", run_phase3_soak_validation_tests),
+        ("Phase 6 Source Integrity: Candidate Gates, Demo Lock & Broker-Confirmed Execution", run_phase6_source_integrity_tests),
         ("Broker Provenance: Strict Provenance Isolation, Fail-Closed Queries & Formula Accuracy", run_broker_provenance_integrity_tests),
         ("Phase 2: Dynamic Symbol Resolver & Contract Specs", test_dynamic_symbol_resolver),
 
