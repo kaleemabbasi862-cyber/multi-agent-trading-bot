@@ -57,6 +57,21 @@ class TestPhase6SourceIntegrity(unittest.TestCase):
         self.assertEqual(gateway.GATEWAY_STATE["open_positions"], [])
 
     @patch("ctrader_cloud_gateway.dispatch_local_bridge_order")
+    def test_gateway_rejects_invalid_geometry_without_rewriting_levels(self, dispatch):
+        gateway.GATEWAY_STATE["is_live"] = False
+        gateway.GATEWAY_STATE["account_type"] = "DEMO"
+        gateway.GATEWAY_STATE["live_prices"] = {
+            "XAUUSD": {"price": 5000.0, "spread": 0.10}
+        }
+        result = gateway.execute_market_order(
+            symbol="XAUUSD", action="BUY", lot_size=0.01,
+            sl_price=5001.0, tp_price=5012.0, signal_id="TEST_GEOMETRY"
+        )
+        self.assertEqual(result["status"], "REJECTED_INVALID_PROTECTION_GEOMETRY")
+        dispatch.assert_not_called()
+        self.assertEqual(gateway.GATEWAY_STATE["open_positions"], [])
+
+    @patch("ctrader_cloud_gateway.dispatch_local_bridge_order")
     def test_gateway_does_not_create_ghost_position_on_bridge_failure(self, dispatch):
         gateway.GATEWAY_STATE["is_live"] = False
         gateway.GATEWAY_STATE["account_type"] = "DEMO"
