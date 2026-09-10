@@ -1,8 +1,22 @@
 import sys
 import os
+import tempfile
+import atexit
 import unittest
 
 os.environ["TESTING"] = "1"
+_test_db_fd, _test_db_path = tempfile.mkstemp(prefix="tradetalk_test_", suffix=".db")
+os.close(_test_db_fd)
+os.environ["DATABASE_PATH"] = _test_db_path
+
+def _cleanup_test_db():
+    try:
+        if os.path.exists(_test_db_path):
+            os.remove(_test_db_path)
+    except Exception:
+        pass
+
+atexit.register(_cleanup_test_db)
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 from tests.test_risk_calculations import (

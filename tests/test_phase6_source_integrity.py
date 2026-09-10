@@ -86,6 +86,29 @@ class TestPhase6SourceIntegrity(unittest.TestCase):
         self.assertEqual(result["status"], "REJECTED_BROKER_EXECUTION_UNCONFIRMED")
         self.assertEqual(gateway.GATEWAY_STATE["open_positions"], [])
 
+    def test_testing_mode_blocks_real_external_broker_dispatch(self):
+        """Verify that when TESTING=1, unmocked dispatch_local_bridge_order fails closed without network call."""
+        res = gateway.dispatch_local_bridge_order(
+            symbol="XAUUSD",
+            side="BUY",
+            volume=0.01,
+            sl_price=2744.0,
+            tp_price=2762.0,
+            comment="Unmocked Test Dispatch"
+        )
+        self.assertEqual(res.get("status"), "REJECTED_TEST_MODE_EXTERNAL_EXECUTION_BLOCKED")
+        self.assertIn("strictly prohibited", res.get("error", ""))
+
+    def test_database_isolation_in_test_environment(self):
+        """Verify that test database path is isolated from production tradetalk_v2.db."""
+        import app.config
+        test_db = app.config.settings.DATABASE_PATH
+        prod_db = str(app.config.BASE_DIR / "tradetalk_v2.db")
+        self.assertTrue(os.environ.get("TESTING") == "1")
+        if os.environ.get("DATABASE_PATH"):
+            self.assertNotEqual(test_db, prod_db)
+            self.assertTrue("tradetalk_test_" in test_db or "test" in test_db.lower())
+
 
 if __name__ == "__main__":
     unittest.main()

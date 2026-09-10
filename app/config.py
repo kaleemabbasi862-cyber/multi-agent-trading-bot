@@ -68,7 +68,7 @@ class Settings:
     REQUIRE_WEBHOOK_SIGNATURE: bool = os.getenv("REQUIRE_WEBHOOK_SIGNATURE", "false").lower() == "true"
     
     # Database
-    DATABASE_PATH: str = str(BASE_DIR / "tradetalk_v2.db")
+    DATABASE_PATH: str = os.getenv("DATABASE_PATH", str(BASE_DIR / "tradetalk_v2.db"))
     
     # API Keys & cTrader Credentials (dynamically queried with fallback to credential store)
     @property

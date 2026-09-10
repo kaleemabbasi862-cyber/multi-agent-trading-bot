@@ -464,6 +464,13 @@ def dispatch_local_bridge_order(
     Dispatches direct HTTP webhook order to Local cBot Bridge listening on port 5001.
     Ultra-low latency execution without Spotware Open API cloud delays.
     """
+    if os.getenv("TESTING") == "1":
+        logger.warning("[Local cBot Bridge] Blocked external broker dispatch in test mode (TESTING=1).")
+        return {
+            "status": "REJECTED_TEST_MODE_EXTERNAL_EXECUTION_BLOCKED",
+            "error": "Real external broker execution is strictly prohibited when TESTING=1."
+        }
+
     bridge_url = os.getenv("CBOT_BRIDGE_URL", "http://127.0.0.1:5001/trade/").strip()
     payload = {
         "symbol": symbol.upper().replace(".PRO", "").replace("_I", ""),
