@@ -464,6 +464,13 @@ def dispatch_local_bridge_order(
     Dispatches direct HTTP webhook order to Local cBot Bridge listening on port 5001.
     Ultra-low latency execution without Spotware Open API cloud delays.
     """
+    if os.getenv("TESTING") == "1":
+        logger.warning("[Local cBot Bridge] Blocked external broker dispatch in test mode (TESTING=1).")
+        return {
+            "status": "REJECTED_TEST_MODE_EXTERNAL_EXECUTION_BLOCKED",
+            "error": "Real external broker execution is strictly prohibited when TESTING=1."
+        }
+
     bridge_url = os.getenv("CBOT_BRIDGE_URL", "http://127.0.0.1:5001/trade/").strip()
     payload = {
         "symbol": symbol.upper().replace(".PRO", "").replace("_I", ""),
@@ -514,6 +521,14 @@ def execute_market_order(
     sym_clean = symbol.upper().replace("M", "").replace(".PRO", "").replace("_I", "")
     act_upper = action.upper()
     order_sig_id = signal_id or f"SIG_{int(now_ts)}"
+
+    # Phase 6 safety invariant: this candidate is DEMO-only.
+    # Do not allow any gateway path to place an order while a LIVE account is active.
+    if GATEWAY_STATE.get("is_live", True) or str(GATEWAY_STATE.get("account_type", "")).upper() == "LIVE":
+        return {
+            "status": "REJECTED_DEMO_ONLY_CANDIDATE",
+            "error": "Phase 6 candidate is DEMO-only; LIVE account execution is disabled."
+        }
 
     # 0. Execution Cooldown Check (30 Seconds Debounce)
     cooldown_window = getattr(settings, "EXECUTION_COOLDOWN_SECONDS", 30)
@@ -585,11 +600,12 @@ def execute_market_order(
     decimals = 4 if ("EUR" in sym_clean or "GBP" in sym_clean or "USD" in sym_clean and "JPY" not in sym_clean and "XAU" not in sym_clean and "XAG" not in sym_clean) else (3 if "JPY" in sym_clean or "XAG" in sym_clean else 2)
     
     live_feed = GATEWAY_STATE.get("live_prices", {}).get(sym_clean, {})
-    if live_feed and live_feed.get("price"):
-        fill_price = round(float(live_feed["price"]), decimals)
-    else:
-        sl_dist = abs(sl_price - tp_price) / 3.0
-        fill_price = round((sl_price + sl_dist) if act_upper == "BUY" else (sl_price - sl_dist), decimals)
+    if not (live_feed and live_feed.get("price")):
+        return {
+            "status": "REJECTED_UNVERIFIED_MARKET_DATA",
+            "error": f"No broker/live gateway price is available for {sym_clean}; synthetic fill prices are prohibited."
+        }
+    fill_price = round(float(live_feed["price"]), decimals)
 
     is_gold = "XAU" in sym_clean or "GOLD" in sym_clean
     is_silver = "XAG" in sym_clean or "SILVER" in sym_clean
@@ -605,35 +621,37 @@ def execute_market_order(
             "spread": spread_val
         }
 
-    # Target Breathing Room & Sanity: Enforce strictly valid SL & TP relative to actual fill price
+    # Protection geometry is fail-closed. The execution layer must never silently
+    # rewrite an approved strategy's SL/TP because that destroys decision provenance.
+    if act_upper not in ("BUY", "SELL"):
+        return {"status": "REJECTED_INVALID_ACTION", "error": f"Unsupported action: {act_upper}"}
+
     if is_gold:
         min_sl_dist = getattr(settings, "MIN_SL_BUFFER_GOLD", 2.00)
         min_tp_dist = getattr(settings, "MIN_TP_BUFFER_GOLD", 4.00)
-        
-        # BUY sanity
         if act_upper == "BUY":
-            if sl_price <= 0 or sl_price >= fill_price or (fill_price - sl_price) < min_sl_dist:
-                sl_price = round(fill_price - 6.00, 2)
-            if tp_price <= 0 or tp_price <= fill_price or (tp_price - fill_price) < min_tp_dist:
-                tp_price = round(fill_price + 12.00, 2)
-        # SELL sanity
+            valid_geometry = (
+                sl_price < fill_price < tp_price
+                and (fill_price - sl_price) >= min_sl_dist
+                and (tp_price - fill_price) >= min_tp_dist
+            )
         else:
-            if sl_price <= 0 or sl_price <= fill_price or (sl_price - fill_price) < min_sl_dist:
-                sl_price = round(fill_price + 6.00, 2)
-            if tp_price <= 0 or tp_price >= fill_price or (fill_price - tp_price) < min_tp_dist:
-                tp_price = round(fill_price - 12.00, 2)
+            valid_geometry = (
+                tp_price < fill_price < sl_price
+                and (sl_price - fill_price) >= min_sl_dist
+                and (fill_price - tp_price) >= min_tp_dist
+            )
     else:
-        pip_unit = 0.001 if is_silver else (0.01 if "JPY" in sym_clean else 0.0001)
-        if act_upper == "BUY":
-            if sl_price <= 0 or sl_price >= fill_price:
-                sl_price = round(fill_price - (pip_unit * 35), 5)
-            if tp_price <= 0 or tp_price <= fill_price:
-                tp_price = round(fill_price + (pip_unit * 75), 5)
-        else:
-            if sl_price <= 0 or sl_price <= fill_price:
-                sl_price = round(fill_price + (pip_unit * 35), 5)
-            if tp_price <= 0 or tp_price >= fill_price:
-                tp_price = round(fill_price - (pip_unit * 75), 5)
+        valid_geometry = (sl_price < fill_price < tp_price) if act_upper == "BUY" else (tp_price < fill_price < sl_price)
+
+    if not valid_geometry:
+        return {
+            "status": "REJECTED_INVALID_PROTECTION_GEOMETRY",
+            "error": "Submitted SL/TP geometry is invalid for the broker price; execution aborted without rewriting strategy levels.",
+            "fill_price": fill_price,
+            "sl_price": sl_price,
+            "tp_price": tp_price
+        }
 
     ticket_num = random.randint(710000, 999999)
     ticket_id = f"CT_{ticket_num}"
@@ -663,6 +681,25 @@ def execute_market_order(
         if bridge_res.get("entry_price"):
             fill_price = float(bridge_res["entry_price"])
         print(f"[Local Bridge Execution] 🟢 Live cTrader Fill: Ticket #{ticket_num} @ ${fill_price}")
+
+    # Broker/cBot acknowledgement is authoritative. Never create a local position
+    # or SUCCESS receipt when the execution transport did not confirm a fill.
+    if bridge_res.get("status") != "SUCCESS":
+        return {
+            "status": "REJECTED_BROKER_EXECUTION_UNCONFIRMED",
+            "error": "Broker/cBot did not confirm execution; local position creation aborted.",
+            "broker_response": bridge_res
+        }
+    if not (bridge_res.get("position_id") or bridge_res.get("order_id")):
+        return {
+            "status": "REJECTED_BROKER_RECEIPT_INCOMPLETE",
+            "error": "Broker/cBot returned SUCCESS without a position/order id; local position creation aborted."
+        }
+    if bridge_res.get("entry_price") is None:
+        return {
+            "status": "REJECTED_BROKER_RECEIPT_INCOMPLETE",
+            "error": "Broker/cBot returned SUCCESS without an entry price; local position creation aborted."
+        }
 
     # Set last execution timestamp
     LAST_EXECUTION_TIMESTAMP = now_ts

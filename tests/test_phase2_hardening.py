@@ -3,6 +3,7 @@ import time
 import uuid
 import datetime
 from typing import Dict, Any
+from unittest.mock import patch
 
 from app.config import settings, trading_config, TRADING_CONSTANTS_REGISTRY, ConstantCategory
 from app.database.models import (
@@ -32,6 +33,11 @@ class TestPhase2CoreHardening(unittest.TestCase):
         ctrader_cloud_gateway.LAST_EXECUTION_TIMESTAMP = 0.0
         ctrader_cloud_gateway.LAST_TRADE_CLOSE_TIMESTAMP = 0.0
         ctrader_cloud_gateway.GATEWAY_STATE["open_positions"] = []
+        ctrader_cloud_gateway.GATEWAY_STATE["is_live"] = False
+        ctrader_cloud_gateway.GATEWAY_STATE["account_type"] = "DEMO"
+        ctrader_cloud_gateway.GATEWAY_STATE["live_prices"] = {
+            "XAUUSD": {"price": 2750.0, "bid": 2749.85, "ask": 2750.15, "spread": 0.30}
+        }
         if hasattr(ctrader_cloud_gateway, "OPEN_POSITIONS"):
             ctrader_cloud_gateway.OPEN_POSITIONS.clear()
         if "5908018" in ctrader_cloud_gateway.LINKED_ACCOUNTS:
@@ -218,12 +224,19 @@ class TestPhase2CoreHardening(unittest.TestCase):
     # 3. EXECUTION IDEMPOTENCY & IMMUTABLE 1R
     # =========================================================================
 
-    def test_execution_intent_idempotency_prevents_duplicate_orders(self):
+    @patch("ctrader_cloud_gateway.dispatch_local_bridge_order")
+    def test_execution_intent_idempotency_prevents_duplicate_orders(self, dispatch):
         """
         Submitting identical execution intent ID twice MUST be blocked on second attempt.
         Duplicate execution count MUST equal 0.
         """
         intent_id = f"INTENT_TEST_IDEMPOTENCY_{uuid.uuid4().hex[:6].upper()}"
+        dispatch.return_value = {
+            "status": "SUCCESS",
+            "position_id": 92001,
+            "order_id": 92001,
+            "entry_price": 2750.0
+        }
         
         # 1. First Dispatch
         res1 = self.execution_engine.dispatch_trade(
@@ -249,7 +262,8 @@ class TestPhase2CoreHardening(unittest.TestCase):
         self.assertEqual(res2.get("status"), "DUPLICATE_EXECUTION_BLOCKED")
         self.assertIn("already exists", res2.get("reason"))
 
-    def test_immutable_initial_1r_assignment_and_persistence(self):
+    @patch("ctrader_cloud_gateway.dispatch_local_bridge_order")
+    def test_immutable_initial_1r_assignment_and_persistence(self, dispatch):
         """
         Verifies that Initial_R = |Entry - SL| is immutably stamped and never mutates
         even if SL moves to break-even.
@@ -264,6 +278,12 @@ class TestPhase2CoreHardening(unittest.TestCase):
             timeframe="15m"
         )
         intent_id = f"INTENT_1R_{uuid.uuid4().hex[:6].upper()}"
+        dispatch.return_value = {
+            "status": "SUCCESS",
+            "position_id": 92002,
+            "order_id": 92002,
+            "entry_price": 2750.0
+        }
         
         exec_res = self.execution_engine.dispatch_trade(
             consensus_res=type("MockConsensus", (), {

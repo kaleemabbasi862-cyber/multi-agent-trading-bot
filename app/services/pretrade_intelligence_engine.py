@@ -7,6 +7,7 @@ from app.engine.technical_indicators import technical_indicators
 from app.services.session_engine import session_engine
 from app.services.setup_classifier import setup_classifier
 from app.services.trade_quality_scorer import trade_quality_scorer
+from app.config import trading_config
 
 class PreTradeIntelligenceEngine:
     """
@@ -97,11 +98,25 @@ class PreTradeIntelligenceEngine:
                     news_reason = f"High-impact news blackout active: {event.get('title')}"
                     break
 
-        # 9. Comprehensive Trade Verdict
+        # 9. Phase 6 candidate regime gates (fail closed)
         trade_allowed = False
         decision_reason = ""
 
-        if active_news_blackout:
+        adx_raw = indicators.get("adx", {})
+        adx_value = float(adx_raw.get("adx", 0.0)) if isinstance(adx_raw, dict) else float(adx_raw or 0.0)
+        adx_minimum = float(trading_config.get("REGIME_ADX_MINIMUM"))
+        structure = str(smc_result.get("structure", "RANGE")).upper()
+        setup_type = str(setup.get("setup_type", "NO_VALID_SETUP")).upper()
+        consolidation_detected = structure in ("RANGE", "CONSOLIDATION", "CONSOLIDATING") or setup_type == "NO_VALID_SETUP"
+        disallow_consolidation = bool(trading_config.get("DISALLOW_CONSOLIDATION_ENTRIES"))
+
+        if adx_value < adx_minimum:
+            trade_allowed = False
+            decision_reason = f"NO_TRADE_REGIME_ADX: ADX {adx_value:.1f} is below required minimum {adx_minimum:.1f}."
+        elif disallow_consolidation and consolidation_detected:
+            trade_allowed = False
+            decision_reason = f"NO_TRADE_CONSOLIDATION: structure={structure}, setup={setup_type}."
+        elif active_news_blackout:
             trade_allowed = False
             decision_reason = news_reason or "High-impact news blackout active."
         elif not setup.get("is_actionable", False):

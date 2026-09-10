@@ -10,7 +10,7 @@ load_dotenv(BASE_DIR / ".env")
 
 class Settings:
     PROJECT_NAME: str = "TradeTalk AI V2"
-    VERSION: str = "2.0.0"
+    VERSION: str = "2.1.0-DEMO-CANDIDATE"
     
     # Execution & Trading Modes: 'PAPER', 'DEMO', 'LIVE'
     TRADING_MODE: str = os.getenv("TRADING_MODE", "DEMO").upper()
@@ -64,11 +64,11 @@ class Settings:
     MAX_ALLOWED_SPREAD_XAUUSD: float = float(os.getenv("MAX_ALLOWED_SPREAD_XAUUSD", "0.55")) # Max $0.55 (55 cents) on Gold
     
     # Webhook Security
-    WEBHOOK_SECRET_KEY: str = os.getenv("WEBHOOK_SECRET_KEY", "tradetalk_v2_secret_key_884920")
+    WEBHOOK_SECRET_KEY: str = os.getenv("WEBHOOK_SECRET_KEY", "")
     REQUIRE_WEBHOOK_SIGNATURE: bool = os.getenv("REQUIRE_WEBHOOK_SIGNATURE", "false").lower() == "true"
     
     # Database
-    DATABASE_PATH: str = str(BASE_DIR / "tradetalk_v2.db")
+    DATABASE_PATH: str = os.getenv("DATABASE_PATH", str(BASE_DIR / "tradetalk_v2.db"))
     
     # API Keys & cTrader Credentials (dynamically queried with fallback to credential store)
     @property
@@ -84,17 +84,17 @@ class Settings:
     @property
     def CTRADER_CLIENT_ID(self) -> str:
         from app.services.credential_store import credential_store
-        return credential_store.get_secret("CTRADER_CLIENT_ID", "38205_uwQq76FzYirpd9qMjJrPqc07VcT1CqFHkDx8GXwzMBxratuPNT")
+        return credential_store.get_secret("CTRADER_CLIENT_ID", os.getenv("CTRADER_CLIENT_ID", ""))
 
     @property
     def CTRADER_CLIENT_SECRET(self) -> str:
         from app.services.credential_store import credential_store
-        return credential_store.get_secret("CTRADER_CLIENT_SECRET", "aI5kdBjwDuPX6CCgrJ0o3AholHFhCGAPuN2lj75UUV3NxEHFTm")
+        return credential_store.get_secret("CTRADER_CLIENT_SECRET", os.getenv("CTRADER_CLIENT_SECRET", ""))
 
     @property
     def CTRADER_ACCOUNT_ID(self) -> str:
         from app.services.credential_store import credential_store
-        return credential_store.get_secret("CTRADER_ACCOUNT_ID", "5908018")
+        return credential_store.get_secret("CTRADER_ACCOUNT_ID", os.getenv("CTRADER_ACCOUNT_ID", ""))
 
     @property
     def CTRADER_ACCESS_TOKEN(self) -> str:
@@ -106,8 +106,8 @@ class Settings:
         from app.services.credential_store import credential_store
         return credential_store.get_secret("CTRADER_REFRESH_TOKEN", "")
 
-    CTRADER_ENVIRONMENT: str = os.getenv("CTRADER_ENVIRONMENT", "live")
-    CBOT_AUTH_TOKEN: str = os.getenv("CBOT_AUTH_TOKEN", "cbot_token_secure_9918")
+    CTRADER_ENVIRONMENT: str = os.getenv("CTRADER_ENVIRONMENT", "demo")
+    CBOT_AUTH_TOKEN: str = os.getenv("CBOT_AUTH_TOKEN", "")
 
 settings = Settings()
 
@@ -321,6 +321,27 @@ TRADING_CONSTANTS_REGISTRY: Dict[str, TradingConstantDefinition] = {
         provenance_source="Position Manager V3 Canonical 1R Architecture",
         rationale="Locks SL to Break-Even (Entry + 1 pip buffer) once market moves >= +1.0R into profit."
     ),
+    "REGIME_ADX_MINIMUM": TradingConstantDefinition(
+        name="REGIME_ADX_MINIMUM",
+        value=20.0,
+        unit="ADX (15m)",
+        category=ConstantCategory.STRATEGY_CONFIG,
+        min_value=10.0,
+        max_value=40.0,
+        symbol_scope="XAUUSD",
+        provenance_source="Phase 5 Controlled Optimization — Minimum Viable Improvement",
+        rationale="Prospective Phase 6 candidate gate: block entries when 15m ADX is below 20.0."
+    ),
+    "DISALLOW_CONSOLIDATION_ENTRIES": TradingConstantDefinition(
+        name="DISALLOW_CONSOLIDATION_ENTRIES",
+        value=True,
+        unit="Boolean",
+        category=ConstantCategory.STRATEGY_CONFIG,
+        symbol_scope="XAUUSD",
+        provenance_source="Phase 5 Controlled Optimization — Minimum Viable Improvement",
+        rationale="Prospective Phase 6 candidate gate: explicitly veto entries while market structure is classified as consolidation/range."
+    ),
+
     "TRAILING_START_R": TradingConstantDefinition(
         name="TRAILING_START_R",
         value=1.5,
@@ -386,7 +407,7 @@ TRADING_CONSTANTS_REGISTRY: Dict[str, TradingConstantDefinition] = {
 
 class TradingConfigManager:
     """Centralized accessor and validator for all registered trading constants."""
-    version: str = "2.0.0-PROD-HARDENED"
+    version: str = "2.1.0-DEMO-CANDIDATE"
     
     @staticmethod
     def get(name: str) -> Any:

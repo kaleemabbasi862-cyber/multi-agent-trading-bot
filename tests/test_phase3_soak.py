@@ -3,6 +3,7 @@ import time
 import uuid
 import datetime
 from typing import Dict, Any, List
+from unittest.mock import patch
 
 from app.config import settings, trading_config
 from app.database.models import (
@@ -153,11 +154,19 @@ class TestPhase3DemoSoakValidation(unittest.TestCase):
     # 3. COMPLETE EXECUTED TRADE EVIDENCE CHAIN (SECTION 5 & SECTION 9)
     # =========================================================================
 
-    def test_unbroken_execution_evidence_chain_and_immutable_1r(self):
+    @patch("ctrader_cloud_gateway.dispatch_local_bridge_order")
+    def test_unbroken_execution_evidence_chain_and_immutable_1r(self, dispatch):
         """
         Verifies the complete 15-step evidence chain:
         Decision ID -> Intent ID -> Broker Order -> Fill -> Initial SL -> Initial TP -> Initial 1R -> Exit -> Realized R
         """
+        dispatch.return_value = {
+            "status": "SUCCESS",
+            "position_id": 93001,
+            "order_id": 93001,
+            "entry_price": 2750.0
+        }
+
         sig = SignalPayload(
             id=f"SIG_CHAIN_{uuid.uuid4().hex[:6].upper()}",
             symbol="XAUUSD",
