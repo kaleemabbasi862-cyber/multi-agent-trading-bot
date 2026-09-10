@@ -119,13 +119,6 @@ class TestPhase3DemoSoakValidation(unittest.TestCase):
         Every evaluation (both APPROVED and NO_TRADE) must receive a unique decision_id
         and persist complete multi-agent metrics and Decision DNA snapshot.
         """
-        dispatch.return_value = {
-            "status": "SUCCESS",
-            "position_id": 93001,
-            "order_id": 93001,
-            "entry_price": 2750.0
-        }
-
         sig = SignalPayload(
             id=f"SIG_TRACE_{uuid.uuid4().hex[:6].upper()}",
             symbol="XAUUSD",
@@ -167,6 +160,13 @@ class TestPhase3DemoSoakValidation(unittest.TestCase):
         Verifies the complete 15-step evidence chain:
         Decision ID -> Intent ID -> Broker Order -> Fill -> Initial SL -> Initial TP -> Initial 1R -> Exit -> Realized R
         """
+        dispatch.return_value = {
+            "status": "SUCCESS",
+            "position_id": 93001,
+            "order_id": 93001,
+            "entry_price": 2750.0
+        }
+
         sig = SignalPayload(
             id=f"SIG_CHAIN_{uuid.uuid4().hex[:6].upper()}",
             symbol="XAUUSD",
