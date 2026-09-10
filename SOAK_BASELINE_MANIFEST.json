@@ -1,0 +1,54 @@
+{
+  "manifest_id": "SOAK_BASELINE_MANIFEST_V2_20260909",
+  "created_at": "2026-09-09T22:25:30+03:00",
+  "git_commit": "6cc3ac38551d10a90f5308f966936ba8f1dc9d14",
+  "application_version": "2.0.0-PROD-HARDENED",
+  "strategy_version": "Gold_Sniper_SMC_v2.0",
+  "configuration_version": "2.0.0-PROD-HARDENED",
+  "database_schema_version": "2.0.0-WAL-MIGRATED",
+  "account_mode": "DEMO",
+  "broker_environment": "cTrader Demo",
+  "broker_account_id": "5908018",
+  "broker_name": "Spotware",
+  "starting_balance": 1018.96,
+  "starting_equity": 1018.96,
+  "enabled_symbols": ["XAUUSD"],
+  "primary_timeframe": "15m",
+  "confluence_timeframes": ["H1", "D1"],
+  "agent_weights": {
+    "Technical Analyst Agent": 0.20,
+    "Fundamental & Sentiment Agent": 0.15,
+    "Market Regime Agent": 0.15,
+    "Liquidity & SMC Agent": 0.15,
+    "Trade Quality Agent": 0.15,
+    "Risk Management Agent": 0.20
+  },
+  "consensus_rules": {
+    "min_confidence_threshold": 65.0,
+    "min_consensus_agents": 4,
+    "total_agent_count": 7,
+    "risk_veto_override": true,
+    "guardian_veto_override": true,
+    "critical_agent_fail_closed": true
+  },
+  "safety_policies": {
+    "max_account_risk_percent": 1.0,
+    "daily_loss_limit_dollars": 5.00,
+    "max_consecutive_losses": 3,
+    "max_concurrent_positions": 1,
+    "max_autonomous_lot_size": 0.05,
+    "min_sl_buffer_dollars": 2.50,
+    "min_rr_ratio": 2.0,
+    "pre_news_blackout_minutes": 30,
+    "post_news_cooldown_minutes": 15,
+    "anti_flip_cooldown_seconds": 60,
+    "max_data_age_seconds": 5.0,
+    "idempotency_lock_ttl_seconds": 30.0
+  },
+  "prohibited_operations": {
+    "real_money_execution": "STRICTLY FORBIDDEN",
+    "silent_parameter_tuning": "STRICTLY FORBIDDEN",
+    "synthetic_data_in_production": "STRICTLY FORBIDDEN",
+    "unauthorized_early_close": "STRICTLY FORBIDDEN"
+  }
+}

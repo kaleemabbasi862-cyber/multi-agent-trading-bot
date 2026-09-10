@@ -1,0 +1,60 @@
+{
+  "manifest_version": "1.0.0",
+  "phase": "PHASE_6_PROSPECTIVE_FORWARD_DEMO_VALIDATION",
+  "strategy_version": "2.1.0-DEMO-CANDIDATE",
+  "baseline_version": "2.0.0-PROD-HARDENED",
+  "git_commit": "2.1.0-DEMO-CANDIDATE-RELEASE-f8e91d3",
+  "configuration_hash": "2f8cf8820c26dfd30b22c6e6a6c2e1577dbaad628d16f78c0d47a4e7f10d8af4",
+  "database_schema_version": "2.1.0-PROVENANCE-INDEXED",
+  "phase6_start_timestamp_utc": "2026-09-09T20:05:26.000000Z",
+  "phase6_start_timestamp_local": "2026-09-09T23:05:26+03:00",
+  "authorized_broker_account_id": "5908018",
+  "authorized_broker_environment": "Spotware cTrader Open API Demo",
+  "live_money_authorized": false,
+  "registered_strategy_changes": {
+    "REGIME_ADX_MINIMUM": 20.0,
+    "DISALLOW_CONSOLIDATION_ENTRIES": true
+  },
+  "frozen_agent_weights": {
+    "Technical Analyst Agent (Chart Sniper)": 0.2,
+    "Fundamental & Sentiment Agent (News Radar)": 0.15,
+    "Risk & Position Sizing Agent (Shield Guard)": 0.15,
+    "Market Regime Agent (Navigator)": 0.15,
+    "SMC / Liquidity Agent (SMC Hunter)": 0.15,
+    "Trade Quality Agent (Quant Brain)": 0.2
+  },
+  "frozen_consensus_thresholds": {
+    "min_agreeing_agents": 4,
+    "min_agent_confidence": 65.0,
+    "min_general_consensus_score": 65.0,
+    "high_quality_score": 85.0
+  },
+  "frozen_trade_parameters": {
+    "symbol": "XAUUSD",
+    "default_volume_lots": 0.01,
+    "initial_stop_loss_distance_usd": 6.0,
+    "initial_take_profit_distance_usd": 12.0,
+    "risk_reward_ratio": 2.0,
+    "break_even_trigger_r": 1.0,
+    "trailing_start_r": 1.5,
+    "anti_flip_cooldown_seconds": 60,
+    "execution_cooldown_seconds": 30
+  },
+  "frozen_risk_limits": {
+    "nominal_1r_usd": 6.0,
+    "max_account_risk_percent": 1.0,
+    "daily_drawdown_limit_usd": 50.0,
+    "max_consecutive_losses": 3,
+    "max_open_positions": 1,
+    "max_allowed_spread_usd": 0.55
+  },
+  "zero_tolerance_safety_counters": {
+    "premature_closes": 0,
+    "unauthorized_exits": 0,
+    "duplicate_executions": 0,
+    "execution_bypasses": 0,
+    "unresolved_broker_mismatches": 0,
+    "synthetic_data_in_production": 0,
+    "critical_agent_failures_approved_for_execution": 0
+  }
+}

@@ -2,6 +2,7 @@ import os
 import json
 
 SETTINGS_FILE = os.path.join(os.path.dirname(__file__), "user_settings.json")
+_IN_MEMORY_SETTINGS = None
 
 # Full Whitelist: Metals & Major FX Pairs
 ALL_SUPPORTED_PAIRS = [
@@ -22,14 +23,24 @@ DEFAULT_SETTINGS = {
     "auto_trade_enabled": True,
     "scanner_active": True,
     "max_risk_percent": 1.0,
-    "min_confidence_threshold": 75,
+    "min_confidence_threshold": 75.0,
+    "min_consensus_agents": 4,
     "trading_mode": "LIVE",
     "account_id": "5908018",
     "environment_mode": "MULTI_ASSET_QUANT"
 }
 
+def is_test_env() -> bool:
+    """Check if execution is running within a test framework."""
+    return os.environ.get("TESTING") == "1" or "pytest" in sys.modules if "sys" in globals() else os.environ.get("TESTING") == "1"
+
 def load_settings() -> dict:
-    """Load settings from persistent JSON file or return defaults."""
+    """Load settings from persistent JSON file or return defaults (isolated in-memory during tests)."""
+    global _IN_MEMORY_SETTINGS
+    if os.environ.get("TESTING") == "1":
+        if _IN_MEMORY_SETTINGS is not None:
+            return dict(_IN_MEMORY_SETTINGS)
+
     all_syms = [p["symbol"] for p in ALL_SUPPORTED_PAIRS]
     if os.path.exists(SETTINGS_FILE):
         try:
@@ -47,9 +58,10 @@ def load_settings() -> dict:
                 data["active_lot_size"] = max(0.01, min(1.00, round(lot, 2)))
                 data["fixed_lot_size"] = data["active_lot_size"]
 
-                # Normalize confidence threshold (60% to 90%)
-                thresh = float(data.get("min_confidence_threshold", 75))
-                data["min_confidence_threshold"] = max(60.0, min(90.0, round(thresh, 1)))
+                # Normalize confidence threshold (50% to 90%)
+                thresh = float(data.get("min_confidence_threshold", 75.0))
+                data["min_confidence_threshold"] = max(50.0, min(90.0, round(thresh, 1)))
+                data["min_consensus_agents"] = int(data.get("min_consensus_agents", 4))
 
                 if "active_pairs" in data and isinstance(data["active_pairs"], list) and len(data["active_pairs"]) > 0:
                     valid = [s.upper() for s in data["active_pairs"] if s.upper() in all_syms]
@@ -57,16 +69,25 @@ def load_settings() -> dict:
                 else:
                     data["active_pairs"] = [act_sym]
 
+                if os.environ.get("TESTING") == "1":
+                    _IN_MEMORY_SETTINGS = dict(data)
                 return data
         except Exception as e:
             print(f"[SettingsManager] Error loading settings: {e}")
 
     default_data = dict(DEFAULT_SETTINGS)
-    save_settings(default_data)
+    if os.environ.get("TESTING") != "1":
+        save_settings(default_data)
+    else:
+        _IN_MEMORY_SETTINGS = dict(default_data)
     return default_data
 
 def save_settings(settings: dict) -> dict:
-    """Save settings dictionary to persistent JSON file."""
+    """Save settings dictionary to persistent JSON file or in-memory when testing."""
+    global _IN_MEMORY_SETTINGS
+    if os.environ.get("TESTING") == "1":
+        _IN_MEMORY_SETTINGS = dict(settings)
+        return settings
     try:
         with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
             json.dump(settings, f, indent=2)

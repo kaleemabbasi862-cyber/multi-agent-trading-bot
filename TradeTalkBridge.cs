@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -260,10 +260,30 @@ namespace cAlgo.Robots
             return "[" + string.Join(",", histList) + "]";
         }
 
+        private string GetLivePricesJson()
+        {
+            var priceItems = new List<string>();
+            string[] supportedSymbols = new string[] { "XAUUSD", "GOLD", "XAGUSD", "SILVER", "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCHF" };
+            foreach (var symName in supportedSymbols)
+            {
+                Symbol s = ResolveSymbol(symName);
+                if (s != null && s.Bid > 0 && s.Ask > 0)
+                {
+                    double mid = Math.Round((s.Bid + s.Ask) / 2.0, s.Digits);
+                    double spread = Math.Round(s.Ask - s.Bid, s.Digits);
+                    priceItems.Add(string.Format(CultureInfo.InvariantCulture,
+                        "\"{0}\":{{\"bid\":{1},\"ask\":{2},\"price\":{3},\"spread\":{4},\"digits\":{5},\"pip\":{6}}}",
+                        symName.ToUpperInvariant(), s.Bid, s.Ask, mid, spread, s.Digits, s.PipSize));
+                }
+            }
+            return "{" + string.Join(",", priceItems) + "}";
+        }
+
         private string GetOverviewJson()
         {
             string posJson = GetPositionsJson();
             string histJson = GetHistoryJson();
+            string pricesJson = GetLivePricesJson();
 
             string accNum = Account != null ? Account.Number.ToString() : "0";
             string broker = Account != null ? Account.BrokerName : "cTrader";
@@ -275,8 +295,8 @@ namespace cAlgo.Robots
             int openCount = Positions != null ? Positions.Count : 0;
 
             return string.Format(CultureInfo.InvariantCulture,
-                "{{\"status\":\"ONLINE\",\"bridge\":\"TradeTalk CleanBridge C#\",\"account_id\":\"{0}\",\"broker\":\"{1}\",\"is_live\":{2},\"balance\":{3:F2},\"equity\":{4:F2},\"margin\":{5:F2},\"free_margin\":{6:F2},\"open_positions_count\":{7},\"positions\":{8},\"history\":{9}}}",
-                accNum, broker, isLive ? "true" : "false", bal, eq, marg, freeMarg, openCount, posJson, histJson);
+                "{{\"status\":\"ONLINE\",\"bridge\":\"TradeTalk CleanBridge C#\",\"account_id\":\"{0}\",\"broker\":\"{1}\",\"is_live\":{2},\"balance\":{3:F2},\"equity\":{4:F2},\"margin\":{5:F2},\"free_margin\":{6:F2},\"open_positions_count\":{7},\"positions\":{8},\"history\":{9},\"prices\":{10}}}",
+                accNum, broker, isLive ? "true" : "false", bal, eq, marg, freeMarg, openCount, posJson, histJson, pricesJson);
         }
 
         private string HandleTradeExecution(string json, out int httpStatus)
@@ -326,6 +346,57 @@ namespace cAlgo.Robots
                             httpStatus = 200;
                             return string.Format(CultureInfo.InvariantCulture,
                                 "{{\"status\":\"SUCCESS\",\"message\":\"Position #{0} closed.\",\"position_id\":{0}}}", targetPos.Id);
+                        }
+
+                        httpStatus = 404;
+                        return "{\"status\":\"ERROR\",\"error\":\"POSITION_NOT_FOUND\"}";
+                    }
+
+                    // 1B. Modify Position (SL / TP / Break-Even)
+                    if (actionStr == "MODIFY" || actionStr == "MODIFY_SLTP" || actionStr == "BREAK_EVEN")
+                    {
+                        string targetPosId = ExtractJsonValue(json, "position_id") ?? ExtractJsonValue(json, "id");
+                        string slStr = ExtractJsonValue(json, "sl_price") ?? ExtractJsonValue(json, "sl");
+                        string tpStr = ExtractJsonValue(json, "tp_price") ?? ExtractJsonValue(json, "tp");
+
+                        Position targetPos = null;
+                        if (Positions != null)
+                        {
+                            foreach (var p in Positions)
+                            {
+                                if (string.IsNullOrEmpty(targetPosId) || p.Id.ToString() == targetPosId)
+                                {
+                                    targetPos = p;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (targetPos != null)
+                        {
+                            double? newSl = targetPos.StopLoss;
+                            double? newTp = targetPos.TakeProfit;
+
+                            if (!string.IsNullOrEmpty(slStr))
+                            {
+                                double slVal;
+                                if (double.TryParse(slStr, NumberStyles.Any, CultureInfo.InvariantCulture, out slVal))
+                                    newSl = slVal;
+                            }
+
+                            if (!string.IsNullOrEmpty(tpStr))
+                            {
+                                double tpVal;
+                                if (double.TryParse(tpStr, NumberStyles.Any, CultureInfo.InvariantCulture, out tpVal))
+                                    newTp = tpVal;
+                            }
+
+                            var modResult = ModifyPosition(targetPos, newSl, newTp);
+                            Print(string.Format("🛠️ [POSITION MODIFIED] #{0} ({1}) SL -> {2:F2} | TP -> {3:F2}", targetPos.Id, targetPos.SymbolName, newSl ?? 0, newTp ?? 0));
+                            httpStatus = 200;
+                            return string.Format(CultureInfo.InvariantCulture,
+                                "{{\"status\":\"SUCCESS\",\"message\":\"Position #{0} modified.\",\"position_id\":{0},\"sl\":{1},\"tp\":{2}}}",
+                                targetPos.Id, newSl ?? 0, newTp ?? 0);
                         }
 
                         httpStatus = 404;
@@ -386,38 +457,49 @@ namespace cAlgo.Robots
                     if (!string.IsNullOrEmpty(slPipsStr)) double.TryParse(slPipsStr, NumberStyles.Any, CultureInfo.InvariantCulture, out inSlPips);
                     if (!string.IsNullOrEmpty(tpPipsStr)) double.TryParse(tpPipsStr, NumberStyles.Any, CultureInfo.InvariantCulture, out inTpPips);
 
+                    string slPriceStr = ExtractJsonValue(json, "sl_price") ?? ExtractJsonValue(json, "sl");
+                    string tpPriceStr = ExtractJsonValue(json, "tp_price") ?? ExtractJsonValue(json, "tp");
+                    double inSlPrice = 0;
+                    double inTpPrice = 0;
+                    if (!string.IsNullOrEmpty(slPriceStr)) double.TryParse(slPriceStr, NumberStyles.Any, CultureInfo.InvariantCulture, out inSlPrice);
+                    if (!string.IsNullOrEmpty(tpPriceStr)) double.TryParse(tpPriceStr, NumberStyles.Any, CultureInfo.InvariantCulture, out inTpPrice);
+
+                    double refPrice = (tradeType == TradeType.Buy) ? sym.Ask : sym.Bid;
                     double slDistanceDollars;
                     double tpDistanceDollars;
 
                     if (isGold)
                     {
-                        // On Gold: If sl_pips is e.g. 35, it means $3.50. If 350, it also means $3.50 (350 * 0.01).
-                        if (inSlPips >= 100.0)
+                        if (inSlPips > 0)
                         {
-                            slDistanceDollars = inSlPips * pipSize;
+                            slDistanceDollars = inSlPips >= 100.0 ? (inSlPips * pipSize) : (inSlPips * 0.10);
                         }
-                        else if (inSlPips > 0)
+                        else if (inSlPrice > 0 && Math.Abs(refPrice - inSlPrice) >= MinStopLossDollarsGold && Math.Abs(refPrice - inSlPrice) <= 25.0)
                         {
-                            slDistanceDollars = inSlPips * 0.10; // 35 * 0.10 = $3.50
+                            slDistanceDollars = Math.Abs(refPrice - inSlPrice);
                         }
                         else
                         {
-                            slDistanceDollars = MinStopLossDollarsGold;
+                            slDistanceDollars = Math.Max(MinStopLossDollarsGold, 6.00);
                         }
 
-                        // Enforce minimum $3.50 buffer on Gold
+                        // Enforce minimum buffer on Gold ($3.50) and max guard ($15.00)
                         if (slDistanceDollars < MinStopLossDollarsGold)
                         {
                             slDistanceDollars = MinStopLossDollarsGold;
                         }
-
-                        if (inTpPips >= 100.0)
+                        if (slDistanceDollars > 15.00)
                         {
-                            tpDistanceDollars = inTpPips * pipSize;
+                            slDistanceDollars = 15.00;
                         }
-                        else if (inTpPips > 0)
+
+                        if (inTpPips > 0)
                         {
-                            tpDistanceDollars = inTpPips * 0.10; // 70 * 0.10 = $7.00
+                            tpDistanceDollars = inTpPips >= 100.0 ? (inTpPips * pipSize) : (inTpPips * 0.10);
+                        }
+                        else if (inTpPrice > 0 && Math.Abs(refPrice - inTpPrice) >= (slDistanceDollars * 1.5) && Math.Abs(refPrice - inTpPrice) <= 50.0)
+                        {
+                            tpDistanceDollars = Math.Abs(refPrice - inTpPrice);
                         }
                         else
                         {
@@ -445,7 +527,7 @@ namespace cAlgo.Robots
                     double tpPipsForOrder = Math.Round(tpDistanceDollars / pipSize, 1);
 
                     // Compute absolute target prices for safety verification
-                    double refPrice = (tradeType == TradeType.Buy) ? sym.Ask : sym.Bid;
+                    refPrice = (tradeType == TradeType.Buy) ? sym.Ask : sym.Bid;
                     double targetSlPrice = (tradeType == TradeType.Buy) 
                         ? Math.Round(sym.Ask - slDistanceDollars, sym.Digits) 
                         : Math.Round(sym.Bid + slDistanceDollars, sym.Digits);

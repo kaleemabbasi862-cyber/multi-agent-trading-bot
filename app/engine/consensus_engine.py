@@ -2,8 +2,16 @@ import uuid
 import datetime
 import time
 from typing import Dict, Any, Optional
-from app.config import settings
-from app.database.models import SignalPayload, ConsensusResult
+from app.config import settings, trading_config
+from app.database.models import (
+    SignalPayload,
+    ConsensusResult,
+    AgentDecisionOutput,
+    RiskCheckResult,
+    AgentOperationalCriticality,
+    AgentHealthStatus,
+    SystemDecisionState
+)
 from app.database.db import db
 
 from app.agents.technical_agent import technical_agent
@@ -14,12 +22,14 @@ from app.agents.liquidity_agent import liquidity_agent
 from app.agents.quality_agent import quality_agent
 from app.agents.head_desk_agent import head_desk_agent
 from app.agents.guardian import guardian
+from app.engine.explainability_engine import explainability_engine
 
 _PROCESSED_SIGNAL_IDS = set()
 
 class MultiAgentConsensusEngine:
     """
     Orchestrates the 7-Agent Quantitative Decision Pipeline + No-Trade Guardian.
+    Computes weighted multi-agent consensus, enforces safety gates, and synthesizes bilingual Decision DNA.
     """
 
     def process_signal(
@@ -37,20 +47,133 @@ class MultiAgentConsensusEngine:
         if not signal.timestamp:
             signal.timestamp = now_iso
 
-        # 1. Run No-Trade Guardian (16 Defense-in-Depth Rules)
+        intent_id = f"INTENT_{uuid.uuid4().hex[:12].upper()}"
+        critical_failures = []
+
+        # 1. Run No-Trade Guardian (17 Defense-in-Depth Rules)
         is_guarded, guard_reason = guardian.check_guard_rules(
             signal, market_data, macro_data, account_status, _PROCESSED_SIGNAL_IDS
         )
         
-        # 2. Run All 6 Analytical / Risk Agents
-        tech_decision = technical_agent.evaluate(signal, market_data)
-        fund_decision = fundamental_agent.evaluate(signal, macro_data)
-        risk_decision, risk_check_res = risk_agent.evaluate(signal, account_status, market_data)
-        regime_decision = regime_agent.evaluate(signal, market_data)
-        liq_decision = liquidity_agent.evaluate(signal, market_data)
-        
-        hist_stats = db.get_performance_stats()
-        quality_decision = quality_agent.evaluate(signal, hist_stats, market_data)
+        # 2. Run All 6 Analytical / Risk Agents (Fail-safe per agent with Health Contracts)
+        try:
+            tech_decision = technical_agent.evaluate(signal, market_data)
+            if tech_decision.health_status != AgentHealthStatus.HEALTHY and tech_decision.decision != "PASS":
+                critical_failures.append(f"Chart Sniper: {tech_decision.health_status}")
+        except Exception as e:
+            critical_failures.append(f"Chart Sniper: ERROR ({e})")
+            tech_decision = AgentDecisionOutput(
+                agent_name="Technical Analyst Agent",
+                direction="NEUTRAL",
+                score=0.0,
+                decision="FAIL",
+                reasoning_summary=f"Technical Agent Offline / Error: {e}",
+                operational_criticality=AgentOperationalCriticality.DECISION_CRITICAL,
+                health_status=AgentHealthStatus.ERROR,
+                error=str(e),
+                metrics={"error": str(e), "unavailable": True}
+            )
+
+        try:
+            fund_decision = fundamental_agent.evaluate(signal, macro_data)
+            if fund_decision.health_status != AgentHealthStatus.HEALTHY:
+                critical_failures.append(f"News Radar: {fund_decision.health_status}")
+        except Exception as e:
+            critical_failures.append(f"News Radar: ERROR ({e})")
+            fund_decision = AgentDecisionOutput(
+                agent_name="Fundamental & Sentiment Agent",
+                direction="NEUTRAL",
+                score=0.0,
+                decision="VETO",
+                reasoning_summary=f"Fundamental Agent Offline / Error: {e}",
+                operational_criticality=AgentOperationalCriticality.SAFETY_CRITICAL,
+                health_status=AgentHealthStatus.ERROR,
+                error=str(e),
+                metrics={"error": str(e), "unavailable": True}
+            )
+
+        try:
+            risk_decision, risk_check_res = risk_agent.evaluate(signal, account_status, market_data)
+            if risk_decision.health_status != AgentHealthStatus.HEALTHY:
+                critical_failures.append(f"Shield Guard: {risk_decision.health_status}")
+        except Exception as e:
+            critical_failures.append(f"Shield Guard: ERROR ({e})")
+            risk_decision = AgentDecisionOutput(
+                agent_name="Risk Management Agent",
+                direction="NEUTRAL",
+                score=0.0,
+                decision="VETO",
+                reasoning_summary=f"Risk Agent Failed to Evaluate: {e}",
+                operational_criticality=AgentOperationalCriticality.SAFETY_CRITICAL,
+                health_status=AgentHealthStatus.ERROR,
+                error=str(e),
+                metrics={"error": str(e), "unavailable": True}
+            )
+            risk_check_res = RiskCheckResult(
+                passed=False,
+                account_balance=float(account_status.get("balance", 0.0)),
+                account_equity=float(account_status.get("equity", 0.0)),
+                risk_amount=0.0,
+                calculated_volume=0.01,
+                sl_distance=0.0,
+                tp_distance=0.0,
+                rr_ratio=0.0,
+                spread=float(market_data.get("spread", 0.35)),
+                veto_reason=f"CRITICAL: Risk Agent error - fail closed: {e}"
+            )
+
+        try:
+            regime_decision = regime_agent.evaluate(signal, market_data)
+            if regime_decision.health_status != AgentHealthStatus.HEALTHY and regime_decision.decision != "PASS":
+                critical_failures.append(f"Navigator: {regime_decision.health_status}")
+        except Exception as e:
+            critical_failures.append(f"Navigator: ERROR ({e})")
+            regime_decision = AgentDecisionOutput(
+                agent_name="Market Regime Agent",
+                direction="NEUTRAL",
+                score=0.0,
+                decision="FAIL",
+                reasoning_summary=f"Regime Agent Offline / Error: {e}",
+                operational_criticality=AgentOperationalCriticality.DECISION_CRITICAL,
+                health_status=AgentHealthStatus.ERROR,
+                error=str(e),
+                metrics={"error": str(e), "unavailable": True}
+            )
+
+        try:
+            liq_decision = liquidity_agent.evaluate(signal, market_data)
+            if liq_decision.health_status != AgentHealthStatus.HEALTHY and liq_decision.decision != "PASS":
+                critical_failures.append(f"SMC Hunter: {liq_decision.health_status}")
+        except Exception as e:
+            critical_failures.append(f"SMC Hunter: ERROR ({e})")
+            liq_decision = AgentDecisionOutput(
+                agent_name="Liquidity & SMC Agent",
+                direction="NEUTRAL",
+                score=0.0,
+                decision="FAIL",
+                reasoning_summary=f"Liquidity & SMC Agent Offline / Error: {e}",
+                operational_criticality=AgentOperationalCriticality.DECISION_CRITICAL,
+                health_status=AgentHealthStatus.ERROR,
+                error=str(e),
+                metrics={"error": str(e), "unavailable": True}
+            )
+
+        try:
+            hist_stats = db.get_performance_stats()
+            quality_decision = quality_agent.evaluate(signal, hist_stats, market_data)
+        except Exception as e:
+            critical_failures.append(f"Quant Brain: ERROR ({e})")
+            quality_decision = AgentDecisionOutput(
+                agent_name="Trade Quality Agent",
+                direction="NEUTRAL",
+                score=0.0,
+                decision="FAIL",
+                reasoning_summary=f"Quality Agent Offline / Error: {e}",
+                operational_criticality=AgentOperationalCriticality.DECISION_CRITICAL,
+                health_status=AgentHealthStatus.ERROR,
+                error=str(e),
+                metrics={"error": str(e), "unavailable": True}
+            )
 
         all_agent_decisions = [
             tech_decision,
@@ -70,17 +193,47 @@ class MultiAgentConsensusEngine:
             guardian_reason=guard_reason
         )
 
+        # Determine explicit system decision state
+        if status == "APPROVED":
+            system_state = SystemDecisionState.APPROVED
+        elif "DATA_UNAVAILABLE" in status:
+            system_state = SystemDecisionState.DATA_UNAVAILABLE
+        elif "DEGRADED" in status:
+            system_state = SystemDecisionState.DEGRADED_NO_TRADE
+        elif "BLOCKED" in status:
+            system_state = SystemDecisionState.BLOCKED
+        else:
+            system_state = SystemDecisionState.NO_TRADE
+
+        # 4. Generate Bilingual Explainability Narrative
+        explain_data = explainability_engine.generate_explanation(
+            signal=signal,
+            status=status,
+            score=score,
+            agent_decisions=all_agent_decisions,
+            risk_check=risk_check_res,
+            is_guarded=is_guarded,
+            guard_reason=guard_reason,
+            macro_data=macro_data
+        )
+
+        combined_explanation = f"{explanation}\n\n[URDU EXPLANATION / اردو خلاصہ]:\n{explain_data['summary_ur']}"
+
         if save_to_db:
             _PROCESSED_SIGNAL_IDS.add(signal.id)
 
-            # 4. Generate Immutable Decision DNA Snapshot
+            # 5. Generate Immutable Decision DNA Snapshot
             decision_dna_snapshot = {
                 "signal_id": signal.id,
+                "execution_intent_id": intent_id,
+                "config_version": trading_config.version,
+                "system_state": system_state,
                 "created_at": now_iso,
                 "signal": signal.dict(),
                 "status": status,
                 "decision_score": score,
-                "explanation": explanation,
+                "explanation": combined_explanation,
+                "explainability": explain_data,
                 "market_snapshot": market_data,
                 "macro_snapshot": macro_data,
                 "account_snapshot": account_status,
@@ -89,10 +242,11 @@ class MultiAgentConsensusEngine:
                 "guardian": {
                     "blocked": is_guarded,
                     "reason": guard_reason
-                }
+                },
+                "critical_agent_failures": critical_failures
             }
 
-            # 5. Persist to SQLite Database
+            # 6. Persist to SQLite Database
             db.save_signal({
                 "id": signal.id,
                 "timestamp": signal.timestamp,
@@ -106,7 +260,8 @@ class MultiAgentConsensusEngine:
                 "timeframe": signal.timeframe,
                 "status": status,
                 "decision_score": score,
-                "rejection_reason": guard_reason if is_guarded else (risk_check_res.veto_reason if not risk_check_res.passed else None)
+                "rejection_reason": guard_reason if is_guarded else (risk_check_res.veto_reason if not risk_check_res.passed else None),
+                "execution_intent_id": intent_id
             })
 
             db.save_agent_decisions(signal.id, [d.dict() for d in all_agent_decisions])
@@ -121,7 +276,8 @@ class MultiAgentConsensusEngine:
                 "rr_ratio": risk_check_res.rr_ratio,
                 "spread": risk_check_res.spread,
                 "passed": risk_check_res.passed,
-                "veto_reason": risk_check_res.veto_reason
+                "veto_reason": risk_check_res.veto_reason,
+                "initial_r": risk_check_res.initial_r
             })
 
             db.save_decision_dna(signal.id, decision_dna_snapshot)
@@ -129,7 +285,7 @@ class MultiAgentConsensusEngine:
             db.log_audit(
                 event_type="SIGNAL_PROCESSED",
                 actor="MultiAgentConsensusEngine",
-                details=f"Signal {signal.id} ({signal.symbol} {signal.action} @ {signal.entry_price}) -> {status} (Score: {score}%)"
+                details=f"Signal {signal.id} ({signal.symbol} {signal.action} @ {signal.entry_price}) -> {status} (Score: {score}%) [State: {system_state}]"
             )
 
         return ConsensusResult(
@@ -140,8 +296,13 @@ class MultiAgentConsensusEngine:
             decision_score=score,
             agent_decisions=all_agent_decisions,
             risk_check=risk_check_res,
-            full_analysis=explanation,
-            decision_dna_id=signal.id
+            full_analysis=combined_explanation,
+            decision_dna_id=signal.id,
+            execution_intent_id=intent_id,
+            system_state=system_state,
+            critical_agent_failures=critical_failures
         )
 
 consensus_engine = MultiAgentConsensusEngine()
+
+

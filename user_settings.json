@@ -1,15 +1,16 @@
 {
+  "active_symbol": "XAUUSD",
   "active_pairs": [
     "XAUUSD"
   ],
+  "active_lot_size": 0.01,
+  "fixed_lot_size": 0.01,
   "auto_trade_enabled": true,
   "scanner_active": true,
   "max_risk_percent": 1.0,
-  "min_confidence_threshold": 65.0,
-  "fixed_lot_size": 0.01,
-  "environment_mode": "GOLD_SNIPER",
-  "active_symbol": "XAUUSD",
-  "active_lot_size": 0.01,
+  "min_confidence_threshold": 75.0,
+  "min_consensus_agents": 4,
   "trading_mode": "LIVE",
-  "account_id": "5908018"
+  "account_id": "5908018",
+  "environment_mode": "MULTI_ASSET_QUANT"
 }

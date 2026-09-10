@@ -1,0 +1,141 @@
+from typing import Dict, Any, List, Optional
+from datetime import datetime, timezone
+
+from app.engine.smart_money_engine import smart_money_engine
+from app.engine.multi_timeframe_engine import multi_timeframe_engine
+from app.engine.technical_indicators import technical_indicators
+from app.services.session_engine import session_engine
+from app.services.setup_classifier import setup_classifier
+from app.services.trade_quality_scorer import trade_quality_scorer
+
+class PreTradeIntelligenceEngine:
+    """
+    Unified Real-Time Pre-Trade Intelligence & Chart Scanner Engine.
+    Combines MTF sync, Smart Money Analysis, Session timing, Indicator confirmation,
+    Setup classification, and Trade Quality scoring into a single unified telemetry scan.
+    """
+
+    def scan_market(
+        self,
+        symbol: str,
+        live_tick: Dict[str, Any],
+        timeframe_candles: Dict[str, List[Dict[str, Any]]],
+        news_events: Optional[List[Dict[str, Any]]] = None
+    ) -> Dict[str, Any]:
+        """
+        Executes complete pre-trade analysis for a symbol.
+        Returns exhaustive diagnostics, setup classification, score, and trade decision.
+        """
+        timestamp = datetime.now(timezone.utc).isoformat()
+
+        # 1. Broker Live Data Validation (Fail closed if missing)
+        bid = float(live_tick.get("bid", 0.0))
+        ask = float(live_tick.get("ask", 0.0))
+        spread_pips = float(live_tick.get("spread", 0.0))
+
+        if bid <= 0.0 or ask <= 0.0:
+            return {
+                "symbol": symbol,
+                "timestamp": timestamp,
+                "status": "FAIL_CLOSED_NO_MARKET_DATA",
+                "trade_allowed": False,
+                "reason": "Invalid or missing live broker price feed."
+            }
+
+        # 2. Multi-Timeframe Analysis
+        mtf_result = multi_timeframe_engine.evaluate_multi_timeframe(timeframe_candles)
+
+        # 3. M15 / Execution Structure Analysis
+        m15_candles = timeframe_candles.get("M15") or timeframe_candles.get("15m", [])
+        if not m15_candles and timeframe_candles:
+            # Fallback to first available timeframe
+            m15_candles = next(iter(timeframe_candles.values()))
+
+        smc_result = smart_money_engine.analyze_market_structure(m15_candles, timeframe="M15")
+
+        # 4. Session Engine
+        session_info = session_engine.get_current_session_info()
+        session_levels = session_engine.calculate_session_levels(m15_candles)
+
+        # 5. Technical Indicators
+        closes = [float(c["close"]) for c in m15_candles] if m15_candles else [bid]
+        rsi = technical_indicators.calculate_rsi(closes, 14)
+        atr = technical_indicators.calculate_atr(m15_candles, 14) if m15_candles else 1.5
+        adx_info = technical_indicators.calculate_adx(m15_candles, 14) if m15_candles else {"adx": 20.0}
+        indicators = {
+            "rsi": rsi,
+            "atr": atr,
+            "adx": adx_info
+        }
+
+        # 6. Setup Classification
+        current_price = (bid + ask) / 2.0
+        setup = setup_classifier.classify_setup(
+            mtf_data=mtf_result,
+            smc_data=smc_result,
+            current_price=current_price,
+            session_info=session_info
+        )
+
+        # 7. Trade Quality Scoring (0-100)
+        quality_score = trade_quality_scorer.score_trade_setup(
+            setup=setup,
+            mtf_data=mtf_result,
+            smc_data=smc_result,
+            indicators=indicators,
+            live_spread_pips=spread_pips,
+            target_rr_ratio=2.0
+        )
+
+        # 8. High-Impact News Check
+        active_news_blackout = False
+        news_reason = None
+        if news_events:
+            for event in news_events:
+                if event.get("impact") in ("HIGH", "CRITICAL") and event.get("is_blackout", False):
+                    active_news_blackout = True
+                    news_reason = f"High-impact news blackout active: {event.get('title')}"
+                    break
+
+        # 9. Comprehensive Trade Verdict
+        trade_allowed = False
+        decision_reason = ""
+
+        if active_news_blackout:
+            trade_allowed = False
+            decision_reason = news_reason or "High-impact news blackout active."
+        elif not setup.get("is_actionable", False):
+            trade_allowed = False
+            decision_reason = f"No actionable setup model detected ({setup.get('setup_type')})."
+        elif not quality_score.get("passed", False):
+            trade_allowed = False
+            decision_reason = f"Quality score {quality_score.get('score')}/100 is below minimum threshold {quality_score.get('threshold')}."
+        elif spread_pips > 5.0 and "XAU" in symbol:
+            trade_allowed = False
+            decision_reason = f"Gold spread of {spread_pips:.1f} pips exceeds max tolerance (5.0 pips)."
+        elif spread_pips > 2.0 and "EUR" in symbol:
+            trade_allowed = False
+            decision_reason = f"EURUSD spread of {spread_pips:.1f} pips exceeds max tolerance (2.0 pips)."
+        else:
+            trade_allowed = True
+            decision_reason = f"High-probability {setup.get('direction')} setup verified with Quality Score {quality_score.get('score')}/100."
+
+        return {
+            "symbol": symbol,
+            "timestamp": timestamp,
+            "current_price": round(current_price, 3),
+            "bid": round(bid, 3),
+            "ask": round(ask, 3),
+            "spread_pips": round(spread_pips, 2),
+            "trade_allowed": trade_allowed,
+            "decision_reason": decision_reason,
+            "setup": setup,
+            "quality_score": quality_score,
+            "session": {**session_info, **session_levels},
+            "smc": smc_result,
+            "mtf": mtf_result,
+            "indicators": indicators,
+            "news_blackout": active_news_blackout
+        }
+
+pretrade_intelligence_engine = PreTradeIntelligenceEngine()

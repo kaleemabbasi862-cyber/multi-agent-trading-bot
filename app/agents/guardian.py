@@ -16,9 +16,13 @@ class NoTradeGuardian:
         processed_signal_ids: set
     ) -> Tuple[bool, Optional[str]]:
         """
-        Executes 16 defense-in-depth safety checks.
+        Executes defense-in-depth safety checks.
         Returns (is_blocked, block_reason).
         """
+        # Rule 0: Emergency Kill Switch (Highest Priority)
+        if getattr(settings, "EMERGENCY_KILL_SWITCH_ACTIVE", False):
+            return True, "Rule 0 Violation: EMERGENCY KILL SWITCH ENGAGED. All trading halted."
+
         p = signal.entry_price
         sl = signal.stop_loss
         tp = signal.take_profit
@@ -59,12 +63,24 @@ class NoTradeGuardian:
         if spread > max_spread:
             return True, f"Rule 5 Violation: Abnormal spread surge (${spread:.2f}) exceeds maximum allowed threshold (${max_spread:.2f}) to prevent spread-bleed."
 
-        # Rule 6: Upcoming High-Impact News Lockout (< 30m)
-        if minutes_to_news <= settings.NEWS_PRE_BLOCK_MINUTES:
-            return True, f"Rule 6 Violation: Upcoming high-impact economic news in {minutes_to_news}m (Lockout active)."
+        # Rule 6: Upcoming High-Impact News Check
+        upcoming_event = str(macro_data.get("next_event_name", "")).strip()
+        is_fomc = "FOMC" in upcoming_event.upper() or "FED" in upcoming_event.upper() or "RATE" in upcoming_event.upper()
+
+        if is_fomc:
+            # اگر FOMC یا اہم ریٹ ایونٹ ہو: ٹھیک پریس ریلیز کے 2 منٹ پہلے سے 2 منٹ بعد تک صرف بلاک رکھیں (4-min hard freeze)
+            if -2 <= minutes_to_news <= 2:
+                return True, f"Rule 6 Violation: Extreme event release window for '{upcoming_event}' (4-min hard freeze active, {minutes_to_news}m to release)."
+            else:
+                # باقی وقت اسپریڈ چیک کر کے آگے جانے دیں ($1.20 تک اجازت)
+                if spread > 1.20:
+                    return True, f"Rule 6 Violation: FOMC Spread too wide (${spread:.2f} > $1.20 max allowed)."
+        else:
+            if minutes_to_news <= settings.NEWS_PRE_BLOCK_MINUTES:
+                return True, f"Rule 6 Violation: Upcoming high-impact economic news in {minutes_to_news}m (Lockout active)."
 
         # Rule 7: Post-News Volatility Cooldown (< 15m)
-        if minutes_since_news <= settings.NEWS_POST_COOLDOWN_MINUTES:
+        if not is_fomc and minutes_since_news <= settings.NEWS_POST_COOLDOWN_MINUTES:
             return True, f"Rule 7 Violation: Post-news volatility cooldown active ({minutes_since_news}m since release)."
 
         # Rule 8: Mandatory Stop Loss
@@ -88,14 +104,26 @@ class NoTradeGuardian:
             return True, f"Rule 10 Violation: Risk-to-Reward (1:{rr:.2f}) is below mandatory 1:{settings.MIN_RR_RATIO:.1f} threshold."
 
         # Rule 11: Max Open Positions Hard Cap
-        if len(open_pos) >= settings.MAX_OPEN_POSITIONS:
+        open_pos = account_status.get("open_positions", []) if account_status else []
+        if isinstance(open_pos, int):
+            open_pos_count = open_pos
+            open_pos_list = []
+        elif isinstance(open_pos, list):
+            open_pos_count = len(open_pos)
+            open_pos_list = open_pos
+        else:
+            open_pos_count = 0
+            open_pos_list = []
+
+        if open_pos_count >= settings.MAX_OPEN_POSITIONS:
             return True, f"Rule 11 Violation: Max concurrent positions ({settings.MAX_OPEN_POSITIONS}) currently filled."
 
         # Rule 12: Opposing / Hedging Conflict
-        for pos in open_pos:
-            pos_sym = pos.get("symbol", "").upper()
+        for pos in open_pos_list:
+            pos_sym = pos.get("symbol", "").upper() if isinstance(pos, dict) else ""
             if "XAU" in pos_sym or "GOLD" in pos_sym:
                 return True, "Rule 12 Violation: Active position already exists on Gold. Stacking or hedging prohibited."
+
 
         # Rule 13: Daily Drawdown Circuit Breaker
         if daily_loss <= -settings.DAILY_LOSS_LIMIT:

@@ -1,14 +1,45 @@
+# Environment and Credentials
 .env
+.env.*
+*.enc
+secure_vault.enc
+*credential*
+*token*
+*secret*
+!app/services/credential_store.py
+!app/services/symbol_resolver.py
+
+# Python Bytecode & Environments
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
+*$py.class
 .venv/
 env/
 venv/
-cloudflared.exe
-*.log
+ENV/
+
+# Build and Distribution Artifacts
+build/
+dist/
+*.spec
+*.exe
+
+# Databases & Runtime State
 *.db
 *.db-shm
 *.db-wal
+*.sqlite
+*.sqlite3
+
+# Logs and Scratch Files
+*.log
+desktop_app_runtime.log
+pythonw_test.txt
+scratch/
+
+# Operating System & IDE
 .DS_Store
+Thumbs.db
+.idea/
+.vscode/
 

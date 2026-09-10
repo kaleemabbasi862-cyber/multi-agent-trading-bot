@@ -30,22 +30,18 @@ async def get_live_consensus():
     """
     cur_sym = settings_manager.get_active_symbol()
     cur_lot = settings_manager.get_active_lot_size()
-    market_data = get_market_snapshot(cur_sym, force_refresh=False)
+    market_data = get_market_snapshot(cur_sym, force_refresh=True)
     macro_data = economic_calendar.get_macro_status()
     acc_status = cbot_bridge.get_cbot_status()
     
-    current_price = market_data.get("price", 4400.0)
+    from app.services.volatility_engine import volatility_engine
+    current_price = float(market_data.get("price") or market_data.get("bid") or 0.0)
     trend = market_data.get("indicators", {}).get("trend", market_data.get("trend_1h", "BULLISH"))
     act = "BUY" if trend == "BULLISH" else "SELL"
 
-    if "XAU" in cur_sym or "GOLD" in cur_sym:
-        sl_dist, tp_dist = 6.0, 12.0
-    elif "XAG" in cur_sym or "SILVER" in cur_sym:
-        sl_dist, tp_dist = 0.35, 0.75
-    elif "JPY" in cur_sym:
-        sl_dist, tp_dist = 0.40, 0.85
-    else:
-        sl_dist, tp_dist = 0.0035, 0.0075
+    vol_state = volatility_engine.get_symbol_volatility(cur_sym)
+    sl_dist = vol_state.get("recommended_sl_distance", 6.0)
+    tp_dist = round(sl_dist * 2.0, 5)
 
     sl = round(current_price - sl_dist, 5) if act == "BUY" else round(current_price + sl_dist, 5)
     tp = round(current_price + tp_dist, 5) if act == "BUY" else round(current_price - tp_dist, 5)
@@ -62,16 +58,47 @@ async def get_live_consensus():
         strategy_name=f"{cur_sym}_MultiAgent_Consensus_v2"
     )
     
+    eval_acc = dict(acc_status) if isinstance(acc_status, dict) else {}
+    eval_acc["open_positions"] = []  # Evaluate underlying market setup conviction for continuous dashboard telemetry
+    
     consensus_res = consensus_engine.process_signal(
         signal=sim_signal,
         market_data=market_data,
         macro_data=macro_data,
-        account_status=acc_status,
+        account_status=eval_acc,
         save_to_db=False
     )
     
     dec_map = {d.agent_name: d for d in consensus_res.agent_decisions}
-    
+
+    def _agent_payload(agent_id: str, display_name: str, key_name: str, weight_str: str, role_str: str) -> Dict[str, Any]:
+        dec = dec_map.get(key_name)
+        if dec is not None:
+            is_active = (dec.decision != "FAIL" and not dec.metrics.get("unavailable", False))
+            return {
+                "id": agent_id,
+                "name": display_name,
+                "weight": weight_str,
+                "role": role_str,
+                "score": dec.score,
+                "status": "Active" if is_active else "UNAVAILABLE",
+                "decision": dec.decision,
+                "reasoning": dec.reasoning_summary,
+                "metrics": dec.metrics
+            }
+        else:
+            return {
+                "id": agent_id,
+                "name": display_name,
+                "weight": weight_str,
+                "role": role_str,
+                "score": 0.0,
+                "status": "UNAVAILABLE",
+                "decision": "UNAVAILABLE",
+                "reasoning": f"{key_name} did not execute in this evaluation cycle.",
+                "metrics": {"unavailable": True}
+            }
+
     return {
         "status": "success",
         "market": market_data,
@@ -79,71 +106,17 @@ async def get_live_consensus():
         "account": acc_status,
         "consensus": consensus_res.dict() if hasattr(consensus_res, "dict") else consensus_res,
         "agents": [
-            {
-                "id": "agent_1",
-                "name": "Technical Agent",
-                "weight": "20%",
-                "role": "15m & 1H EMAs, RSI 14, S/R Levels",
-                "score": dec_map.get("Technical Analyst Agent").score if "Technical Analyst Agent" in dec_map else 85,
-                "status": "Active",
-                "decision": dec_map.get("Technical Analyst Agent").decision if "Technical Analyst Agent" in dec_map else "PASS",
-                "reasoning": dec_map.get("Technical Analyst Agent").reasoning_summary if "Technical Analyst Agent" in dec_map else ""
-            },
-            {
-                "id": "agent_2",
-                "name": "Fundamental Agent",
-                "weight": "15%",
-                "role": "CPI, NFP, FOMC High-Impact News Lockout",
-                "score": dec_map.get("Fundamental & Sentiment Agent").score if "Fundamental & Sentiment Agent" in dec_map else 90,
-                "status": "Active",
-                "decision": dec_map.get("Fundamental & Sentiment Agent").decision if "Fundamental & Sentiment Agent" in dec_map else "PASS",
-                "reasoning": dec_map.get("Fundamental & Sentiment Agent").reasoning_summary if "Fundamental & Sentiment Agent" in dec_map else ""
-            },
-            {
-                "id": "agent_3",
-                "name": "Risk Veto Agent",
-                "weight": "20% (Hard Veto)",
-                "role": "0.01 Lots Only, Min 1:2 R:R, -$5.00 Daily Circuit Breaker",
-                "score": dec_map.get("Risk Management Agent").score if "Risk Management Agent" in dec_map else 100,
-                "status": "Active (VETO POWER)",
-                "decision": dec_map.get("Risk Management Agent").decision if "Risk Management Agent" in dec_map else "PASS",
-                "reasoning": dec_map.get("Risk Management Agent").reasoning_summary if "Risk Management Agent" in dec_map else ""
-            },
-            {
-                "id": "agent_4",
-                "name": "Market Regime Agent",
-                "weight": "15%",
-                "role": "Trend vs Range Chop Identifier",
-                "score": dec_map.get("Market Regime Agent").score if "Market Regime Agent" in dec_map else 80,
-                "status": "Active",
-                "decision": dec_map.get("Market Regime Agent").decision if "Market Regime Agent" in dec_map else "PASS",
-                "reasoning": dec_map.get("Market Regime Agent").reasoning_summary if "Market Regime Agent" in dec_map else ""
-            },
-            {
-                "id": "agent_5",
-                "name": "Liquidity & SMC Agent",
-                "weight": "15%",
-                "role": "Order Blocks, Liquidity Sweeps, Fair Value Gaps (FVG)",
-                "score": dec_map.get("Liquidity & SMC Agent").score if "Liquidity & SMC Agent" in dec_map else 85,
-                "status": "Active",
-                "decision": dec_map.get("Liquidity & SMC Agent").decision if "Liquidity & SMC Agent" in dec_map else "PASS",
-                "reasoning": dec_map.get("Liquidity & SMC Agent").reasoning_summary if "Liquidity & SMC Agent" in dec_map else ""
-            },
-            {
-                "id": "agent_6",
-                "name": "Trade Quality Agent",
-                "weight": "15%",
-                "role": "Historical Pattern Expectancy & Edge Scoring",
-                "score": dec_map.get("Trade Quality Agent").score if "Trade Quality Agent" in dec_map else 85,
-                "status": "Active",
-                "decision": dec_map.get("Trade Quality Agent").decision if "Trade Quality Agent" in dec_map else "PASS",
-                "reasoning": dec_map.get("Trade Quality Agent").reasoning_summary if "Trade Quality Agent" in dec_map else ""
-            },
+            _agent_payload("agent_1", "Chart Sniper (Technical)", "Technical Analyst Agent", "20%", "15m & 1H EMAs, RSI 14, S/R Levels"),
+            _agent_payload("agent_2", "News Radar (Fundamental)", "Fundamental & Sentiment Agent", "15%", "CPI, NFP, FOMC High-Impact News Lockout"),
+            _agent_payload("agent_3", "Shield Guard (Risk Veto)", "Risk Management Agent", "20% (Hard Veto)", "0.01 Lots Only, Min 1:2 R:R, -$5.00 Daily Circuit Breaker"),
+            _agent_payload("agent_4", "Navigator (Regime)", "Market Regime Agent", "15%", "Trend vs Range Chop Identifier"),
+            _agent_payload("agent_5", "SMC Hunter (Liquidity)", "Liquidity & SMC Agent", "15%", "Order Blocks, Liquidity Sweeps, Fair Value Gaps (FVG)"),
+            _agent_payload("agent_6", "Quant Brain (Trade Quality)", "Trade Quality Agent", "15%", "Historical Pattern Expectancy & Edge Scoring"),
             {
                 "id": "agent_7",
-                "name": "Head Desk Manager",
+                "name": "The General (Head Desk)",
                 "weight": "Executive Arbiter",
-                "role": "Final Consensus Gatekeeper (>=85% Threshold + Zero Veto)",
+                "role": "Final Consensus Gatekeeper (>= Threshold + Zero Veto)",
                 "score": consensus_res.decision_score,
                 "status": consensus_res.decision_status,
                 "decision": consensus_res.decision_status,
@@ -153,11 +126,31 @@ async def get_live_consensus():
     }
 
 @router.get("/signals/dna/{signal_id}")
+@router.get("/signals/{signal_id}/dna")
 async def get_signal_decision_dna(signal_id: str):
     dna = db.get_decision_dna(signal_id)
     if not dna:
         raise HTTPException(status_code=404, detail=f"Decision DNA not found for signal '{signal_id}'")
-    return dna
+    return {
+        "status": "SUCCESS",
+        "signal_id": signal_id,
+        "dna": dna
+    }
+
+@router.get("/signals/{signal_id}/explain")
+async def get_signal_explanation(signal_id: str):
+    dna = db.get_decision_dna(signal_id)
+    if not dna:
+        raise HTTPException(status_code=404, detail=f"Decision DNA explanation not found for signal '{signal_id}'")
+    return {
+        "status": "SUCCESS",
+        "signal_id": signal_id,
+        "explainability": dna.get("explainability", {}),
+        "explanation": dna.get("explanation", ""),
+        "decision_score": dna.get("decision_score", 0.0),
+        "status": dna.get("status", "UNKNOWN")
+    }
+
 
 @router.post("/signals/simulate")
 async def simulate_signal(signal: SignalPayload):

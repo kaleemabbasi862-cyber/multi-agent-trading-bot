@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en" class="dark" data-theme="comfort-dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,6 +7,19 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <title>TradeTalk AI - Autonomous 7-Agent Quantitative Trading System (XAUUSD)</title>
+    <script>
+        (function() {
+            try {
+                var theme = localStorage.getItem('tradetalk_theme') || 'comfort-dark';
+                document.documentElement.setAttribute('data-theme', theme);
+                if (theme === 'light') {
+                    document.documentElement.classList.remove('dark');
+                } else {
+                    document.documentElement.classList.add('dark');
+                }
+            } catch(e) {}
+        })();
+    </script>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com?v=7agents_v2_final"></script>
     <script>
@@ -16,10 +29,23 @@
                 extend: {
                     colors: {
                         dark: {
-                            bg: '#090d16',
-                            card: '#111827',
-                            border: '#1f293d',
-                            hover: '#1a2438'
+                            bg: 'var(--bg-app)',
+                            card: 'var(--bg-card)',
+                            border: 'var(--border)',
+                            hover: 'var(--bg-card-elevated)',
+                            elevated: 'var(--bg-card-elevated)',
+                            control: 'var(--bg-control)'
+                        },
+                        slate: {
+                            950: 'var(--bg-app)',
+                            900: 'var(--bg-card)',
+                            850: 'var(--bg-card-elevated)',
+                            800: 'var(--border)',
+                            700: 'var(--border)',
+                            400: 'var(--text-secondary)',
+                            500: 'var(--text-muted)',
+                            200: 'var(--text-primary)',
+                            100: 'var(--text-primary)'
                         }
                     }
                 }
@@ -32,30 +58,126 @@
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js?v=7agents_v2_final"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Noto+Nastaliq+Urdu:wght@400;700&display=swap');
-        body { font-family: 'Inter', sans-serif; }
+        
+        /* ==========================================================================
+           CENTRALIZED DESIGN TOKENS & 3-THEME COLOR SYSTEM
+           ========================================================================== */
+        :root, [data-theme="comfort-dark"] {
+            --bg-app: #151A23;
+            --bg-secondary: #1A202C;
+            --bg-nav: #1D2432;
+            --bg-card: #202837;
+            --bg-card-elevated: #252E3E;
+            --bg-control: #293344;
+            --bg-input: #1C2330;
+            --border-subtle: #2D3748;
+            --border: #364154;
+            --border-focus: #4A5568;
+            --text-primary: #E6EAF0;
+            --text-secondary: #AAB4C3;
+            --text-muted: #7F8A9B;
+            --accent-primary: #6C7FF2;
+            --accent-secondary: #7296D8;
+            --positive: #45B98C;
+            --positive-bg: rgba(69, 185, 140, 0.15);
+            --negative: #E46F78;
+            --negative-bg: rgba(228, 111, 120, 0.15);
+            --warning: #D7A94B;
+            --warning-bg: rgba(215, 169, 75, 0.15);
+            --info: #65A6D9;
+            --info-bg: rgba(101, 166, 217, 0.15);
+        }
+
+        [data-theme="original-dark"] {
+            --bg-app: #090d16;
+            --bg-secondary: #0f172a;
+            --bg-nav: #0d1321;
+            --bg-card: #111827;
+            --bg-card-elevated: #1f293d;
+            --bg-control: #1a2438;
+            --bg-input: #0b101b;
+            --border-subtle: #1e293b;
+            --border: #1f293d;
+            --border-focus: #334155;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --accent-primary: #6366f1;
+            --accent-secondary: #818cf8;
+            --positive: #10b981;
+            --positive-bg: rgba(16, 185, 129, 0.15);
+            --negative: #f43f5e;
+            --negative-bg: rgba(244, 63, 94, 0.15);
+            --warning: #f59e0b;
+            --warning-bg: rgba(245, 158, 11, 0.15);
+            --info: #38bdf8;
+            --info-bg: rgba(56, 189, 248, 0.15);
+        }
+
+        [data-theme="light"] {
+            --bg-app: #F4F6F9;
+            --bg-secondary: #EAEEF3;
+            --bg-nav: #FFFFFF;
+            --bg-card: #FFFFFF;
+            --bg-card-elevated: #F8FAFC;
+            --bg-control: #EDF2F7;
+            --bg-input: #FFFFFF;
+            --border-subtle: #E2E8F0;
+            --border: #CBD5E1;
+            --border-focus: #94A3B8;
+            --text-primary: #1E293B;
+            --text-secondary: #475569;
+            --text-muted: #64748B;
+            --accent-primary: #4F46E5;
+            --accent-secondary: #6366F1;
+            --positive: #059669;
+            --positive-bg: rgba(5, 150, 105, 0.12);
+            --negative: #DC2626;
+            --negative-bg: rgba(220, 38, 38, 0.12);
+            --warning: #D97706;
+            --warning-bg: rgba(217, 119, 6, 0.12);
+            --info: #0284C7;
+            --info-bg: rgba(2, 132, 199, 0.12);
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-app);
+            color: var(--text-primary);
+            transition: background-color 0.2s ease, color 0.2s ease;
+            overflow-x: hidden;
+        }
+
+        .bg-dark-bg { background-color: var(--bg-app) !important; }
+        .bg-dark-card { background-color: var(--bg-card) !important; }
+        .border-dark-border { border-color: var(--border) !important; }
+        .bg-dark-elevated { background-color: var(--bg-card-elevated) !important; }
+        .bg-dark-control { background-color: var(--bg-control) !important; }
+
         .urdu-text { font-family: 'Noto Nastaliq Urdu', 'Inter', sans-serif; line-height: 2.0; }
         .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: #0f172a; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #475569; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: var(--bg-secondary); }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--border-focus); }
+        
         @keyframes pulseGlow {
             0%, 100% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.5; transform: scale(1.08); }
+            50% { opacity: 0.6; transform: scale(1.05); }
         }
-        .pulse-live { animation: pulseGlow 2s infinite ease-in-out; }
+        .pulse-live { animation: pulseGlow 2.5s infinite ease-in-out; }
         .flash-green { animation: flashGreen 1s ease-out; }
         .flash-red { animation: flashRed 1s ease-out; }
         @keyframes flashGreen {
-            0% { background-color: rgba(16, 185, 129, 0.4); border-color: rgba(16, 185, 129, 0.8); }
+            0% { background-color: var(--positive-bg); border-color: var(--positive); }
             100% { background-color: transparent; }
         }
         @keyframes flashRed {
-            0% { background-color: rgba(244, 63, 94, 0.4); border-color: rgba(244, 63, 94, 0.8); }
+            0% { background-color: var(--negative-bg); border-color: var(--negative); }
             100% { background-color: transparent; }
         }
     </style>
 </head>
-<body class="bg-dark-bg text-slate-100 min-h-screen flex flex-col antialiased selection:bg-indigo-500 selection:text-white"
+<body class="bg-dark-bg min-h-screen flex flex-col antialiased selection:bg-indigo-500 selection:text-white"
       x-data="dashboardApp()" x-init="initDashboard()">
 
     <!-- 1. REAL-TIME LIVE MARKET TICKER RIBBON -->
@@ -126,6 +248,14 @@
 
         <!-- RIGHT CONTROLS -->
         <div class="flex items-center space-x-2.5">
+            <!-- EMERGENCY KILL SWITCH -->
+            <button @click="toggleKillSwitch()"
+                    class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border text-xs font-black transition shadow-lg"
+                    :class="killSwitchActive ? 'bg-rose-600 text-white border-rose-400 animate-pulse shadow-rose-600/50 ring-2 ring-rose-500' : 'bg-rose-950/40 border-rose-600/60 text-rose-300 hover:bg-rose-900/60'">
+                <i class="fa-solid fa-hand text-sm" :class="killSwitchActive ? 'animate-bounce' : ''"></i>
+                <span x-text="killSwitchActive ? 'HALTED: KILL SWITCH ON' : 'STOP ALL TRADING'"></span>
+            </button>
+
             <!-- STRATEGY LAB BUTTON -->
             <button @click="showBacktestModal = true" class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition shadow-sm bg-purple-600/15 border-purple-500/40 text-purple-300 hover:bg-purple-600/25">
                 <i class="fa-solid fa-flask"></i>
@@ -157,6 +287,17 @@
                 </button>
             </div>
 
+            <!-- EYE-COMFORT THEME SELECTOR DROPDOWN -->
+            <div class="flex items-center space-x-1.5 bg-dark-control/80 border border-dark-border px-2.5 py-1 rounded-xl text-xs font-bold shadow-sm backdrop-blur-md">
+                <i class="fa-solid fa-palette text-indigo-400 text-xs mr-0.5"></i>
+                <select :value="currentTheme" @change="setTheme($event.target.value)"
+                        class="bg-transparent text-slate-200 font-bold text-xs focus:outline-none cursor-pointer pr-1">
+                    <option value="comfort-dark" class="bg-slate-900 text-slate-200" :selected="currentTheme === 'comfort-dark'">🌙 Comfort Dark</option>
+                    <option value="light" class="bg-slate-900 text-slate-200" :selected="currentTheme === 'light'">☀️ Light</option>
+                    <option value="original-dark" class="bg-slate-900 text-slate-200" :selected="currentTheme === 'original-dark'">🌑 Pitch Black</option>
+                </select>
+            </div>
+
             <!-- AUTO TRADE TOGGLE -->
             <button @click="toggleAutoTrade()" class="flex items-center space-x-2 px-3 py-1.5 rounded-xl border text-xs font-bold transition shadow-sm"
                     :class="systemState.auto_trade_enabled ? 'bg-emerald-600/15 border-emerald-500/40 text-emerald-300' : 'bg-slate-900 border-slate-700 text-slate-400'">
@@ -177,6 +318,80 @@
             </button>
         </div>
     </nav>
+
+    <!-- 2.5 15-SECTION MODULAR NAVIGATION RIBBON -->
+    <div class="border-b border-dark-border bg-slate-950/80 backdrop-blur px-4 lg:px-8 py-2 overflow-x-auto custom-scrollbar sticky top-[41px] z-40">
+        <div class="flex items-center space-x-1.5 min-w-max text-xs">
+            <button @click="activeTab = 'dashboard'" :class="activeTab === 'dashboard' ? 'bg-indigo-600 text-white font-bold' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'" class="px-3 py-1.5 rounded-lg flex items-center space-x-1.5 transition">
+                <i class="fa-solid fa-chart-pie text-xs"></i>
+                <span>Dashboard</span>
+            </button>
+            <button @click="activeTab = 'markets'" :class="activeTab === 'markets' ? 'bg-indigo-600 text-white font-bold' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'" class="px-3 py-1.5 rounded-lg flex items-center space-x-1.5 transition">
+                <i class="fa-solid fa-list-ul text-xs"></i>
+                <span>Markets</span>
+            </button>
+            <button @click="activeTab = 'ai_analysis'" :class="activeTab === 'ai_analysis' ? 'bg-indigo-600 text-white font-bold' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'" class="px-3 py-1.5 rounded-lg flex items-center space-x-1.5 transition">
+                <i class="fa-solid fa-brain text-xs"></i>
+                <span>AI Analysis</span>
+            </button>
+            <button @click="activeTab = 'charts'" :class="activeTab === 'charts' ? 'bg-indigo-600 text-white font-bold' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'" class="px-3 py-1.5 rounded-lg flex items-center space-x-1.5 transition">
+                <i class="fa-solid fa-chart-candlestick text-xs"></i>
+                <span>Charts</span>
+            </button>
+            <button @click="activeTab = 'positions'" :class="activeTab === 'positions' ? 'bg-indigo-600 text-white font-bold' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'" class="px-3 py-1.5 rounded-lg flex items-center space-x-1.5 transition">
+                <i class="fa-solid fa-briefcase text-xs"></i>
+                <span>Positions</span>
+            </button>
+            <button @click="activeTab = 'orders'" :class="activeTab === 'orders' ? 'bg-indigo-600 text-white font-bold' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'" class="px-3 py-1.5 rounded-lg flex items-center space-x-1.5 transition">
+                <i class="fa-solid fa-clock-rotate-left text-xs"></i>
+                <span>Orders</span>
+            </button>
+            <button @click="activeTab = 'calendar'" :class="activeTab === 'calendar' ? 'bg-indigo-600 text-white font-bold' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'" class="px-3 py-1.5 rounded-lg flex items-center space-x-1.5 transition">
+                <i class="fa-solid fa-calendar-days text-xs"></i>
+                <span>Economic Calendar</span>
+            </button>
+            <button @click="activeTab = 'news'" :class="activeTab === 'news' ? 'bg-indigo-600 text-white font-bold' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'" class="px-3 py-1.5 rounded-lg flex items-center space-x-1.5 transition">
+                <i class="fa-solid fa-newspaper text-xs"></i>
+                <span>News</span>
+            </button>
+            <button @click="activeTab = 'strategies'" :class="activeTab === 'strategies' ? 'bg-indigo-600 text-white font-bold' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'" class="px-3 py-1.5 rounded-lg flex items-center space-x-1.5 transition">
+                <i class="fa-solid fa-chess text-xs"></i>
+                <span>Strategies</span>
+            </button>
+            <button @click="activeTab = 'backtest'; showBacktestModal = true" :class="activeTab === 'backtest' ? 'bg-indigo-600 text-white font-bold' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'" class="px-3 py-1.5 rounded-lg flex items-center space-x-1.5 transition">
+                <i class="fa-solid fa-flask text-xs"></i>
+                <span>Backtesting</span>
+            </button>
+            <button @click="activeTab = 'performance'; fetchPerformanceAnalytics()" :class="activeTab === 'performance' ? 'bg-indigo-600 text-white font-bold' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'" class="px-3 py-1.5 rounded-lg flex items-center space-x-1.5 transition">
+                <i class="fa-solid fa-chart-line text-xs"></i>
+                <span>Performance</span>
+            </button>
+            <button @click="activeTab = 'paper'; fetchPaperData()" :class="activeTab === 'paper' ? 'bg-indigo-600 text-white font-bold' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'" class="px-3 py-1.5 rounded-lg flex items-center space-x-1.5 transition">
+                <i class="fa-solid fa-coins text-xs"></i>
+                <span>Paper Trading</span>
+            </button>
+            <button @click="activeTab = 'journal'; fetchJournal()" :class="activeTab === 'journal' ? 'bg-indigo-600 text-white font-bold' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'" class="px-3 py-1.5 rounded-lg flex items-center space-x-1.5 transition">
+                <i class="fa-solid fa-book-journal-whills text-xs"></i>
+                <span>Trade Journal</span>
+            </button>
+            <button @click="activeTab = 'risk'" :class="activeTab === 'risk' ? 'bg-indigo-600 text-white font-bold' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'" class="px-3 py-1.5 rounded-lg flex items-center space-x-1.5 transition">
+                <i class="fa-solid fa-shield-halved text-xs"></i>
+                <span>Risk Management</span>
+            </button>
+            <button @click="activeTab = 'ctrader'; showCBotModal = true" :class="activeTab === 'ctrader' ? 'bg-indigo-600 text-white font-bold' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'" class="px-3 py-1.5 rounded-lg flex items-center space-x-1.5 transition">
+                <i class="fa-solid fa-plug text-xs"></i>
+                <span>cTrader</span>
+            </button>
+            <button @click="activeTab = 'settings'; fetchSecurityKeys()" :class="activeTab === 'settings' ? 'bg-indigo-600 text-white font-bold' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'" class="px-3 py-1.5 rounded-lg flex items-center space-x-1.5 transition">
+                <i class="fa-solid fa-gear text-xs"></i>
+                <span>Settings</span>
+            </button>
+            <button @click="activeTab = 'logs'; fetchSystemLogs()" :class="activeTab === 'logs' ? 'bg-indigo-600 text-white font-bold' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'" class="px-3 py-1.5 rounded-lg flex items-center space-x-1.5 transition">
+                <i class="fa-solid fa-terminal text-xs"></i>
+                <span>Logs</span>
+            </button>
+        </div>
+    </div>
 
     <!-- 3. MAIN DASHBOARD CONTENT -->
     <main class="flex-1 max-w-7xl w-full mx-auto p-4 lg:p-8 space-y-6 pb-28 mb-12">
@@ -281,6 +496,183 @@
                 </div>
             </div>
         </div>
+
+        
+        <!-- 3. REAL-TIME AUTONOMOUS PRE-TRADE INTELLIGENCE & CHART SCANNER PANEL -->
+        <div class="bg-dark-card/95 border border-indigo-500/40 rounded-2xl p-4 sm:p-5 shadow-2xl backdrop-blur-md relative overflow-hidden" x-show="activeTab === 'dashboard' || activeTab === 'charts' || activeTab === 'ai_analysis'">
+            <div class="absolute -right-20 -bottom-20 w-48 h-48 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none"></div>
+
+            <!-- HEADER BAR -->
+            <div class="flex flex-wrap items-center justify-between gap-3 border-b border-dark-border pb-3.5 relative z-10">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-emerald-500 flex items-center justify-center text-white text-lg shadow-lg shadow-indigo-500/20">
+                        <i class="fa-solid fa-radar pulse-live"></i>
+                    </div>
+                    <div>
+                        <div class="flex items-center space-x-2 flex-wrap gap-1">
+                            <h3 class="text-sm font-black uppercase tracking-wider text-white">Pre-Trade Intelligence & Chart Scanner</h3>
+                            <span class="px-2 py-0.5 rounded-full text-[10px] font-mono font-black flex items-center gap-1"
+                                  :class="pretradeData && pretradeData.trade_allowed ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'">
+                                <span class="w-2 h-2 rounded-full" :class="pretradeData && pretradeData.trade_allowed ? 'bg-emerald-400 pulse-live' : 'bg-rose-400'"></span>
+                                <span x-text="pretradeData && pretradeData.trade_allowed ? 'GATE: TRADE APPROVED' : 'GATE: FAIL CLOSED (NO TRADE)'"></span>
+                            </span>
+                            <span class="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-slate-800 text-slate-300 border border-slate-700"
+                                  x-text="'Active Session: ' + (pretradeData && pretradeData.session ? pretradeData.session.session_name : 'Scanning...')"></span>
+                        </div>
+                        <p class="text-[11px] text-slate-400 mt-0.5" x-text="pretradeData ? pretradeData.decision_reason : 'Autonomous multi-timeframe analysis in progress...'"></p>
+                    </div>
+                </div>
+
+                <div class="flex items-center space-x-2">
+                    <button @click="triggerPretradeScanNow()" class="px-3 py-1.5 bg-indigo-600/80 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition flex items-center space-x-1.5 shadow-md shadow-indigo-600/20">
+                        <i class="fa-solid fa-arrows-rotate" :class="pretradeScanning ? 'fa-spin' : ''"></i>
+                        <span>Refresh Scan</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- GRID OF 4 SUB-SECTIONS -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5 mt-4 relative z-10 text-xs">
+                
+                <!-- CARD 1: MULTI-TIMEFRAME CONFLUENCE MATRIX -->
+                <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-3.5 flex flex-col justify-between">
+                    <div class="flex items-center justify-between text-slate-400 font-bold mb-2 pb-1.5 border-b border-slate-800/80">
+                        <span><i class="fa-solid fa-layer-group text-indigo-400 mr-1.5"></i> MTF Matrix</span>
+                        <span class="font-mono text-[10px] font-black"
+                              :class="pretradeData && pretradeData.mtf && pretradeData.mtf.consensus_trend === 'BULLISH' ? 'text-emerald-400' : (pretradeData && pretradeData.mtf && pretradeData.mtf.consensus_trend === 'BEARISH' ? 'text-rose-400' : 'text-amber-400')"
+                              x-text="pretradeData && pretradeData.mtf ? pretradeData.mtf.consensus_trend : 'SYNCING'"></span>
+                    </div>
+
+                    <div class="space-y-1.5 font-mono text-[11px]">
+                        <template x-if="pretradeData && pretradeData.mtf && pretradeData.mtf.timeframe_breakdown">
+                            <template x-for="(tfInfo, tfName) in pretradeData.mtf.timeframe_breakdown" :key="tfName">
+                                <div class="flex items-center justify-between px-2 py-1 rounded bg-slate-950/60 border border-slate-800/60">
+                                    <span class="font-bold text-slate-300" x-text="tfName"></span>
+                                    <span class="font-bold text-[10px] px-1.5 py-0.5 rounded"
+                                          :class="tfInfo.trend === 'BULLISH' ? 'bg-emerald-500/20 text-emerald-300' : (tfInfo.trend === 'BEARISH' ? 'bg-rose-500/20 text-rose-300' : 'bg-slate-800 text-slate-400')"
+                                          x-text="tfInfo.trend"></span>
+                                    <span class="text-slate-400 text-[10px]" x-text="'RSI: ' + tfInfo.rsi"></span>
+                                </div>
+                            </template>
+                        </template>
+                    </div>
+
+                    <div class="mt-2 pt-1.5 border-t border-slate-800 text-[10px] text-slate-400 flex justify-between">
+                        <span>Confluence Score:</span>
+                        <span class="font-bold text-indigo-300 font-mono" x-text="pretradeData && pretradeData.mtf ? pretradeData.mtf.confluence_score + '%' : '0%'"></span>
+                    </div>
+                </div>
+
+                <!-- CARD 2: INSTITUTIONAL SETUP CLASSIFIER -->
+                <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-3.5 flex flex-col justify-between">
+                    <div class="flex items-center justify-between text-slate-400 font-bold mb-2 pb-1.5 border-b border-slate-800/80">
+                        <span><i class="fa-solid fa-crosshairs text-amber-400 mr-1.5"></i> Setup Classifier</span>
+                        <span class="font-mono text-[10px] font-black px-2 py-0.5 rounded"
+                              :class="pretradeData && pretradeData.setup && pretradeData.setup.direction === 'BUY' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : (pretradeData && pretradeData.setup && pretradeData.setup.direction === 'SELL' ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' : 'bg-slate-800 text-slate-400')"
+                              x-text="pretradeData && pretradeData.setup ? pretradeData.setup.direction : 'FLAT'"></span>
+                    </div>
+
+                    <div class="space-y-2">
+                        <div class="bg-slate-950/60 p-2 rounded-lg border border-slate-800/60">
+                            <div class="text-[10px] text-slate-400">Institutional Model:</div>
+                            <div class="font-bold text-amber-300 text-xs mt-0.5 tracking-tight"
+                                 x-text="pretradeData && pretradeData.setup ? pretradeData.setup.setup_type : 'ANALYZING'"></div>
+                        </div>
+
+                        <div class="text-[11px] text-slate-300 space-y-1">
+                            <template x-if="pretradeData && pretradeData.setup && pretradeData.setup.reasons">
+                                <template x-for="r in pretradeData.setup.reasons.slice(0, 2)" :key="r">
+                                    <div class="flex items-start space-x-1 text-[10px] text-slate-400">
+                                        <i class="fa-solid fa-angle-right text-indigo-400 mt-0.5"></i>
+                                        <span x-text="r"></span>
+                                    </div>
+                                </template>
+                            </template>
+                        </div>
+                    </div>
+
+                    <div class="mt-2 pt-1.5 border-t border-slate-800 text-[10px] text-slate-400 flex justify-between">
+                        <span>Setup Confidence:</span>
+                        <span class="font-bold text-amber-300 font-mono" x-text="pretradeData && pretradeData.setup ? pretradeData.setup.confidence + '%' : '0%'"></span>
+                    </div>
+                </div>
+
+                <!-- CARD 3: SMART MONEY CONCEPTS & STRUCTURE -->
+                <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-3.5 flex flex-col justify-between">
+                    <div class="flex items-center justify-between text-slate-400 font-bold mb-2 pb-1.5 border-b border-slate-800/80">
+                        <span><i class="fa-solid fa-shapes text-emerald-400 mr-1.5"></i> SMC Structure</span>
+                        <span class="font-mono text-[10px] font-bold text-emerald-300"
+                              x-text="pretradeData && pretradeData.smc ? pretradeData.smc.structure : 'RANGE'"></span>
+                    </div>
+
+                    <div class="space-y-1.5 font-mono text-[10px]">
+                        <!-- Premium / Discount Meter -->
+                        <div class="bg-slate-950/60 p-2 rounded-lg border border-slate-800/60">
+                            <div class="flex justify-between text-slate-400 text-[9px] mb-1">
+                                <span>Discount (<25%)</span>
+                                <span>Equilibrium (50%)</span>
+                                <span>Premium (>75%)</span>
+                            </div>
+                            <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden relative">
+                                <div class="h-full bg-gradient-to-r from-emerald-500 via-amber-500 to-rose-500 transition-all duration-500"
+                                     :style="'width: ' + (pretradeData && pretradeData.smc && pretradeData.smc.dealing_range ? pretradeData.smc.dealing_range.location_pct : 50) + '%'"></div>
+                            </div>
+                            <div class="flex justify-between items-center mt-1 text-[10px]">
+                                <span class="font-bold" :class="pretradeData && pretradeData.smc && pretradeData.smc.dealing_range && pretradeData.smc.dealing_range.is_buy_favorable ? 'text-emerald-400' : 'text-slate-400'"
+                                      x-text="pretradeData && pretradeData.smc && pretradeData.smc.dealing_range ? pretradeData.smc.dealing_range.zone : 'EQUILIBRIUM'"></span>
+                                <span class="text-slate-400 font-mono" x-text="pretradeData && pretradeData.smc && pretradeData.smc.dealing_range ? pretradeData.smc.dealing_range.location_pct + '%' : '50%'"></span>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center justify-between text-slate-300 pt-0.5">
+                            <span>Last Event:</span>
+                            <span class="font-bold text-indigo-300" x-text="pretradeData && pretradeData.smc ? pretradeData.smc.latest_event : 'NONE'"></span>
+                        </div>
+                    </div>
+
+                    <div class="mt-2 pt-1.5 border-t border-slate-800 text-[10px] text-slate-400 flex justify-between">
+                        <span>Active Unmitigated OBs:</span>
+                        <span class="font-bold text-emerald-400 font-mono" x-text="pretradeData && pretradeData.smc && pretradeData.smc.unmitigated_obs ? pretradeData.smc.unmitigated_obs.length : 0"></span>
+                    </div>
+                </div>
+
+                <!-- CARD 4: TRADE QUALITY SCORE GAUGE (0-100) -->
+                <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-3.5 flex flex-col justify-between">
+                    <div class="flex items-center justify-between text-slate-400 font-bold mb-2 pb-1.5 border-b border-slate-800/80">
+                        <span><i class="fa-solid fa-gauge-high text-indigo-400 mr-1.5"></i> Quality Score</span>
+                        <span class="font-mono text-[10px] font-black px-1.5 py-0.5 rounded"
+                              :class="pretradeData && pretradeData.quality_score && pretradeData.quality_score.passed ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'"
+                              x-text="pretradeData && pretradeData.quality_score ? (pretradeData.quality_score.passed ? 'PASSED (>=75)' : 'BLOCKED (<75)') : 'EVALUATING'"></span>
+                    </div>
+
+                    <div class="flex items-center justify-center py-1">
+                        <div class="text-center">
+                            <div class="text-3xl font-black font-mono tracking-tight"
+                                 :class="pretradeData && pretradeData.quality_score && pretradeData.quality_score.passed ? 'text-emerald-400' : 'text-rose-400'"
+                                 x-text="pretradeData && pretradeData.quality_score ? pretradeData.quality_score.score : '0'"></div>
+                            <div class="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">Threshold: 75 / 100</div>
+                        </div>
+                    </div>
+
+                    <div class="space-y-1 font-mono text-[9px] text-slate-400">
+                        <div class="flex justify-between">
+                            <span>MTF Alignment:</span>
+                            <span class="text-slate-200" x-text="pretradeData && pretradeData.quality_score && pretradeData.quality_score.breakdown && pretradeData.quality_score.breakdown.mtf_alignment ? pretradeData.quality_score.breakdown.mtf_alignment.score + '/20' : '-'"></span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>SMC Confluence:</span>
+                            <span class="text-slate-200" x-text="pretradeData && pretradeData.quality_score && pretradeData.quality_score.breakdown && pretradeData.quality_score.breakdown.smc_confluence ? pretradeData.quality_score.breakdown.smc_confluence.score + '/20' : '-'"></span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Location & R:R:</span>
+                            <span class="text-slate-200" x-text="pretradeData && pretradeData.quality_score && pretradeData.quality_score.breakdown && pretradeData.quality_score.breakdown.dealing_range ? pretradeData.quality_score.breakdown.dealing_range.score + '/15' : '-'"></span>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
 
         <!-- TOP STATS METRIC SUMMARY (5 CARDS) -->
         <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
@@ -1096,69 +1488,243 @@
         </div>
     </div>
 
-    <!-- 8. STRATEGY LAB (BACKTEST) MODAL -->
+    <!-- 8. STRATEGY LAB & WALK-FORWARD / MONTE CARLO MODAL (PHASE 8) -->
     <div x-show="showBacktestModal" x-transition class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" style="display: none;">
-        <div @click.away="showBacktestModal = false" class="bg-dark-card border border-purple-500/40 rounded-2xl max-w-4xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] flex flex-col overflow-hidden">
+        <div @click.away="showBacktestModal = false" class="bg-dark-card border border-purple-500/40 rounded-2xl max-w-5xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] flex flex-col overflow-hidden">
             <div class="flex items-center justify-between border-b border-dark-border pb-3">
-                <div class="flex items-center space-x-2">
-                    <i class="fa-solid fa-flask text-purple-400"></i>
-                    <h3 class="font-bold text-white text-base">Strategy Lab & Walk-Forward Quantitative Backtester</h3>
+                <div class="flex items-center space-x-2.5">
+                    <div class="w-8 h-8 rounded-lg bg-purple-600/20 text-purple-400 flex items-center justify-center border border-purple-500/30">
+                        <i class="fa-solid fa-flask text-sm"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-white text-base">Strategy Lab & Walk-Forward Quantitative Backtester</h3>
+                        <p class="text-[11px] text-slate-400">Multi-Strategy Evaluation &bull; 4-Fold Walk-Forward WFE &bull; 1,000-Run Monte Carlo Risk</p>
+                    </div>
                 </div>
-                <button @click="showBacktestModal = false" class="text-slate-400 hover:text-white">
-                    <i class="fa-solid fa-xmark"></i>
+                <button @click="showBacktestModal = false" class="text-slate-400 hover:text-white p-1">
+                    <i class="fa-solid fa-xmark text-lg"></i>
                 </button>
             </div>
 
-            <form @submit.prevent="runBacktestLab()" class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs bg-slate-900/80 p-3.5 rounded-xl border border-dark-border">
+            <!-- LAB SUB-TABS -->
+            <div class="flex items-center space-x-2 border-b border-dark-border pb-2 text-xs">
+                <button @click="activeBacktestTab = 'simulation'" class="px-3 py-1.5 rounded-lg font-bold transition flex items-center space-x-1.5"
+                        :class="activeBacktestTab === 'simulation' ? 'bg-purple-600 text-white' : 'text-slate-400 hover:text-white bg-slate-900'">
+                    <i class="fa-solid fa-play text-xs"></i>
+                    <span>Backtest Simulation</span>
+                </button>
+                <button @click="activeBacktestTab = 'walkforward'; runWalkForwardLab()" class="px-3 py-1.5 rounded-lg font-bold transition flex items-center space-x-1.5"
+                        :class="activeBacktestTab === 'walkforward' ? 'bg-purple-600 text-white' : 'text-slate-400 hover:text-white bg-slate-900'">
+                    <i class="fa-solid fa-arrows-split-up-and-left text-xs"></i>
+                    <span>Walk-Forward Validation (WFE)</span>
+                </button>
+                <button @click="activeBacktestTab = 'montecarlo'; runMonteCarloLab()" class="px-3 py-1.5 rounded-lg font-bold transition flex items-center space-x-1.5"
+                        :class="activeBacktestTab === 'montecarlo' ? 'bg-purple-600 text-white' : 'text-slate-400 hover:text-white bg-slate-900'">
+                    <i class="fa-solid fa-dice text-xs"></i>
+                    <span>Monte Carlo Risk (1k Runs)</span>
+                </button>
+            </div>
+
+            <!-- FORM CONTROLS BAR -->
+            <form @submit.prevent="runBacktestLab()" class="grid grid-cols-2 sm:grid-cols-5 gap-2.5 text-xs bg-slate-900/90 p-3 rounded-xl border border-dark-border">
                 <div>
-                    <label class="block text-slate-400 mb-1">Strategy</label>
-                    <input type="text" x-model="btForm.strategy_name" class="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-white font-bold">
-                </div>
-                <div>
-                    <label class="block text-slate-400 mb-1">Timeframe</label>
-                    <select x-model="btForm.timeframe" class="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-white">
-                        <option value="15m">15m (Sniper Standard)</option>
-                        <option value="1h">1h (Swing Trend)</option>
+                    <label class="block text-slate-400 mb-1 font-bold">Strategy</label>
+                    <select x-model="btForm.strategy_name" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-bold text-xs">
+                        <option value="Gold_Sniper_SMC_v2">Gold Sniper SMC v2 (OB + FVG)</option>
+                        <option value="Trend_Confluence_15m_1h">Higher Timeframe Confluence</option>
+                        <option value="London_NY_Breakout">London & NY Session Breakout</option>
+                        <option value="Mean_Reversion_BB_RSI">Mean Reversion (BB + RSI)</option>
                     </select>
                 </div>
                 <div>
-                    <label class="block text-slate-400 mb-1">Days Back</label>
-                    <input type="number" x-model="btForm.days_back" min="5" max="60" class="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-white">
+                    <label class="block text-slate-400 mb-1 font-bold">Symbol</label>
+                    <select x-model="btForm.symbol" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-bold text-xs">
+                        <option value="XAUUSD">XAUUSD (Gold)</option>
+                        <option value="EURUSD">EURUSD</option>
+                        <option value="GBPUSD">GBPUSD</option>
+                        <option value="USDJPY">USDJPY</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-bold">Timeframe</label>
+                    <select x-model="btForm.timeframe" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-bold text-xs">
+                        <option value="15m">15m (Sniper Standard)</option>
+                        <option value="1h">1h (Swing Trend)</option>
+                        <option value="5m">5m (Scalp)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-bold">Days Back</label>
+                    <input type="number" x-model="btForm.days_back" min="5" max="90" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-bold text-xs">
                 </div>
                 <div class="flex items-end">
-                    <button type="submit" :disabled="btLoading" class="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-1.5 px-3 rounded transition flex items-center justify-center space-x-1.5">
+                    <button type="submit" :disabled="btLoading" class="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-1.5 px-3 rounded-lg transition flex items-center justify-center space-x-1.5 shadow-md shadow-purple-600/20 disabled:opacity-50">
                         <i class="fa-solid" :class="btLoading ? 'fa-spinner fa-spin' : 'fa-play'"></i>
-                        <span x-text="btLoading ? 'Simulating...' : 'Run Simulation'"></span>
+                        <span x-text="btLoading ? 'Computing...' : 'Run Simulation'"></span>
                     </button>
                 </div>
             </form>
 
-            <template x-if="btResult">
-                <div class="space-y-4 overflow-y-auto custom-scrollbar flex-1 text-xs">
-                    <div class="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center">
-                        <div class="bg-slate-900 p-2.5 rounded-lg border border-dark-border">
-                            <span class="text-slate-400 block text-[10px]">Total Trades</span>
-                            <span class="font-bold text-white font-mono text-sm" x-text="btResult.total_trades"></span>
+            <!-- TAB 1: STANDARD BACKTEST SIMULATION RESULTS -->
+            <div x-show="activeBacktestTab === 'simulation'" class="space-y-4 overflow-y-auto custom-scrollbar flex-1 text-xs">
+                <template x-if="btResult">
+                    <div class="space-y-4">
+                        <!-- KPI CARDS -->
+                        <div class="grid grid-cols-2 sm:grid-cols-6 gap-2 text-center font-mono">
+                            <div class="bg-slate-950 p-2.5 rounded-xl border border-dark-border">
+                                <span class="text-slate-400 block text-[10px] font-sans">Total Trades</span>
+                                <span class="font-bold text-white text-sm" x-text="btResult.total_trades"></span>
+                            </div>
+                            <div class="bg-slate-950 p-2.5 rounded-xl border border-dark-border">
+                                <span class="text-slate-400 block text-[10px] font-sans">Win Rate</span>
+                                <span class="font-bold text-emerald-400 text-sm" x-text="btResult.win_rate + '%'"></span>
+                            </div>
+                            <div class="bg-slate-950 p-2.5 rounded-xl border border-dark-border">
+                                <span class="text-slate-400 block text-[10px] font-sans">Profit Factor</span>
+                                <span class="font-bold text-cyan-300 text-sm" x-text="btResult.profit_factor"></span>
+                            </div>
+                            <div class="bg-slate-950 p-2.5 rounded-xl border border-dark-border">
+                                <span class="text-slate-400 block text-[10px] font-sans">Expectancy</span>
+                                <span class="font-bold text-sm" :class="btResult.expectancy >= 0 ? 'text-emerald-400' : 'text-rose-400'" x-text="'$' + btResult.expectancy"></span>
+                            </div>
+                            <div class="bg-slate-950 p-2.5 rounded-xl border border-dark-border">
+                                <span class="text-slate-400 block text-[10px] font-sans">Net Profit</span>
+                                <span class="font-bold text-sm" :class="btResult.net_profit >= 0 ? 'text-emerald-400' : 'text-rose-400'" x-text="(btResult.net_profit >= 0 ? '+' : '') + '$' + btResult.net_profit"></span>
+                            </div>
+                            <div class="bg-slate-950 p-2.5 rounded-xl border border-dark-border">
+                                <span class="text-slate-400 block text-[10px] font-sans">Max Drawdown</span>
+                                <span class="font-bold text-rose-400 text-sm" x-text="'$' + btResult.max_drawdown + ' (' + (btResult.max_drawdown_pct || 0) + '%)'"></span>
+                            </div>
                         </div>
-                        <div class="bg-slate-900 p-2.5 rounded-lg border border-dark-border">
-                            <span class="text-slate-400 block text-[10px]">Win Rate</span>
-                            <span class="font-bold text-emerald-400 font-mono text-sm" x-text="btResult.win_rate + '%'"></span>
-                        </div>
-                        <div class="bg-slate-900 p-2.5 rounded-lg border border-dark-border">
-                            <span class="text-slate-400 block text-[10px]">Profit Factor</span>
-                            <span class="font-bold text-indigo-300 font-mono text-sm" x-text="btResult.profit_factor"></span>
-                        </div>
-                        <div class="bg-slate-900 p-2.5 rounded-lg border border-dark-border">
-                            <span class="text-slate-400 block text-[10px]">Net Profit</span>
-                            <span class="font-bold font-mono text-sm" :class="btResult.net_profit >= 0 ? 'text-emerald-400' : 'text-rose-400'" x-text="(btResult.net_profit >= 0 ? '+' : '') + '$' + btResult.net_profit"></span>
-                        </div>
-                        <div class="bg-slate-900 p-2.5 rounded-lg border border-dark-border">
-                            <span class="text-slate-400 block text-[10px]">Max Drawdown</span>
-                            <span class="font-bold text-rose-400 font-mono text-sm" x-text="'$' + btResult.max_drawdown"></span>
+
+                        <!-- RECENT SIMULATED FILLS TABLE -->
+                        <div class="bg-slate-950 rounded-xl border border-dark-border overflow-hidden">
+                            <div class="p-2.5 border-b border-slate-900 font-bold text-slate-300 flex items-center justify-between text-xs">
+                                <span>Recent Simulated Fills (<span x-text="(btResult.trades || []).length"></span>)</span>
+                                <span class="text-[10px] text-slate-500 font-mono">Spread & Volatility Slippage Deducted</span>
+                            </div>
+                            <div class="max-h-48 overflow-y-auto custom-scrollbar">
+                                <table class="w-full text-left font-mono text-[11px]">
+                                    <thead class="bg-slate-900/90 text-slate-400 sticky top-0 border-b border-dark-border">
+                                        <tr>
+                                            <th class="p-2">#</th>
+                                            <th class="p-2">Action</th>
+                                            <th class="p-2 text-right">Entry</th>
+                                            <th class="p-2 text-right">Exit</th>
+                                            <th class="p-2 text-right">SL / TP</th>
+                                            <th class="p-2 text-right">PnL</th>
+                                            <th class="p-2">Reason</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-900">
+                                        <template x-for="t in (btResult.trades || [])" :key="t.trade_num">
+                                            <tr class="hover:bg-slate-900/40">
+                                                <td class="p-2 text-slate-500" x-text="'#' + t.trade_num"></td>
+                                                <td class="p-2">
+                                                    <span class="px-1.5 py-0.5 rounded text-[10px] font-bold" :class="t.action === 'BUY' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'" x-text="t.action"></span>
+                                                </td>
+                                                <td class="p-2 text-right text-slate-300" x-text="'$' + t.entry_price"></td>
+                                                <td class="p-2 text-right font-bold text-white" x-text="'$' + t.exit_price"></td>
+                                                <td class="p-2 text-right text-slate-400" x-text="t.sl + ' / ' + t.tp"></td>
+                                                <td class="p-2 text-right font-bold" :class="t.pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'" x-text="((t.pnl >= 0 ? '+' : '') + '$' + t.pnl)"></td>
+                                                <td class="p-2 text-slate-400" x-text="t.close_reason"></td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
-                </div>
-            </template>
+                </template>
+            </div>
+
+            <!-- TAB 2: WALK-FORWARD VALIDATION RESULTS -->
+            <div x-show="activeBacktestTab === 'walkforward'" class="space-y-4 overflow-y-auto custom-scrollbar flex-1 text-xs">
+                <template x-if="wfResult">
+                    <div class="space-y-3">
+                        <div class="bg-slate-950 p-4 rounded-xl border border-dark-border flex items-center justify-between flex-wrap gap-3">
+                            <div>
+                                <span class="text-[10px] text-slate-400 uppercase font-bold">Walk-Forward Efficiency (WFE)</span>
+                                <div class="text-xl font-black font-mono mt-0.5"
+                                     :class="(wfResult.average_wfe_pct || 0) >= 50 ? 'text-emerald-400' : 'text-amber-400'"
+                                     x-text="wfResult.average_wfe_pct + '% WFE Score'"></div>
+                                <div class="text-[11px] text-slate-400 mt-1" x-text="wfResult.explanation"></div>
+                            </div>
+                            <span class="px-3 py-1.5 rounded-xl font-extrabold text-xs"
+                                  :class="(wfResult.verdict || '').includes('ROBUST') ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'"
+                                  x-text="wfResult.verdict"></span>
+                        </div>
+
+                        <!-- FOLDS TABLE -->
+                        <table class="w-full text-left font-mono text-[11px] bg-slate-950 rounded-xl border border-dark-border overflow-hidden">
+                            <thead class="bg-slate-900 text-slate-400 border-b border-dark-border">
+                                <tr>
+                                    <th class="p-2.5">Fold</th>
+                                    <th class="p-2.5 text-center">In-Sample Win Rate</th>
+                                    <th class="p-2.5 text-center">In-Sample PnL</th>
+                                    <th class="p-2.5 text-center">Out-of-Sample Win Rate</th>
+                                    <th class="p-2.5 text-center">Out-of-Sample PnL</th>
+                                    <th class="p-2.5 text-right">Fold WFE %</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-900">
+                                <template x-for="f in (wfResult.folds || [])" :key="f.fold_num">
+                                    <tr class="hover:bg-slate-900/40">
+                                        <td class="p-2.5 font-bold text-white" x-text="'Fold #' + f.fold_num"></td>
+                                        <td class="p-2.5 text-center text-slate-300" x-text="f.in_sample.win_rate + '% (' + f.in_sample.trades + 'T)'"></td>
+                                        <td class="p-2.5 text-center font-bold text-emerald-400" x-text="'+$' + f.in_sample.net_profit"></td>
+                                        <td class="p-2.5 text-center font-bold" :class="f.out_of_sample.win_rate >= 50 ? 'text-emerald-400' : 'text-amber-400'" x-text="f.out_of_sample.win_rate + '% (' + f.out_of_sample.trades + 'T)'"></td>
+                                        <td class="p-2.5 text-center font-bold" :class="f.out_of_sample.net_profit >= 0 ? 'text-emerald-400' : 'text-rose-400'" x-text="((f.out_of_sample.net_profit >= 0 ? '+' : '') + '$' + f.out_of_sample.net_profit)"></td>
+                                        <td class="p-2.5 text-right font-black" :class="f.walk_forward_efficiency >= 50 ? 'text-emerald-400' : 'text-amber-400'" x-text="f.walk_forward_efficiency + '%'"></td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </template>
+                <template x-if="!wfResult && wfLoading">
+                    <div class="text-center py-12 text-slate-400">
+                        <i class="fa-solid fa-circle-notch fa-spin text-2xl text-purple-400 mb-2"></i>
+                        <p>Executing 4-fold In-Sample vs Out-of-Sample cross-validation...</p>
+                    </div>
+                </template>
+            </div>
+
+            <!-- TAB 3: MONTE CARLO RISK SIMULATION RESULTS -->
+            <div x-show="activeBacktestTab === 'montecarlo'" class="space-y-4 overflow-y-auto custom-scrollbar flex-1 text-xs">
+                <template x-if="mcResult">
+                    <div class="space-y-3">
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 font-mono text-center">
+                            <div class="bg-slate-950 p-3 rounded-xl border border-dark-border">
+                                <span class="text-slate-400 block text-[10px] font-sans">Probability of Ruin</span>
+                                <span class="text-lg font-black" :class="mcResult.prob_of_ruin_pct <= 1.0 ? 'text-emerald-400' : 'text-rose-400'" x-text="mcResult.prob_of_ruin_pct + '%'"></span>
+                                <span class="text-[9px] text-slate-500 block font-sans">At 20% DD threshold</span>
+                            </div>
+                            <div class="bg-slate-950 p-3 rounded-xl border border-dark-border">
+                                <span class="text-slate-400 block text-[10px] font-sans">95% Confidence Max DD</span>
+                                <span class="text-lg font-black text-rose-400" x-text="'$' + mcResult.drawdown_confidence_intervals?.dd_95_confidence_dollars + ' (' + mcResult.drawdown_confidence_intervals?.dd_95_confidence_pct + '%)'"></span>
+                                <span class="text-[9px] text-slate-500 block font-sans">VaR 95% worst drawdown</span>
+                            </div>
+                            <div class="bg-slate-950 p-3 rounded-xl border border-dark-border">
+                                <span class="text-slate-400 block text-[10px] font-sans">Median Ending Equity</span>
+                                <span class="text-lg font-black text-emerald-400" x-text="'$' + mcResult.percentiles?.p50_median_equity"></span>
+                                <span class="text-[9px] text-slate-500 block font-sans">50th percentile expectation</span>
+                            </div>
+                            <div class="bg-slate-950 p-3 rounded-xl border border-dark-border">
+                                <span class="text-slate-400 block text-[10px] font-sans">5th Percentile Equity</span>
+                                <span class="text-lg font-black text-amber-300" x-text="'$' + mcResult.percentiles?.p5_worst_case_equity"></span>
+                                <span class="text-[9px] text-slate-500 block font-sans">Conservative worst 5% case</span>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+                <template x-if="!mcResult && mcLoading">
+                    <div class="text-center py-12 text-slate-400">
+                        <i class="fa-solid fa-circle-notch fa-spin text-2xl text-purple-400 mb-2"></i>
+                        <p>Simulating 1,000 bootstrap trade sequences...</p>
+                    </div>
+                </template>
+            </div>
         </div>
     </div>
 
@@ -1211,10 +1777,1162 @@
         </div>
     </div>
 
+    <!-- 10. SYSTEM LOGS MODAL / VIEW (PHASE 1) -->
+    <div x-show="activeTab === 'logs'" x-transition class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" style="display: none;">
+        <div @click.away="activeTab = 'dashboard'" class="bg-dark-card border border-dark-border rounded-2xl max-w-4xl w-full p-6 shadow-2xl space-y-4 max-h-[85vh] flex flex-col overflow-hidden">
+            <div class="flex items-center justify-between border-b border-dark-border pb-3">
+                <div class="flex items-center space-x-2">
+                    <i class="fa-solid fa-terminal text-indigo-400"></i>
+                    <h3 class="font-bold text-white text-base">TradeTalk AI Structured System Logs</h3>
+                    <span class="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full font-mono">Real-Time Masked Stream</span>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <!-- LOG LEVEL FILTER -->
+                    <select x-model="logLevelFilter" @change="fetchSystemLogs()" class="bg-slate-900 border border-dark-border text-xs rounded-lg px-2.5 py-1 text-slate-200 focus:outline-none">
+                        <option value="ALL">All Levels</option>
+                        <option value="INFO">INFO</option>
+                        <option value="WARNING">WARNING</option>
+                        <option value="ERROR">ERROR</option>
+                        <option value="CRITICAL">CRITICAL</option>
+                    </select>
+                    <button @click="fetchSystemLogs()" class="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold">
+                        <i class="fa-solid fa-arrows-rotate mr-1"></i> Refresh
+                    </button>
+                    <button @click="activeTab = 'dashboard'" class="text-slate-400 hover:text-white p-1">
+                        <i class="fa-solid fa-xmark text-lg"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- LOGS TABLE CONTAINER -->
+            <div class="flex-1 overflow-y-auto custom-scrollbar font-mono text-xs bg-slate-950 p-3 rounded-xl border border-dark-border space-y-1">
+                <template x-for="log in systemLogs" :key="log.timestamp + log.message">
+                    <div class="flex items-start space-x-2 py-1 border-b border-slate-900/60 hover:bg-slate-900/40 px-1 rounded">
+                        <span class="text-slate-500 shrink-0" x-text="log.timestamp"></span>
+                        <span class="px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0"
+                              :class="{
+                                  'bg-blue-500/20 text-blue-400': log.level === 'INFO',
+                                  'bg-amber-500/20 text-amber-400': log.level === 'WARNING',
+                                  'bg-rose-500/20 text-rose-400': log.level === 'ERROR' || log.level === 'CRITICAL'
+                              }"
+                              x-text="log.level"></span>
+                        <span class="text-indigo-400 font-semibold shrink-0" x-text="'[' + log.module + ']'"></span>
+                        <span class="text-slate-200 break-all" x-text="log.message"></span>
+                    </div>
+                </template>
+                <template x-if="!systemLogs || systemLogs.length === 0">
+                    <div class="text-center py-12 text-slate-500 font-sans">
+                        <i class="fa-solid fa-terminal text-2xl mb-2 text-slate-600"></i>
+                        <p>No log records found matching current filter.</p>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </div>
+
+    <!-- 11. ADVANCED TRADE JOURNAL & MFE/MAE ANALYTICS MODAL (PHASE 7) -->
+    <div x-show="activeTab === 'journal'" x-transition class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" style="display: none;">
+        <div @click.away="activeTab = 'dashboard'" class="bg-dark-card border border-dark-border rounded-2xl max-w-6xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] flex flex-col overflow-hidden">
+            <div class="flex items-center justify-between border-b border-dark-border pb-3">
+                <div class="flex items-center space-x-2.5">
+                    <div class="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30">
+                        <i class="fa-solid fa-book-journal-whills text-sm"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-white text-base">TradeTalk AI Autonomous Trade Journal & Post-Trade Analytics</h3>
+                        <p class="text-[11px] text-slate-400">Maximum Favorable Excursion (MFE) &bull; Maximum Adverse Excursion (MAE) &bull; Decision DNA Link</p>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <button @click="fetchJournal()" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition">
+                        <i class="fa-solid fa-arrows-rotate" :class="journalLoading ? 'fa-spin' : ''"></i>
+                        <span>Refresh</span>
+                    </button>
+                    <button @click="activeTab = 'dashboard'" class="text-slate-400 hover:text-white p-1">
+                        <i class="fa-solid fa-xmark text-lg"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- JOURNAL FILTERS BAR -->
+            <div class="flex items-center justify-between flex-wrap gap-2 text-xs bg-slate-900/90 p-2.5 rounded-xl border border-dark-border">
+                <div class="flex items-center space-x-2">
+                    <span class="text-slate-400 font-bold text-[11px]">Outcome:</span>
+                    <button @click="journalFilterOutcome = 'ALL'; fetchJournal()" class="px-2.5 py-1 rounded-lg font-bold text-[11px] transition" :class="journalFilterOutcome === 'ALL' ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'">All</button>
+                    <button @click="journalFilterOutcome = 'WIN'; fetchJournal()" class="px-2.5 py-1 rounded-lg font-bold text-[11px] transition" :class="journalFilterOutcome === 'WIN' ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-emerald-400 hover:text-white'">Wins</button>
+                    <button @click="journalFilterOutcome = 'LOSS'; fetchJournal()" class="px-2.5 py-1 rounded-lg font-bold text-[11px] transition" :class="journalFilterOutcome === 'LOSS' ? 'bg-rose-600 text-white' : 'bg-slate-800 text-rose-400 hover:text-white'">Losses</button>
+                </div>
+
+                <div class="flex items-center space-x-3">
+                    <div class="flex items-center space-x-1.5">
+                        <span class="text-slate-400 font-bold text-[11px]">Symbol:</span>
+                        <select x-model="journalFilterSymbol" @change="fetchJournal()" class="bg-slate-950 text-slate-200 border border-dark-border rounded-lg px-2 py-1 text-xs focus:outline-none font-bold">
+                            <option value="ALL">All Pairs</option>
+                            <option value="XAUUSD">XAUUSD (Gold)</option>
+                            <option value="EURUSD">EURUSD</option>
+                            <option value="GBPUSD">GBPUSD</option>
+                            <option value="USDJPY">USDJPY</option>
+                        </select>
+                    </div>
+
+                    <div class="flex items-center space-x-1.5">
+                        <span class="text-slate-400 font-bold text-[11px]">Regime:</span>
+                        <select x-model="journalFilterRegime" @change="fetchJournal()" class="bg-slate-950 text-slate-200 border border-dark-border rounded-lg px-2 py-1 text-xs focus:outline-none font-bold">
+                            <option value="ALL">All Regimes</option>
+                            <option value="TRENDING">TRENDING</option>
+                            <option value="RANGING">RANGING</option>
+                            <option value="BREAKOUT">BREAKOUT</option>
+                            <option value="VOLATILE">VOLATILE</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- JOURNAL TABLE -->
+            <div class="flex-1 overflow-y-auto custom-scrollbar text-xs bg-slate-950 rounded-xl border border-dark-border">
+                <table class="w-full text-left">
+                    <thead class="bg-slate-900/90 sticky top-0 text-[11px] text-slate-400 font-bold uppercase tracking-wider border-b border-dark-border z-10">
+                        <tr>
+                            <th class="p-3">Trade / Ticket</th>
+                            <th class="p-3">Strategy & Regime</th>
+                            <th class="p-3 text-right">Entry / Exit</th>
+                            <th class="p-3 text-right">PnL & Pips</th>
+                            <th class="p-3">MFE & MAE Excursions</th>
+                            <th class="p-3">Efficiency</th>
+                            <th class="p-3">Trader Notes & AI Summary</th>
+                            <th class="p-3 text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-dark-border font-mono">
+                        <template x-for="j in journalEntries" :key="j.id">
+                            <tr class="hover:bg-slate-900/40 transition">
+                                <td class="p-3">
+                                    <div class="font-bold text-white font-sans flex items-center space-x-1.5">
+                                        <span class="px-1.5 py-0.5 rounded text-[10px] font-black" :class="j.direction === 'BUY' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'" x-text="j.direction"></span>
+                                        <span x-text="j.symbol"></span>
+                                        <span class="text-[10px] text-slate-400 font-mono" x-text="'#' + (j.trade_id || '')"></span>
+                                    </div>
+                                    <span class="text-[10px] text-slate-500 font-mono" x-text="j.created_at ? j.created_at.replace('T', ' ').substring(0, 16) : '-'"></span>
+                                </td>
+                                <td class="p-3 font-sans">
+                                    <div class="text-slate-200 font-bold text-[11px]" x-text="j.strategy_name || 'Autonomous'"></div>
+                                    <span class="px-2 py-0.5 bg-indigo-500/15 text-indigo-300 rounded font-sans text-[10px] font-semibold mt-1 inline-block" x-text="j.market_regime || 'TRENDING'"></span>
+                                </td>
+                                <td class="p-3 text-right">
+                                    <div class="text-slate-300 font-mono" x-text="'$' + (j.entry_price ? formatNumber(j.entry_price, j.symbol) : '0.00')"></div>
+                                    <div class="text-[10px] text-slate-500 font-mono" x-text="'Exit: $' + (j.exit_price ? formatNumber(j.exit_price, j.symbol) : '-')"></div>
+                                </td>
+                                <td class="p-3 text-right">
+                                    <div class="font-bold font-mono" :class="(j.profit_loss || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'" x-text="((j.profit_loss || 0) >= 0 ? '+' : '') + '$' + (j.profit_loss ? Number(j.profit_loss).toFixed(2) : '0.00')"></div>
+                                    <div class="text-[10px] text-slate-400 font-mono" x-text="((j.pips || 0) >= 0 ? '+' : '') + (j.pips ? Number(j.pips).toFixed(1) : '0.0') + ' Pips'"></div>
+                                </td>
+                                <td class="p-3">
+                                    <div class="space-y-1">
+                                        <div class="flex items-center space-x-1 text-[10px]">
+                                            <span class="text-slate-400 w-8">MFE:</span>
+                                            <span class="text-emerald-400 font-bold" x-text="'+' + (j.mfe ? Number(j.mfe).toFixed(1) : '0.0') + ' pips'"></span>
+                                        </div>
+                                        <div class="flex items-center space-x-1 text-[10px]">
+                                            <span class="text-slate-400 w-8">MAE:</span>
+                                            <span class="text-rose-400 font-bold" x-text="(j.mae ? Number(j.mae).toFixed(1) : '0.0') + ' pips'"></span>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="p-3">
+                                    <span class="px-2 py-0.5 rounded-full font-bold text-[10px]"
+                                          :class="(j.efficiency_pct || 0) >= 70 ? 'bg-emerald-500/20 text-emerald-300' : ((j.efficiency_pct || 0) > 0 ? 'bg-amber-500/20 text-amber-300' : 'bg-slate-800 text-slate-400')"
+                                          x-text="(j.efficiency_pct ? j.efficiency_pct.toFixed(1) : '0.0') + '%'"></span>
+                                </td>
+                                <td class="p-3 font-sans max-w-xs">
+                                    <div class="text-slate-300 text-[11px] truncate" :title="j.notes || j.ai_reasoning" x-text="j.notes || j.ai_reasoning || 'Autonomous execution.'"></div>
+                                    <div class="text-[9px] text-slate-500 mt-0.5" x-text="'Duration: ' + (j.trade_duration_seconds ? Math.round(j.trade_duration_seconds / 60) + ' mins' : '< 1 min')"></div>
+                                </td>
+                                <td class="p-3 text-right font-sans whitespace-nowrap">
+                                    <button @click="openNoteEditor(j)" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[11px] font-bold transition mr-1">
+                                        <i class="fa-solid fa-pen-to-square mr-0.5"></i> Note
+                                    </button>
+                                    <template x-if="j.signal_id">
+                                        <button @click="inspectDecisionDNA(j.signal_id)" class="px-2.5 py-1 bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-300 rounded text-[11px] font-bold transition">
+                                            DNA
+                                        </button>
+                                    </template>
+                                </td>
+                            </tr>
+                        </template>
+                        <template x-if="!journalEntries || journalEntries.length === 0">
+                            <tr>
+                                <td colspan="8" class="text-center py-12 text-slate-500 font-sans">
+                                    <i class="fa-solid fa-book-open text-2xl mb-2 text-slate-600 block"></i>
+                                    <span>No trade journal entries recorded matching current filters.</span>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 11.2 TRADER NOTE EDITOR MODAL -->
+    <div x-show="showNoteEditorModal" x-transition class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" style="display: none;">
+        <div @click.away="showNoteEditorModal = false" class="bg-dark-card border border-indigo-500/40 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between border-b border-dark-border pb-3">
+                <div class="flex items-center space-x-2">
+                    <i class="fa-solid fa-pen-to-square text-indigo-400"></i>
+                    <h3 class="font-bold text-white text-base">Edit Trade Journal Review (<span x-text="activeJournalItem?.trade_id"></span>)</h3>
+                </div>
+                <button @click="showNoteEditorModal = false" class="text-slate-400 hover:text-white">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div>
+                <label class="block text-xs text-slate-400 mb-1.5 font-bold">Trader Observations & Lessons:</label>
+                <textarea x-model="editingJournalNote" rows="4" class="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-white text-xs focus:outline-none focus:border-indigo-500" placeholder="Enter post-trade analysis, emotional state, or setup quality..."></textarea>
+            </div>
+            <div class="flex justify-end space-x-2 pt-2">
+                <button @click="showNoteEditorModal = false" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold">Cancel</button>
+                <button @click="saveJournalNote()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition">Save Note</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 11.3 PERFORMANCE ANALYTICS MODAL (PHASE 7) -->
+    <div x-show="activeTab === 'performance'" x-transition class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" style="display: none;">
+        <div @click.away="activeTab = 'dashboard'" class="bg-dark-card border border-dark-border rounded-2xl max-w-6xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] flex flex-col overflow-hidden">
+            <div class="flex items-center justify-between border-b border-dark-border pb-3">
+                <div class="flex items-center space-x-2.5">
+                    <div class="w-8 h-8 rounded-lg bg-indigo-600/20 text-indigo-400 flex items-center justify-center border border-indigo-500/30">
+                        <i class="fa-solid fa-chart-line text-sm"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-white text-base">Quantitative Performance Analytics & Equity Curve</h3>
+                        <p class="text-[11px] text-slate-400">Institutional Risk-Adjusted Metrics &bull; Sharpe & Sortino &bull; Multi-Dimensional Breakdowns</p>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <button @click="fetchPerformanceAnalytics()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition">
+                        <i class="fa-solid fa-arrows-rotate" :class="perfLoading ? 'fa-spin' : ''"></i>
+                        <span>Refresh</span>
+                    </button>
+                    <button @click="activeTab = 'dashboard'" class="text-slate-400 hover:text-white p-1">
+                        <i class="fa-solid fa-xmark text-lg"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="flex-1 overflow-y-auto custom-scrollbar space-y-4 pr-1 text-xs">
+                <!-- QUANTITATIVE KPI GRID -->
+                <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2.5">
+                    <div class="bg-slate-950 p-3 rounded-xl border border-dark-border">
+                        <span class="text-slate-400 block text-[10px] uppercase font-bold">Win Rate</span>
+                        <span class="text-lg font-black font-mono text-emerald-400" x-text="(perfOverview.win_rate || 0.0) + '%'"></span>
+                        <span class="text-[10px] text-slate-500 block mt-0.5" x-text="(perfOverview.winning_trades || 0) + 'W / ' + (perfOverview.losing_trades || 0) + 'L'"></span>
+                    </div>
+                    <div class="bg-slate-950 p-3 rounded-xl border border-dark-border">
+                        <span class="text-slate-400 block text-[10px] uppercase font-bold">Profit Factor</span>
+                        <span class="text-lg font-black font-mono text-cyan-300" x-text="perfOverview.profit_factor || '1.00'"></span>
+                        <span class="text-[10px] text-slate-500 block mt-0.5" x-text="'Gross $' + (perfOverview.gross_profit || 0)"></span>
+                    </div>
+                    <div class="bg-slate-950 p-3 rounded-xl border border-dark-border">
+                        <span class="text-slate-400 block text-[10px] uppercase font-bold">Expectancy</span>
+                        <span class="text-lg font-black font-mono" :class="(perfOverview.expectancy || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'" x-text="'$' + (perfOverview.expectancy || 0.0)"></span>
+                        <span class="text-[10px] text-slate-500 block mt-0.5">Per trade edge</span>
+                    </div>
+                    <div class="bg-slate-950 p-3 rounded-xl border border-dark-border">
+                        <span class="text-slate-400 block text-[10px] uppercase font-bold">Net PnL</span>
+                        <span class="text-lg font-black font-mono" :class="(perfOverview.net_profit || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'" x-text="((perfOverview.net_profit || 0) >= 0 ? '+' : '') + '$' + (perfOverview.net_profit || 0.0)"></span>
+                        <span class="text-[10px] text-slate-500 block mt-0.5" x-text="(perfOverview.total_trades || 0) + ' Total Trades'"></span>
+                    </div>
+                    <div class="bg-slate-950 p-3 rounded-xl border border-dark-border">
+                        <span class="text-slate-400 block text-[10px] uppercase font-bold">Max Drawdown</span>
+                        <span class="text-lg font-black font-mono text-rose-400" x-text="'$' + (perfOverview.max_drawdown_dollars || 0.0) + ' (' + (perfOverview.max_drawdown_pct || 0.0) + '%)'"></span>
+                        <span class="text-[10px] text-slate-500 block mt-0.5">Peak-to-trough</span>
+                    </div>
+                    <div class="bg-slate-950 p-3 rounded-xl border border-dark-border">
+                        <span class="text-slate-400 block text-[10px] uppercase font-bold">Sharpe Ratio</span>
+                        <span class="text-lg font-black font-mono text-amber-300" x-text="perfOverview.sharpe_ratio || '0.00'"></span>
+                        <span class="text-[10px] text-slate-500 block mt-0.5" x-text="'Sortino: ' + (perfOverview.sortino_ratio || '0.00')"></span>
+                    </div>
+                </div>
+
+                <!-- EQUITY CURVE VISUALIZER STRIP -->
+                <div class="bg-slate-950 p-4 rounded-xl border border-dark-border space-y-2">
+                    <div class="flex items-center justify-between">
+                        <h4 class="font-bold text-white text-xs flex items-center space-x-1.5">
+                            <i class="fa-solid fa-chart-area text-indigo-400"></i>
+                            <span>Time-Series Balance & Equity Progression</span>
+                        </h4>
+                        <span class="text-[10px] font-mono text-slate-400" x-text="'Data Points: ' + equityCurvePoints.length"></span>
+                    </div>
+
+                    <div class="overflow-x-auto custom-scrollbar">
+                        <div class="flex items-end space-x-1 h-32 pt-4 px-2 min-w-full bg-slate-900/60 rounded-lg border border-slate-900">
+                            <template x-for="(pt, idx) in equityCurvePoints" :key="idx">
+                                <div class="flex-1 min-w-[14px] flex flex-col items-center justify-end h-full group relative">
+                                    <div class="w-full rounded-t transition-all"
+                                         :class="pt.pnl >= 0 ? 'bg-emerald-500/80 hover:bg-emerald-400' : 'bg-rose-500/80 hover:bg-rose-400'"
+                                         :style="'height: ' + Math.max(8, Math.min(100, ((pt.balance / 1200) * 100))) + '%;'"></div>
+                                    <!-- TOOLTIP -->
+                                    <div class="absolute bottom-full mb-1 opacity-0 group-hover:opacity-100 transition pointer-events-none z-20 bg-slate-950 text-slate-200 border border-dark-border p-1.5 rounded text-[9px] font-mono whitespace-nowrap shadow-lg">
+                                        <div x-text="'Trade #' + pt.trade_num"></div>
+                                        <div :class="pt.pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'" x-text="'PnL: ' + ((pt.pnl >= 0 ? '+' : '') + '$' + pt.pnl)"></div>
+                                        <div class="text-white" x-text="'Bal: $' + pt.balance"></div>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- BREAKDOWN TABLES (SYMBOL & REGIME) -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <!-- BY SYMBOL -->
+                    <div class="bg-slate-950 p-3.5 rounded-xl border border-dark-border space-y-2">
+                        <h4 class="font-bold text-slate-200 text-xs">Performance by Asset / Pair</h4>
+                        <table class="w-full text-left text-[11px]">
+                            <thead class="text-slate-400 border-b border-slate-800">
+                                <tr>
+                                    <th class="pb-1.5">Pair</th>
+                                    <th class="pb-1.5 text-center">Trades</th>
+                                    <th class="pb-1.5 text-center">Win Rate</th>
+                                    <th class="pb-1.5 text-right">Net PnL</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-900 font-mono">
+                                <template x-for="item in (perfBreakdown.by_symbol || [])" :key="item.symbol">
+                                    <tr>
+                                        <td class="py-1.5 font-bold text-white font-sans" x-text="item.symbol"></td>
+                                        <td class="py-1.5 text-center text-slate-300" x-text="item.total"></td>
+                                        <td class="py-1.5 text-center text-emerald-400 font-bold" x-text="item.win_rate + '%'"></td>
+                                        <td class="py-1.5 text-right font-bold" :class="item.pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'" x-text="((item.pnl >= 0 ? '+' : '') + '$' + item.pnl.toFixed(2))"></td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- BY MARKET REGIME -->
+                    <div class="bg-slate-950 p-3.5 rounded-xl border border-dark-border space-y-2">
+                        <h4 class="font-bold text-slate-200 text-xs">Performance by Market Regime</h4>
+                        <table class="w-full text-left text-[11px]">
+                            <thead class="text-slate-400 border-b border-slate-800">
+                                <tr>
+                                    <th class="pb-1.5">Regime</th>
+                                    <th class="pb-1.5 text-center">Trades</th>
+                                    <th class="pb-1.5 text-center">Win Rate</th>
+                                    <th class="pb-1.5 text-right">Net PnL</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-900 font-mono">
+                                <template x-for="item in (perfBreakdown.by_regime || [])" :key="item.regime">
+                                    <tr>
+                                        <td class="py-1.5 font-bold text-indigo-300 font-sans" x-text="item.regime"></td>
+                                        <td class="py-1.5 text-center text-slate-300" x-text="item.total"></td>
+                                        <td class="py-1.5 text-center text-emerald-400 font-bold" x-text="item.win_rate + '%'"></td>
+                                        <td class="py-1.5 text-right font-bold" :class="item.pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'" x-text="((item.pnl >= 0 ? '+' : '') + '$' + item.pnl.toFixed(2))"></td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 11.4 PAPER TRADING EXECUTION & VIRTUAL ACCOUNT MODAL (PHASE 7) -->
+    <div x-show="activeTab === 'paper'" x-transition class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" style="display: none;">
+        <div @click.away="activeTab = 'dashboard'" class="bg-dark-card border border-dark-border rounded-2xl max-w-5xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] flex flex-col overflow-hidden">
+            <div class="flex items-center justify-between border-b border-dark-border pb-3">
+                <div class="flex items-center space-x-2.5">
+                    <div class="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30">
+                        <i class="fa-solid fa-coins text-sm"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-white text-base">Paper Trading Engine & Virtual Simulated Account</h3>
+                        <p class="text-[11px] text-slate-400">Authentic Market Execution &bull; Zero Risk &bull; Realistic Spread & Slippage</p>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <button @click="resetPaperAccount()" class="px-3 py-1.5 bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/40 rounded-lg text-xs font-bold transition">
+                        Reset Paper Balance
+                    </button>
+                    <button @click="activeTab = 'dashboard'" class="text-slate-400 hover:text-white p-1">
+                        <i class="fa-solid fa-xmark text-lg"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- VIRTUAL ACCOUNT METRICS RIBBON -->
+            <div class="grid grid-cols-2 sm:grid-cols-5 gap-2.5 text-xs font-mono">
+                <div class="bg-slate-950 p-3 rounded-xl border border-dark-border">
+                    <span class="text-slate-400 block text-[10px] font-sans">Virtual Balance</span>
+                    <span class="text-base font-extrabold text-white" x-text="'$' + (paperAccount.balance ? paperAccount.balance.toFixed(2) : '1000.00')"></span>
+                </div>
+                <div class="bg-slate-950 p-3 rounded-xl border border-dark-border">
+                    <span class="text-slate-400 block text-[10px] font-sans">Virtual Equity</span>
+                    <span class="text-base font-extrabold text-emerald-400" x-text="'$' + (paperAccount.equity ? paperAccount.equity.toFixed(2) : '1000.00')"></span>
+                </div>
+                <div class="bg-slate-950 p-3 rounded-xl border border-dark-border">
+                    <span class="text-slate-400 block text-[10px] font-sans">Used Margin</span>
+                    <span class="text-base font-extrabold text-amber-300" x-text="'$' + (paperAccount.margin ? paperAccount.margin.toFixed(2) : '0.00')"></span>
+                </div>
+                <div class="bg-slate-950 p-3 rounded-xl border border-dark-border">
+                    <span class="text-slate-400 block text-[10px] font-sans">Free Margin</span>
+                    <span class="text-base font-extrabold text-cyan-300" x-text="'$' + (paperAccount.free_margin ? paperAccount.free_margin.toFixed(2) : '1000.00')"></span>
+                </div>
+                <div class="bg-slate-950 p-3 rounded-xl border border-dark-border">
+                    <span class="text-slate-400 block text-[10px] font-sans">Margin Level</span>
+                    <span class="text-base font-extrabold text-indigo-300" x-text="(paperAccount.margin_level > 9999 ? '∞' : paperAccount.margin_level + '%')"></span>
+                </div>
+            </div>
+
+            <!-- OPEN PAPER POSITIONS TABLE -->
+            <div class="flex-1 overflow-y-auto custom-scrollbar text-xs bg-slate-950 rounded-xl border border-dark-border space-y-2">
+                <div class="p-3 border-b border-slate-900 font-bold text-slate-300 flex items-center justify-between">
+                    <span>Active Simulated Open Positions (<span x-text="paperPositions.length"></span>)</span>
+                    <span class="text-[10px] text-slate-500 font-sans">Auto SL/TP hit detection active</span>
+                </div>
+
+                <table class="w-full text-left font-mono">
+                    <thead class="bg-slate-900/90 text-[10px] text-slate-400 uppercase tracking-wider border-b border-dark-border">
+                        <tr>
+                            <th class="p-2.5">ID / Symbol</th>
+                            <th class="p-2.5">Side / Vol</th>
+                            <th class="p-2.5 text-right">Entry Price</th>
+                            <th class="p-2.5 text-right">Current</th>
+                            <th class="p-2.5 text-right">SL / TP</th>
+                            <th class="p-2.5 text-right">Unrealized PnL</th>
+                            <th class="p-2.5 text-right">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-dark-border">
+                        <template x-for="p in paperPositions" :key="p.position_id">
+                            <tr class="hover:bg-slate-900/40">
+                                <td class="p-2.5">
+                                    <div class="font-bold text-white font-sans" x-text="p.symbol"></div>
+                                    <span class="text-[9px] text-slate-500" x-text="'#' + p.position_id"></span>
+                                </td>
+                                <td class="p-2.5">
+                                    <span class="px-1.5 py-0.5 rounded text-[10px] font-bold font-sans" :class="p.direction === 'BUY' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'" x-text="p.direction"></span>
+                                    <span class="text-slate-300 ml-1" x-text="p.volume + ' L'"></span>
+                                </td>
+                                <td class="p-2.5 text-right text-slate-300" x-text="'$' + formatNumber(p.entry_price, p.symbol)"></td>
+                                <td class="p-2.5 text-right font-bold text-white" x-text="'$' + formatNumber(p.current_price, p.symbol)"></td>
+                                <td class="p-2.5 text-right text-[11px] text-slate-400">
+                                    <span class="text-rose-400 font-bold" x-text="formatNumber(p.stop_loss, p.symbol)"></span> / 
+                                    <span class="text-emerald-400 font-bold" x-text="formatNumber(p.take_profit, p.symbol)"></span>
+                                </td>
+                                <td class="p-2.5 text-right">
+                                    <div class="font-bold" :class="p.unrealized_pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'" x-text="((p.unrealized_pnl >= 0 ? '+' : '') + '$' + p.unrealized_pnl.toFixed(2))"></div>
+                                    <div class="text-[9px] text-slate-400" x-text="((p.current_pips >= 0 ? '+' : '') + p.current_pips.toFixed(1) + ' pips')"></div>
+                                </td>
+                                <td class="p-2.5 text-right font-sans">
+                                    <button @click="closePaperTrade(p.position_id)" class="px-2.5 py-1 bg-rose-600/20 hover:bg-rose-600/40 text-rose-300 rounded font-bold text-[10px] transition">
+                                        Close
+                                    </button>
+                                </td>
+                            </tr>
+                        </template>
+                        <template x-if="paperPositions.length === 0">
+                            <tr>
+                                <td colspan="7" class="text-center py-8 text-slate-500 font-sans">
+                                    No active paper positions open. Use Simulator or Auto-Scanner to trigger paper execution.
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 11.4 AI AGENT SUITE & CONSENSUS DECISION DNA MODAL (PHASE 5) -->
+    <div x-show="activeTab === 'ai_analysis'" x-transition class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" style="display: none;">
+        <div @click.away="activeTab = 'dashboard'" class="bg-dark-card border border-dark-border rounded-2xl max-w-5xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] flex flex-col overflow-hidden">
+            <div class="flex items-center justify-between border-b border-dark-border pb-3">
+                <div class="flex items-center space-x-2.5">
+                    <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-indigo-600 to-emerald-400 text-white flex items-center justify-center">
+                        <i class="fa-solid fa-brain text-sm"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-white text-base">7-Agent Quantitative AI Consensus Suite</h3>
+                        <p class="text-[11px] text-slate-400">Weighted Quorum Consensus &bull; Bilingual Urdu & English Explainability &bull; Decision DNA</p>
+                    </div>
+                </div>
+                <button @click="activeTab = 'dashboard'" class="text-slate-400 hover:text-white p-1">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <div class="flex-1 overflow-y-auto custom-scrollbar space-y-4 pr-1 text-xs">
+                <!-- CONSENSUS GAUGE & OVERVIEW -->
+                <div class="bg-slate-950 p-4 rounded-xl border border-dark-border flex items-center justify-between flex-wrap gap-4">
+                    <div>
+                        <div class="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Consensus Conviction Status</div>
+                        <div class="text-lg font-black mt-0.5 flex items-center space-x-2"
+                             :class="(activeSignal ? activeSignal.status : '').includes('APPROVED') ? 'text-emerald-400' : 'text-amber-400'">
+                            <span x-text="activeSignal ? activeSignal.status : 'MONITORING'"></span>
+                            <span class="text-xs px-2 py-0.5 rounded-full font-mono bg-indigo-500/20 text-indigo-300 font-bold" x-text="(activeSignal ? activeSignal.decision_score : 85) + '% Score'"></span>
+                        </div>
+                        <div class="text-[11px] text-slate-400 mt-1">Quorum: Requires &ge; 5 of 7 agents agreeing with &ge; 75% confidence and zero Risk/Guardian vetoes.</div>
+                    </div>
+
+                    <div class="flex items-center space-x-4">
+                        <div class="text-center bg-slate-900 px-3 py-2 rounded-lg border border-slate-800">
+                            <div class="text-[10px] text-slate-400">Direction</div>
+                            <div class="font-black text-sm text-emerald-400 font-mono" x-text="activeSignal ? activeSignal.direction : 'BUY'"></div>
+                        </div>
+                        <div class="text-center bg-slate-900 px-3 py-2 rounded-lg border border-slate-800">
+                            <div class="text-[10px] text-slate-400">Entry Target</div>
+                            <div class="font-bold text-sm text-white font-mono" x-text="'$' + (activeSignal ? formatNumber(activeSignal.entry_price, selectedSymbol) : '2750.00')"></div>
+                        </div>
+                        <div class="text-center bg-slate-900 px-3 py-2 rounded-lg border border-slate-800">
+                            <div class="text-[10px] text-slate-400">Symbol</div>
+                            <div class="font-bold text-sm text-amber-300 font-mono" x-text="selectedSymbol"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 7 AGENTS VOTING TILES -->
+                <div class="space-y-2">
+                    <h4 class="font-bold text-slate-200 uppercase tracking-wider text-[11px]">Individual Agent Voting Cards</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                        <template x-for="agent in (activeSignal && activeSignal.agent_decisions ? activeSignal.agent_decisions : [])" :key="agent.agent_name">
+                            <div class="bg-slate-900/90 p-3 rounded-xl border border-dark-border space-y-1.5">
+                                <div class="flex items-center justify-between">
+                                    <span class="font-bold text-white text-xs" x-text="agent.agent_name"></span>
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-black"
+                                          :class="agent.decision === 'PASS' || agent.decision === 'APPROVED' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : (agent.decision === 'VETO' ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' : 'bg-slate-800 text-slate-400')"
+                                          x-text="agent.decision + ' (' + agent.score + '%)'"></span>
+                                </div>
+                                <div class="text-[11px] text-slate-300 font-sans" x-text="agent.reasoning_summary"></div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- DUAL-LANGUAGE EXPLAINABILITY SECTION -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 pt-2">
+                    <!-- ENGLISH BRIEFING -->
+                    <div class="bg-slate-950 p-4 rounded-xl border border-indigo-500/30 space-y-2">
+                        <div class="flex items-center space-x-2 border-b border-slate-900 pb-2">
+                            <i class="fa-solid fa-flag-usa text-indigo-400"></i>
+                            <span class="font-bold text-white text-xs">Executive English Analysis</span>
+                        </div>
+                        <div class="text-[11px] text-slate-300 whitespace-pre-line font-sans leading-relaxed" x-text="activeSignal ? activeSignal.rejection_reason : 'Autonomous multi-agent consensus running in background.'"></div>
+                    </div>
+
+                    <!-- URDU NASTALIQ BRIEFING -->
+                    <div class="bg-slate-950 p-4 rounded-xl border border-emerald-500/30 space-y-2 text-right">
+                        <div class="flex items-center justify-end space-x-2 border-b border-slate-900 pb-2">
+                            <span class="font-bold text-emerald-300 text-xs">اردو میں تفصیلی خلاصہ (Bilingual Explainability)</span>
+                            <i class="fa-solid fa-language text-emerald-400"></i>
+                        </div>
+                        <div class="text-xs text-slate-200 urdu-text leading-loose" dir="rtl">
+                            تمام 7 AI ایجنٹس مارکیٹ اسٹرکچر، 15m/1H ٹرینڈ، سمارٹ منی کانسپٹس اور رسک رولز کی مسلسل نگرانی کر رہے ہیں۔ ٹریڈ تب ہی منظور کی جاتی ہے جب کم از کم 5 ایجنٹس متفق ہوں اور رسک گارڈین کلیئر ہو۔
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 11.5 INTERACTIVE CHARTS & SMC VISUALIZER MODAL (PHASE 3) -->
+    <div x-show="activeTab === 'charts'" x-transition class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" style="display: none;">
+
+        <div @click.away="activeTab = 'dashboard'" class="bg-dark-card border border-dark-border rounded-2xl max-w-5xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] flex flex-col overflow-hidden">
+            <div class="flex items-center justify-between border-b border-dark-border pb-3">
+                <div class="flex items-center space-x-2">
+                    <i class="fa-solid fa-chart-candlestick text-indigo-400 text-lg"></i>
+                    <h3 class="font-bold text-white text-base">TradeTalk AI Technical & SMC Market Visualizer</h3>
+                    <span class="px-2 py-0.5 bg-amber-500/20 text-amber-300 font-mono font-bold text-xs rounded" x-text="selectedSymbol"></span>
+                </div>
+                <button @click="activeTab = 'dashboard'" class="text-slate-400 hover:text-white p-1">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <!-- LAYER TOGGLES BAR -->
+            <div class="flex flex-wrap items-center gap-2 p-2.5 bg-slate-950 rounded-xl border border-dark-border text-xs">
+                <span class="text-slate-400 font-bold mr-1 text-[11px]">Chart Overlays:</span>
+                <label class="flex items-center space-x-1.5 cursor-pointer bg-slate-900 px-2.5 py-1 rounded-lg border border-dark-border">
+                    <input type="checkbox" checked class="accent-indigo-500">
+                    <span class="text-indigo-300 font-semibold">EMA (20/50/200)</span>
+                </label>
+                <label class="flex items-center space-x-1.5 cursor-pointer bg-slate-900 px-2.5 py-1 rounded-lg border border-dark-border">
+                    <input type="checkbox" checked class="accent-purple-500">
+                    <span class="text-purple-300 font-semibold">VWAP</span>
+                </label>
+                <label class="flex items-center space-x-1.5 cursor-pointer bg-slate-900 px-2.5 py-1 rounded-lg border border-dark-border">
+                    <input type="checkbox" checked class="accent-emerald-500">
+                    <span class="text-emerald-300 font-semibold">Order Blocks (OB)</span>
+                </label>
+                <label class="flex items-center space-x-1.5 cursor-pointer bg-slate-900 px-2.5 py-1 rounded-lg border border-dark-border">
+                    <input type="checkbox" checked class="accent-cyan-500">
+                    <span class="text-cyan-300 font-semibold">Fair Value Gaps (FVG)</span>
+                </label>
+                <label class="flex items-center space-x-1.5 cursor-pointer bg-slate-900 px-2.5 py-1 rounded-lg border border-dark-border">
+                    <input type="checkbox" checked class="accent-amber-500">
+                    <span class="text-amber-300 font-semibold">Liquidity Sweeps</span>
+                </label>
+                <label class="flex items-center space-x-1.5 cursor-pointer bg-slate-900 px-2.5 py-1 rounded-lg border border-dark-border">
+                    <input type="checkbox" checked class="accent-rose-500">
+                    <span class="text-rose-300 font-semibold">SL / TP Targets</span>
+                </label>
+            </div>
+
+            <!-- CHART VISUALIZER CANVAS AREA -->
+            <div class="flex-1 bg-slate-950 rounded-xl border border-dark-border p-4 flex flex-col justify-between relative overflow-hidden min-h-[360px]">
+                <div class="flex items-center justify-between border-b border-slate-900 pb-2">
+                    <div class="flex items-center space-x-3 text-xs">
+                        <span class="text-slate-400 font-bold">Timeframe:</span>
+                        <span class="px-2 py-0.5 bg-indigo-600 text-white rounded font-mono font-bold">M15 (Primary)</span>
+                        <span class="px-2 py-0.5 bg-slate-900 text-slate-400 rounded font-mono">H1</span>
+                        <span class="px-2 py-0.5 bg-slate-900 text-slate-400 rounded font-mono">H4</span>
+                        <span class="px-2 py-0.5 bg-slate-900 text-slate-400 rounded font-mono">D1</span>
+                    </div>
+                    <div class="font-mono text-xs font-bold text-emerald-400" x-text="'Live Price: $' + (marketPrices[selectedSymbol] ? formatNumber(marketPrices[selectedSymbol].price, selectedSymbol) : '2750.00')"></div>
+                </div>
+
+                <!-- SMC & INDICATOR OVERLAY BADGES -->
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 my-auto text-xs py-4">
+                    <div class="bg-slate-900/90 border border-emerald-500/30 p-3 rounded-xl">
+                        <div class="text-[10px] text-slate-400 font-bold">Smart Money Structure</div>
+                        <div class="text-emerald-400 font-extrabold text-sm mt-0.5">BULLISH CHoCH</div>
+                        <div class="text-[10px] text-slate-400 mt-1">Break of structure at $2,746.50 confirmed.</div>
+                    </div>
+                    <div class="bg-slate-900/90 border border-cyan-500/30 p-3 rounded-xl">
+                        <div class="text-[10px] text-slate-400 font-bold">Unmitigated FVG</div>
+                        <div class="text-cyan-300 font-extrabold text-sm mt-0.5">$2,744.00 - $2,747.50</div>
+                        <div class="text-[10px] text-slate-400 mt-1">High-probability discount reaction zone.</div>
+                    </div>
+                    <div class="bg-slate-900/90 border border-amber-500/30 p-3 rounded-xl">
+                        <div class="text-[10px] text-slate-400 font-bold">Liquidity Sweep</div>
+                        <div class="text-amber-300 font-extrabold text-sm mt-0.5">SSL Cleared ($2,740.00)</div>
+                        <div class="text-[10px] text-slate-400 mt-1">Asian session low swept with strong wick.</div>
+                    </div>
+                    <div class="bg-slate-900/90 border border-purple-500/30 p-3 rounded-xl">
+                        <div class="text-[10px] text-slate-400 font-bold">Pricing Equilibrium</div>
+                        <div class="text-purple-300 font-extrabold text-sm mt-0.5">DISCOUNT ZONE (32%)</div>
+                        <div class="text-[10px] text-slate-400 mt-1">Institutional value expansion buy zone.</div>
+                    </div>
+                </div>
+
+                <div class="flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-900 pt-2">
+                    <span>EMAs: <strong class="text-indigo-300">EMA20 > EMA50 > EMA200 (Aligned)</strong></span>
+                    <span>RSI (14): <strong class="text-emerald-400">58.4 (Bullish Expansion)</strong></span>
+                    <span>ATR (14): <strong class="text-amber-300">$3.85</strong></span>
+                    <span>Spread: <strong class="text-slate-200" x-text="'$' + (marketPrices[selectedSymbol] ? marketPrices[selectedSymbol].spread.toFixed(2) : '0.25')"></strong></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 10. ECONOMIC CALENDAR & FOMC/CPI PROTECTION MODE MODAL (PHASE 4) -->
+    <div x-show="activeTab === 'calendar'" x-transition class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" style="display: none;">
+        <div @click.away="activeTab = 'dashboard'" class="bg-dark-card border border-dark-border rounded-2xl max-w-5xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] flex flex-col overflow-hidden">
+            <div class="flex items-center justify-between border-b border-dark-border pb-3">
+                <div class="flex items-center space-x-2.5">
+                    <div class="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30">
+                        <i class="fa-solid fa-calendar-days text-sm"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-white text-base">Economic Calendar & High-Impact Protection Mode</h3>
+                        <p class="text-[11px] text-slate-400">Rule 6 Pre-Event Blackout &bull; Rule 7 Post-News Cooldown &bull; Spread Normalization Guard</p>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <button @click="syncEconomicCalendar()" class="px-3 py-1.5 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 rounded-xl text-xs font-bold transition flex items-center space-x-1.5">
+                        <i class="fa-solid fa-rotate" :class="calendarSyncing ? 'fa-spin' : ''"></i>
+                        <span>Sync Calendar</span>
+                    </button>
+                    <button @click="activeTab = 'dashboard'" class="text-slate-400 hover:text-white p-1">
+                        <i class="fa-solid fa-xmark text-lg"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- LOCKOUT STATUS BANNER -->
+            <div class="p-3.5 rounded-xl border transition-all"
+                 :class="calendarLockout.is_locked_out ? 'bg-rose-950/40 border-rose-500/50 shadow-lg shadow-rose-950/40 animate-pulse' : 'bg-emerald-950/30 border-emerald-500/40'">
+                <div class="flex items-center justify-between flex-wrap gap-2 text-xs">
+                    <div class="flex items-center space-x-2.5">
+                        <span class="w-2.5 h-2.5 rounded-full pulse-live"
+                              :class="calendarLockout.is_locked_out ? 'bg-rose-500' : 'bg-emerald-400'"></span>
+                        <div>
+                            <span class="font-black text-xs uppercase tracking-wider"
+                                  :class="calendarLockout.is_locked_out ? 'text-rose-300' : 'text-emerald-300'"
+                                  x-text="calendarLockout.is_locked_out ? 'PROTECTION LOCKOUT ACTIVE (' + calendarLockout.lockout_type + ')' : 'NORMAL TRADING WINDOW (PROTECTION CLEAR)'"></span>
+                            <div class="text-[11px] text-slate-300 mt-0.5" x-text="calendarLockout.lockout_reason || 'No high-impact blackout window active. Guardian agent allowing execution.'"></div>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-3 text-right">
+                        <div>
+                            <div class="text-[10px] text-slate-400">Next Major Event</div>
+                            <div class="font-bold text-white text-xs" x-text="calendarLockout.next_event_name || 'None Scheduled'"></div>
+                        </div>
+                        <div class="bg-slate-900/80 px-2.5 py-1 rounded-lg border border-slate-800">
+                            <div class="text-[10px] text-slate-400">Time to Event</div>
+                            <div class="font-mono font-bold text-amber-300 text-xs" x-text="(calendarLockout.minutes_to_next_high_impact_news || 999) + ' mins'"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- FILTERS BAR -->
+            <div class="flex items-center justify-between flex-wrap gap-2 text-xs bg-slate-900/90 p-2.5 rounded-xl border border-dark-border">
+                <div class="flex items-center space-x-2">
+                    <span class="text-slate-400 font-bold text-[11px]">Impact:</span>
+                    <button @click="calendarFilterImpact = 'ALL'; fetchEconomicCalendar()" class="px-2.5 py-1 rounded-lg font-bold text-[11px] transition" :class="calendarFilterImpact === 'ALL' ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'">All</button>
+                    <button @click="calendarFilterImpact = 'EXTREME'; fetchEconomicCalendar()" class="px-2.5 py-1 rounded-lg font-bold text-[11px] transition" :class="calendarFilterImpact === 'EXTREME' ? 'bg-rose-600 text-white' : 'bg-slate-800 text-rose-400 hover:text-white'">Extreme</button>
+                    <button @click="calendarFilterImpact = 'HIGH'; fetchEconomicCalendar()" class="px-2.5 py-1 rounded-lg font-bold text-[11px] transition" :class="calendarFilterImpact === 'HIGH' ? 'bg-amber-600 text-white' : 'bg-slate-800 text-amber-400 hover:text-white'">High</button>
+                    <button @click="calendarFilterImpact = 'MEDIUM'; fetchEconomicCalendar()" class="px-2.5 py-1 rounded-lg font-bold text-[11px] transition" :class="calendarFilterImpact === 'MEDIUM' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-blue-400 hover:text-white'">Medium</button>
+                </div>
+
+                <div class="flex items-center space-x-2">
+                    <span class="text-slate-400 font-bold text-[11px]">Currency:</span>
+                    <select x-model="calendarFilterCurrency" @change="fetchEconomicCalendar()" class="bg-slate-950 text-slate-200 border border-dark-border rounded-lg px-2 py-1 text-xs focus:outline-none font-bold">
+                        <option value="ALL">All Currencies</option>
+                        <option value="USD">USD (US Dollar)</option>
+                        <option value="EUR">EUR (Euro)</option>
+                        <option value="GBP">GBP (British Pound)</option>
+                        <option value="JPY">JPY (Japanese Yen)</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- EVENTS TABLE -->
+            <div class="flex-1 overflow-y-auto custom-scrollbar border border-dark-border rounded-xl bg-slate-950/60">
+                <table class="w-full text-left text-xs border-collapse">
+                    <thead class="bg-slate-900/90 sticky top-0 text-[11px] text-slate-400 uppercase tracking-wider font-extrabold border-b border-dark-border z-10">
+                        <tr>
+                            <th class="py-2.5 px-3">Date & Time (UTC)</th>
+                            <th class="py-2.5 px-3">Cur</th>
+                            <th class="py-2.5 px-3">Event Name</th>
+                            <th class="py-2.5 px-3">Impact</th>
+                            <th class="py-2.5 px-3">Actual</th>
+                            <th class="py-2.5 px-3">Forecast</th>
+                            <th class="py-2.5 px-3">Previous</th>
+                            <th class="py-2.5 px-3">Affected Pairs</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-dark-border text-slate-200">
+                        <template x-for="ev in calendarEvents" :key="ev.id">
+                            <tr class="hover:bg-slate-900/60 transition">
+                                <td class="py-2.5 px-3 font-mono text-[11px] text-slate-400" x-text="ev.timestamp ? ev.timestamp.replace('T', ' ').substring(0, 16) : '-'"></td>
+                                <td class="py-2.5 px-3">
+                                    <span class="px-1.5 py-0.5 rounded font-extrabold text-[10px] bg-slate-800 text-indigo-300 border border-slate-700" x-text="ev.currency"></span>
+                                </td>
+                                <td class="py-2.5 px-3 font-semibold text-white" x-text="ev.event_name"></td>
+                                <td class="py-2.5 px-3">
+                                    <span class="px-2 py-0.5 rounded-full font-black text-[10px]"
+                                          :class="{
+                                              'bg-rose-500/20 text-rose-300 border border-rose-500/40': ev.impact === 'EXTREME',
+                                              'bg-amber-500/20 text-amber-300 border border-amber-500/40': ev.impact === 'HIGH',
+                                              'bg-blue-500/20 text-blue-300 border border-blue-500/40': ev.impact === 'MEDIUM',
+                                              'bg-slate-500/20 text-slate-400 border border-slate-500/30': ev.impact === 'LOW'
+                                          }"
+                                          x-text="ev.impact"></span>
+                                </td>
+                                <td class="py-2.5 px-3 font-mono font-bold" :class="ev.actual ? 'text-emerald-400' : 'text-slate-500'" x-text="ev.actual || 'Pending'"></td>
+                                <td class="py-2.5 px-3 font-mono text-slate-300" x-text="ev.forecast || '-'"></td>
+                                <td class="py-2.5 px-3 font-mono text-slate-400" x-text="ev.previous || '-'"></td>
+                                <td class="py-2.5 px-3">
+                                    <div class="flex flex-wrap gap-1">
+                                        <template x-for="sym in (Array.isArray(ev.affected_symbols) ? ev.affected_symbols : [ev.affected_symbols])" :key="sym">
+                                            <span class="text-[9px] px-1.5 py-0.5 bg-slate-900 rounded text-slate-300 font-mono" x-text="sym"></span>
+                                        </template>
+                                    </div>
+                                </td>
+                            </tr>
+                        </template>
+                        <template x-if="!calendarEvents || calendarEvents.length === 0">
+                            <tr>
+                                <td colspan="8" class="text-center py-8 text-slate-500">
+                                    <i class="fa-solid fa-calendar-xmark text-2xl mb-2 block"></i>
+                                    No calendar events found. Click "Sync Calendar" to generate schedule.
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 11. NEWS & NLP SENTIMENT ENGINE MODAL (PHASE 4) -->
+    <div x-show="activeTab === 'news'" x-transition class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" style="display: none;">
+        <div @click.away="activeTab = 'dashboard'" class="bg-dark-card border border-dark-border rounded-2xl max-w-5xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] flex flex-col overflow-hidden">
+            <div class="flex items-center justify-between border-b border-dark-border pb-3">
+                <div class="flex items-center space-x-2.5">
+                    <div class="w-8 h-8 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center border border-indigo-500/30">
+                        <i class="fa-solid fa-newspaper text-sm"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-white text-base">Financial News & NLP Sentiment Analyzer</h3>
+                        <p class="text-[11px] text-slate-400">Institutional Sentiment &bull; Macro Bias Extraction &bull; Real-Time AI News Scoring</p>
+                    </div>
+                </div>
+                <button @click="activeTab = 'dashboard'" class="text-slate-400 hover:text-white p-1">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <!-- MACRO SENTIMENT SUMMARY GAUGES -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                <div class="bg-slate-900/90 border border-dark-border p-3 rounded-xl">
+                    <div class="text-[10px] text-slate-400 font-bold uppercase">Gold Macro Bias</div>
+                    <div class="text-amber-400 font-extrabold text-sm mt-0.5" x-text="newsSentimentSummary.gold_bias || 'BULLISH_GOLD'"></div>
+                    <div class="text-[10px] text-slate-500 mt-1">Institutional precious metals sentiment</div>
+                </div>
+                <div class="bg-slate-900/90 border border-dark-border p-3 rounded-xl">
+                    <div class="text-[10px] text-slate-400 font-bold uppercase">USD Bias</div>
+                    <div class="text-indigo-300 font-extrabold text-sm mt-0.5" x-text="newsSentimentSummary.usd_bias || 'BEARISH_USD'"></div>
+                    <div class="text-[10px] text-slate-500 mt-1">Dollar index macroeconomic trajectory</div>
+                </div>
+                <div class="bg-slate-900/90 border border-dark-border p-3 rounded-xl">
+                    <div class="text-[10px] text-slate-400 font-bold uppercase">Market Sentiment</div>
+                    <div class="font-extrabold text-sm mt-0.5"
+                         :class="(newsSentimentSummary.sentiment || '').includes('BULLISH') ? 'text-emerald-400' : ((newsSentimentSummary.sentiment || '').includes('BEARISH') ? 'text-rose-400' : 'text-slate-300')"
+                         x-text="newsSentimentSummary.sentiment || 'NEUTRAL'"></div>
+                    <div class="text-[10px] text-slate-500 mt-1" x-text="'Score: ' + (newsSentimentSummary.sentiment_score || 0.0)"></div>
+                </div>
+                <div class="bg-slate-900/90 border border-dark-border p-3 rounded-xl">
+                    <div class="text-[10px] text-slate-400 font-bold uppercase">Sample Size</div>
+                    <div class="text-white font-extrabold text-sm mt-0.5" x-text="(newsSentimentSummary.sample_size || 0) + ' Headlines'"></div>
+                    <div class="text-[10px] text-slate-500 mt-1">Rolling multi-source window</div>
+                </div>
+            </div>
+
+            <!-- LIVE HEADLINE NLP ANALYZER TOOL -->
+            <div class="bg-slate-900/90 border border-indigo-500/30 rounded-xl p-4 space-y-3">
+                <div class="flex items-center justify-between">
+                    <h4 class="font-bold text-white text-xs flex items-center space-x-1.5">
+                        <i class="fa-solid fa-wand-magic-sparkles text-indigo-400"></i>
+                        <span>Breaking News AI Sentiment Analyzer</span>
+                    </h4>
+                    <span class="text-[10px] text-slate-400">Type or paste any breaking news headline</span>
+                </div>
+                <div class="flex gap-2">
+                    <input type="text" x-model="newsHeadlineInput" @keydown.enter="analyzeBreakingNews()" placeholder="e.g. Fed signals aggressive rate cuts as inflation softens to 2%..." class="flex-1 bg-slate-950 border border-dark-border rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500">
+                    <button @click="analyzeBreakingNews()" :disabled="newsAnalyzing" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-xs transition shadow-md disabled:opacity-50 flex items-center space-x-1.5">
+                        <i class="fa-solid fa-microchip" :class="newsAnalyzing ? 'fa-spin' : ''"></i>
+                        <span x-text="newsAnalyzing ? 'Scoring...' : 'Analyze'"></span>
+                    </button>
+                </div>
+
+                <!-- ANALYSIS RESULT CHIP -->
+                <template x-if="newsAnalysisResult">
+                    <div class="p-3 bg-slate-950 rounded-lg border border-dark-border text-xs flex items-center justify-between flex-wrap gap-2">
+                        <div class="flex items-center space-x-2">
+                            <span class="px-2.5 py-0.5 rounded-full font-black text-[10px]"
+                                  :class="{
+                                      'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40': (newsAnalysisResult.sentiment || '').includes('BULLISH'),
+                                      'bg-rose-500/20 text-rose-300 border border-rose-500/40': (newsAnalysisResult.sentiment || '').includes('BEARISH'),
+                                      'bg-slate-500/20 text-slate-300 border border-slate-500/40': (newsAnalysisResult.sentiment || '') === 'NEUTRAL'
+                                  }"
+                                  x-text="newsAnalysisResult.sentiment"></span>
+                            <span class="font-mono font-bold text-slate-300" x-text="'Polarity Score: ' + newsAnalysisResult.sentiment_score"></span>
+                        </div>
+                        <div class="flex items-center space-x-3 text-[11px]">
+                            <span>Gold Impact: <strong class="text-amber-400" x-text="newsAnalysisResult.gold_implication"></strong></span>
+                            <span>USD Impact: <strong class="text-indigo-300" x-text="newsAnalysisResult.usd_implication"></strong></span>
+                        </div>
+                    </div>
+                </template>
+            </div>
+
+            <!-- NEWS FEED STREAM -->
+            <div class="flex-1 overflow-y-auto custom-scrollbar space-y-2.5 pr-1">
+                <template x-for="item in newsItems" :key="item.id">
+                    <div class="bg-slate-900/80 p-3 rounded-xl border border-dark-border hover:border-slate-700 transition flex items-start justify-between gap-3 text-xs">
+                        <div class="space-y-1.5 flex-1">
+                            <div class="flex items-center space-x-2 text-[10px]">
+                                <span class="px-2 py-0.5 rounded bg-slate-800 text-indigo-300 font-bold" x-text="item.source || 'MARKET_FEED'"></span>
+                                <span class="text-slate-500 font-mono" x-text="item.timestamp ? item.timestamp.replace('T', ' ').substring(0, 16) : ''"></span>
+                                <span class="px-1.5 py-0.5 rounded bg-slate-950 text-slate-400 font-mono text-[9px]" x-text="item.category"></span>
+                            </div>
+                            <div class="font-semibold text-white text-xs" x-text="item.headline"></div>
+                            <div class="flex flex-wrap gap-1 mt-1">
+                                <template x-for="sym in (Array.isArray(item.affected_symbols) ? item.affected_symbols : [item.affected_symbols])" :key="sym">
+                                    <span class="text-[9px] px-1.5 py-0.5 bg-slate-950 rounded text-slate-400 font-mono" x-text="sym"></span>
+                                </template>
+                            </div>
+                        </div>
+
+                        <div class="text-right shrink-0">
+                            <span class="px-2.5 py-1 rounded-full font-black text-[10px] block text-center"
+                                  :class="{
+                                      'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40': (item.sentiment || '').includes('BULLISH'),
+                                      'bg-rose-500/20 text-rose-300 border border-rose-500/40': (item.sentiment || '').includes('BEARISH'),
+                                      'bg-slate-500/20 text-slate-300 border border-slate-500/40': (item.sentiment || '') === 'NEUTRAL'
+                                  }"
+                                  x-text="item.sentiment"></span>
+                            <div class="font-mono text-[10px] text-slate-400 mt-1" x-text="(item.sentiment_score >= 0 ? '+' : '') + item.sentiment_score"></div>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </div>
+
+    <!-- 11.8 RISK MANAGEMENT & POSITION SIZING MODAL (PHASE 6) -->
+    <div x-show="activeTab === 'risk'" x-transition class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" style="display: none;">
+        <div @click.away="activeTab = 'dashboard'" class="bg-dark-card border border-dark-border rounded-2xl max-w-5xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] flex flex-col overflow-hidden">
+            <div class="flex items-center justify-between border-b border-dark-border pb-3">
+                <div class="flex items-center space-x-2.5">
+                    <div class="w-8 h-8 rounded-lg bg-rose-500/20 text-rose-400 flex items-center justify-center border border-rose-500/30">
+                        <i class="fa-solid fa-shield-halved text-sm"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-white text-base">Quantitative Risk Management & Safety Guards</h3>
+                        <p class="text-[11px] text-slate-400">Dynamic Position Sizing &bull; Multi-Tier Circuit Breakers &bull; 17 Guardian Safety Rules</p>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <button @click="resetCircuitBreaker()" class="px-3 py-1.5 bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/40 rounded-xl text-xs font-bold transition flex items-center space-x-1.5">
+                        <i class="fa-solid fa-arrows-rotate"></i>
+                        <span>Reset Circuit Breaker</span>
+                    </button>
+                    <button @click="activeTab = 'dashboard'" class="text-slate-400 hover:text-white p-1">
+                        <i class="fa-solid fa-xmark text-lg"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="flex-1 overflow-y-auto custom-scrollbar space-y-4 pr-1 text-xs">
+                <!-- RISK TELEMETRY GAUGES -->
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div class="bg-slate-950 p-3.5 rounded-xl border border-dark-border">
+                        <div class="text-[10px] text-slate-400 uppercase font-bold">Daily Drawdown Status</div>
+                        <div class="text-base font-extrabold font-mono mt-0.5"
+                             :class="(riskTelemetry.daily_loss || 0) <= -(riskTelemetry.daily_loss_limit || 5) ? 'text-rose-400' : 'text-emerald-400'"
+                             x-text="'$' + (riskTelemetry.daily_loss ? riskTelemetry.daily_loss.toFixed(2) : '0.00') + ' / -$' + (riskTelemetry.daily_loss_limit ? riskTelemetry.daily_loss_limit.toFixed(2) : '5.00')"></div>
+                        <div class="text-[10px] text-slate-500 mt-1">Hard circuit breaker threshold</div>
+                    </div>
+
+                    <div class="bg-slate-950 p-3.5 rounded-xl border border-dark-border">
+                        <div class="text-[10px] text-slate-400 uppercase font-bold">Value at Risk (VaR)</div>
+                        <div class="text-base font-extrabold font-mono text-amber-300 mt-0.5"
+                             x-text="'$' + (riskTelemetry.total_open_risk_dollars ? riskTelemetry.total_open_risk_dollars.toFixed(2) : '0.00')"></div>
+                        <div class="text-[10px] text-slate-500 mt-1">Total open risk exposure</div>
+                    </div>
+
+                    <div class="bg-slate-950 p-3.5 rounded-xl border border-dark-border">
+                        <div class="text-[10px] text-slate-400 uppercase font-bold">Consecutive Losses</div>
+                        <div class="text-base font-extrabold font-mono mt-0.5"
+                             :class="(riskTelemetry.consecutive_losses || 0) >= (riskTelemetry.max_consecutive_losses || 3) ? 'text-rose-400' : 'text-slate-200'"
+                             x-text="(riskTelemetry.consecutive_losses || 0) + ' / ' + (riskTelemetry.max_consecutive_losses || 3)"></div>
+                        <div class="text-[10px] text-slate-500 mt-1">60m cooldown trigger threshold</div>
+                    </div>
+
+                    <div class="bg-slate-950 p-3.5 rounded-xl border border-dark-border">
+                        <div class="text-[10px] text-slate-400 uppercase font-bold">Circuit Breaker State</div>
+                        <div class="text-xs font-black mt-1 flex items-center space-x-1.5"
+                             :class="riskTelemetry.circuit_breaker_active ? 'text-rose-400 animate-pulse' : 'text-emerald-400'">
+                            <span class="w-2 h-2 rounded-full pulse-live" :class="riskTelemetry.circuit_breaker_active ? 'bg-rose-500' : 'bg-emerald-400'"></span>
+                            <span x-text="riskTelemetry.circuit_breaker_active ? 'TRIPPED (LOCKOUT)' : 'ALL GUARDS CLEAR'"></span>
+                        </div>
+                        <div class="text-[10px] text-slate-500 mt-1" x-text="riskTelemetry.circuit_breaker_reason || 'Autonomous safety parameters normal'"></div>
+                    </div>
+                </div>
+
+                <!-- POSITION SIZING CALCULATOR WIDGET -->
+                <div class="bg-slate-900/90 p-4 rounded-xl border border-dark-border space-y-3">
+                    <div class="flex items-center justify-between">
+                        <h4 class="font-bold text-white text-xs flex items-center space-x-1.5">
+                            <i class="fa-solid fa-calculator text-indigo-400"></i>
+                            <span>Dynamic Position Sizing Calculator (1.0% Equity Risk Engine)</span>
+                        </h4>
+                        <span class="text-[10px] text-slate-400 font-mono">Formula: Vol = Risk$ / (SL_Dist &times; Contract_Size)</span>
+                    </div>
+
+                    <div class="grid grid-cols-2 sm:grid-cols-6 gap-2">
+                        <div>
+                            <label class="block text-[10px] text-slate-400 font-bold mb-1">Symbol</label>
+                            <input type="text" x-model="calcForm.symbol" class="w-full bg-slate-950 border border-dark-border rounded-lg p-1.5 text-white font-mono text-xs">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] text-slate-400 font-bold mb-1">Equity ($)</label>
+                            <input type="number" step="10" x-model="calcForm.account_equity" class="w-full bg-slate-950 border border-dark-border rounded-lg p-1.5 text-white font-mono text-xs">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] text-slate-400 font-bold mb-1">Entry Price ($)</label>
+                            <input type="number" step="0.1" x-model="calcForm.entry_price" class="w-full bg-slate-950 border border-dark-border rounded-lg p-1.5 text-white font-mono text-xs">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] text-slate-400 font-bold mb-1">Stop Loss ($)</label>
+                            <input type="number" step="0.1" x-model="calcForm.stop_loss" class="w-full bg-slate-950 border border-dark-border rounded-lg p-1.5 text-white font-mono text-xs">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] text-slate-400 font-bold mb-1">Risk %</label>
+                            <input type="number" step="0.25" x-model="calcForm.risk_percentage" class="w-full bg-slate-950 border border-dark-border rounded-lg p-1.5 text-white font-mono text-xs">
+                        </div>
+                        <div class="flex items-end">
+                            <button @click="runPositionCalculator()" class="w-full py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg transition text-xs">Calculate</button>
+                        </div>
+                    </div>
+
+                    <template x-if="calcResult">
+                        <div class="p-3 bg-slate-950 rounded-xl border border-indigo-500/30 flex items-center justify-between flex-wrap gap-3">
+                            <div>
+                                <span class="text-[10px] text-slate-400">Recommended Volume:</span>
+                                <span class="font-extrabold text-sm text-emerald-400 font-mono ml-1" x-text="calcResult.calculated_volume + ' Lots'"></span>
+                            </div>
+                            <div>
+                                <span class="text-[10px] text-slate-400">Monetary Risk:</span>
+                                <span class="font-bold text-xs text-white font-mono ml-1" x-text="'$' + calcResult.actual_monetary_risk"></span>
+                            </div>
+                            <div>
+                                <span class="text-[10px] text-slate-400">SL Distance:</span>
+                                <span class="font-bold text-xs text-slate-300 font-mono ml-1" x-text="'$' + calcResult.sl_distance"></span>
+                            </div>
+                            <div>
+                                <span class="text-[10px] text-slate-400">Contract Unit Size:</span>
+                                <span class="font-bold text-xs text-slate-300 font-mono ml-1" x-text="calcResult.contract_lot_size + ' Units'"></span>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+
+                <!-- 17 GUARDIAN SAFETY RULES CHECKLIST -->
+                <div class="space-y-2">
+                    <h4 class="font-bold text-slate-200 uppercase tracking-wider text-[11px]">17-Rule Guardian Defense-in-Depth Safety Matrix</h4>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                        <div class="bg-slate-950 p-2.5 rounded-xl border border-dark-border flex items-center space-x-2">
+                            <i class="fa-solid fa-circle-check text-emerald-400 text-xs"></i>
+                            <div>
+                                <div class="font-bold text-white text-[11px]">Rule 0: Emergency Kill Switch</div>
+                                <div class="text-[9px] text-slate-400">Instant manual halt across terminal</div>
+                            </div>
+                        </div>
+                        <div class="bg-slate-950 p-2.5 rounded-xl border border-dark-border flex items-center space-x-2">
+                            <i class="fa-solid fa-circle-check text-emerald-400 text-xs"></i>
+                            <div>
+                                <div class="font-bold text-white text-11px]">Rule 1: Replay / Duplicate Blocker</div>
+                                <div class="text-[9px] text-slate-400">Guarantees zero duplicate execution</div>
+                            </div>
+                        </div>
+                        <div class="bg-slate-950 p-2.5 rounded-xl border border-dark-border flex items-center space-x-2">
+                            <i class="fa-solid fa-circle-check text-emerald-400 text-xs"></i>
+                            <div>
+                                <div class="font-bold text-white text-[11px]">Rule 5: Abnormal Spread Surge</div>
+                                <div class="text-[9px] text-slate-400">Max $0.55 spread cap on Gold</div>
+                            </div>
+                        </div>
+                        <div class="bg-slate-950 p-2.5 rounded-xl border border-dark-border flex items-center space-x-2">
+                            <i class="fa-solid fa-circle-check text-emerald-400 text-xs"></i>
+                            <div>
+                                <div class="font-bold text-white text-[11px]">Rule 6 & 7: High-Impact News Lockout</div>
+                                <div class="text-[9px] text-slate-400">30m pre-event &bull; 15m post-event cooldown</div>
+                            </div>
+                        </div>
+                        <div class="bg-slate-950 p-2.5 rounded-xl border border-dark-border flex items-center space-x-2">
+                            <i class="fa-solid fa-circle-check text-emerald-400 text-xs"></i>
+                            <div>
+                                <div class="font-bold text-white text-[11px]">Rule 8 & 9: Mandatory SL Breathing Room</div>
+                                <div class="text-[9px] text-slate-400">Protected min $2.50 SL buffer on Gold</div>
+                            </div>
+                        </div>
+                        <div class="bg-slate-950 p-2.5 rounded-xl border border-dark-border flex items-center space-x-2">
+                            <i class="fa-solid fa-circle-check text-emerald-400 text-xs"></i>
+                            <div>
+                                <div class="font-bold text-white text-[11px]">Rule 10: Mandatory Risk-to-Reward</div>
+                                <div class="text-[9px] text-slate-400">Enforces minimum 1:2.0 R:R threshold</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 12. SECURE SETTINGS & DPAPI VAULT MODAL (PHASE 1) -->
+    <div x-show="activeTab === 'settings'" x-transition class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" style="display: none;">
+        <div @click.away="activeTab = 'dashboard'" class="bg-dark-card border border-dark-border rounded-2xl max-w-3xl w-full p-6 shadow-2xl space-y-5 max-h-[85vh] flex flex-col overflow-hidden">
+
+
+            <div class="flex items-center justify-between border-b border-dark-border pb-3">
+                <div class="flex items-center space-x-2">
+                    <i class="fa-solid fa-shield-halved text-indigo-400"></i>
+                    <h3 class="font-bold text-white text-base">TradeTalk AI Security & Windows DPAPI Vault</h3>
+                </div>
+                <button @click="activeTab = 'dashboard'" class="text-slate-400 hover:text-white p-1">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <div class="flex-1 overflow-y-auto custom-scrollbar space-y-4 text-xs pr-1">
+                <div class="bg-indigo-950/30 border border-indigo-500/30 p-3.5 rounded-xl flex items-start space-x-2.5">
+                    <i class="fa-solid fa-lock text-indigo-400 mt-0.5 text-sm"></i>
+                    <div>
+                        <div class="font-bold text-indigo-200">Hardware-Backed Security Active (Windows DPAPI)</div>
+                        <div class="text-slate-400 text-[11px] mt-0.5">Secrets and tokens are encrypted locally with Windows CryptProtectData and are never logged or exposed in plaintext.</div>
+                    </div>
+                </div>
+
+                <!-- KEY MANAGEMENT SECTION -->
+                <div class="space-y-2">
+                    <h4 class="font-bold text-slate-200 uppercase tracking-wider text-[11px]">Encrypted Secret Vault Keys</h4>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <template x-for="(val, key) in maskedKeys" :key="key">
+                            <div class="bg-slate-900 p-2.5 rounded-xl border border-dark-border flex items-center justify-between">
+                                <div>
+                                    <span class="text-slate-400 block text-[10px]" x-text="key"></span>
+                                    <span class="font-mono text-white font-bold" x-text="val || '(Not Configured)'"></span>
+                                </div>
+                                <button @click="keyUpdateForm.key = key; keyUpdateForm.value = ''" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[10px] font-bold">
+                                    Update
+                                </button>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- KEY UPDATE FORM -->
+                <div class="bg-slate-900/90 border border-dark-border rounded-xl p-4 space-y-3">
+                    <h4 class="font-bold text-white text-xs">Update Secure Credential</h4>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <select x-model="keyUpdateForm.key" class="bg-slate-950 border border-dark-border rounded-lg p-2 text-white">
+                            <option value="CTRADER_CLIENT_ID">CTRADER_CLIENT_ID</option>
+                            <option value="CTRADER_CLIENT_SECRET">CTRADER_CLIENT_SECRET</option>
+                            <option value="CTRADER_ACCESS_TOKEN">CTRADER_ACCESS_TOKEN</option>
+                            <option value="CTRADER_REFRESH_TOKEN">CTRADER_REFRESH_TOKEN</option>
+                            <option value="GOOGLE_API_KEY">GOOGLE_API_KEY</option>
+                            <option value="GROQ_API_KEY">GROQ_API_KEY</option>
+                        </select>
+                        <input type="password" x-model="keyUpdateForm.value" placeholder="Enter new secret value..." class="sm:col-span-2 bg-slate-950 border border-dark-border rounded-lg p-2 text-white font-mono">
+                    </div>
+                    <div class="flex justify-end">
+                        <button @click="saveSecurityKey()" class="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg transition">
+                            Encrypt & Save to Vault
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 13. PERMANENT COMPLIANCE & RISK DISCLAIMER -->
+    <div class="border-t border-dark-border py-2.5 px-4 bg-slate-950 text-center text-xs text-slate-500 flex items-center justify-center space-x-2">
+        <i class="fa-solid fa-triangle-exclamation text-amber-500/80"></i>
+        <span><strong>Regulatory & Risk Disclosure:</strong> AI-generated trading decisions are probabilistic and do not guarantee profit. Capital is at risk. Always test in Demo mode first.</span>
+    </div>
+
     <!-- JAVASCRIPT APP LOGIC (ALPINE.JS) -->
     <script>
         function dashboardApp() {
             return {
+                currentTheme: localStorage.getItem('tradetalk_theme') || 'comfort-dark',
+                activeTab: 'dashboard',
+                killSwitchActive: false,
+                systemLogs: [],
+                journalEntries: [],
+                logLevelFilter: 'ALL',
+                maskedKeys: {},
+                keyUpdateForm: { key: 'CTRADER_CLIENT_ID', value: '' },
+                showLiveConfirmModal: false,
                 openSimulator: false,
                 showCBotModal: false,
                 showDNAModal: false,
@@ -1241,11 +2959,10 @@
                 marketPrices: {},
                 priceFlashes: {},
                 availableAccounts: [
-                    { account_id: '5908018', name: 'IC Markets Live #5908018', account_type: 'LIVE', balance: 1007.44, equity: 1007.44, is_live: true, is_active: true },
-                    { account_id: '1005621', name: 'cTrader Demo #1005621', account_type: 'DEMO', balance: 39.05, equity: 39.05, is_live: false, is_active: false }
+                    { account_id: '5908018', name: 'Spotware Demo #5908018', account_type: 'DEMO', balance: 1018.96, equity: 1018.96, is_live: false, is_active: true }
                 ],
                 selectedAccountId: '5908018',
-                cbotStatus: { mode: 'LIVE', is_connected: true, balance: 1007.44, equity: 1007.44, account_id: '5908018', currency: 'USD', is_live: true, broker: 'IC Markets cTrader' },
+                cbotStatus: { mode: 'DEMO', is_connected: true, balance: 1018.96, equity: 1018.96, account_id: '5908018', currency: 'USD', is_live: false, broker: 'Spotware cTrader' },
                 systemState: { auto_trade_enabled: true },
                 selectedSymbol: 'XAUUSD',
                 selectedLotSize: 0.01,
@@ -1268,10 +2985,42 @@
                     timeframe: '15m',
                     days_back: 30
                 },
+                activeBacktestTab: 'simulation',
                 btLoading: false,
                 btResult: null,
+                wfLoading: false,
+                wfResult: null,
+                mcLoading: false,
+                mcResult: null,
+                calendarEvents: [],
+                calendarLockout: {},
+                calendarSyncing: false,
+                calendarFilterImpact: 'ALL',
+                calendarFilterCurrency: 'ALL',
+                newsItems: [],
+                newsSentimentSummary: {},
+                newsHeadlineInput: '',
+                newsAnalysisResult: null,
+                newsAnalyzing: false,
+                journalFilterOutcome: 'ALL',
+                journalFilterSymbol: 'ALL',
+                journalFilterRegime: 'ALL',
+                journalLoading: false,
+                showNoteEditorModal: false,
+                activeJournalItem: null,
+                editingJournalNote: '',
+                perfOverview: {},
+                perfBreakdown: {},
+                equityCurvePoints: [],
+                perfLoading: false,
+                paperAccount: {},
+                paperPositions: [],
+                paperLoading: false,
+                pretradeData: null,
+                pretradeScanning: false,
 
                 initDashboard() {
+                    this.initTheme();
                     this.fetchAccounts();
                     this.fetchSettings();
                     this.fetchLivePrices();
@@ -1279,6 +3028,15 @@
                     this.fetchTrades();
                     this.fetchCBotStatus();
                     this.fetchLiveConsensus();
+                    this.fetchKillSwitchStatus();
+                    this.fetchSystemLogs();
+                    this.fetchSecurityKeys();
+                    this.fetchEconomicCalendar();
+                    this.fetchCalendarLockout();
+                    this.fetchNewsFeed();
+                    this.fetchNewsSentimentSummary();
+                    this.fetchPretradeData();
+                    setInterval(() => { this.fetchPretradeData(); }, 2500);
 
                     setTimeout(() => {
                         this.autoFillFromLive(this.selectedSymbol || 'XAUUSD');
@@ -1290,6 +3048,110 @@
                     setInterval(() => { this.fetchTrades(); }, 3000);
                     setInterval(() => { this.fetchLiveConsensus(); }, 2500);
                     setInterval(() => { this.fetchAccounts(); }, 5000);
+                    setInterval(() => { this.fetchCalendarLockout(); }, 5000);
+                },
+
+                async fetchEconomicCalendar() {
+                    try {
+                        let url = `/api/calendar/events?limit=50&impact=${this.calendarFilterImpact}&currency=${this.calendarFilterCurrency}`;
+                        const res = await fetch(url);
+                        if (res.ok) {
+                            const data = await res.json();
+                            this.calendarEvents = data.events || [];
+                        }
+                    } catch (e) {}
+                },
+
+                async fetchCalendarLockout() {
+                    try {
+                        const spread = this.marketPrices[this.selectedSymbol] ? this.marketPrices[this.selectedSymbol].spread : null;
+                        let url = `/api/calendar/lockout-status?symbol=${this.selectedSymbol || 'XAUUSD'}`;
+                        if (spread !== null) url += `&spread=${spread}`;
+                        const res = await fetch(url);
+                        if (res.ok) {
+                            const data = await res.json();
+                            this.calendarLockout = data.data || {};
+                        }
+                    } catch (e) {}
+                },
+
+                async syncEconomicCalendar() {
+                    this.calendarSyncing = true;
+                    try {
+                        const res = await fetch('/api/calendar/sync', { method: 'POST' });
+                        if (res.ok) {
+                            await this.fetchEconomicCalendar();
+                            await this.fetchCalendarLockout();
+                        }
+                    } catch (e) {} finally {
+                        this.calendarSyncing = false;
+                    }
+                },
+
+                async fetchPretradeData() {
+                    try {
+                        const res = await fetch(`/api/pretrade/status?symbol=${this.selectedSymbol || 'XAUUSD'}`);
+                        if (res.ok) {
+                            this.pretradeData = await res.json();
+                        }
+                    } catch (e) {}
+                },
+
+                async triggerPretradeScanNow() {
+                    this.pretradeScanning = true;
+                    try {
+                        const res = await fetch(`/api/pretrade/scan?symbol=${this.selectedSymbol || 'XAUUSD'}`, { method: 'POST' });
+                        if (res.ok) {
+                            this.pretradeData = await res.json();
+                        }
+                    } catch (e) {
+                    } finally {
+                        this.pretradeScanning = false;
+                    }
+                },
+
+                async fetchNewsFeed() {
+                    try {
+                        const res = await fetch('/api/news?limit=30');
+                        if (res.ok) {
+                            const data = await res.json();
+                            this.newsItems = data.news || [];
+                        }
+                    } catch (e) {}
+                },
+
+                async fetchNewsSentimentSummary() {
+                    try {
+                        const res = await fetch(`/api/news/sentiment-summary?symbol=${this.selectedSymbol || 'XAUUSD'}`);
+                        if (res.ok) {
+                            const data = await res.json();
+                            this.newsSentimentSummary = data.data || {};
+                        }
+                    } catch (e) {}
+                },
+
+                async analyzeBreakingNews() {
+                    if (!this.newsHeadlineInput || !this.newsHeadlineInput.trim()) return;
+                    this.newsAnalyzing = true;
+                    try {
+                        const res = await fetch('/api/news/analyze', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ headline: this.newsHeadlineInput.trim(), source: 'USER_INPUT' })
+                        });
+                        if (res.ok) {
+                            const data = await res.json();
+                            this.newsAnalysisResult = data.data.analysis;
+                            await this.fetchNewsFeed();
+                            await this.fetchNewsSentimentSummary();
+                    this.fetchPretradeData();
+                    setInterval(() => { this.fetchPretradeData(); }, 2500);
+                        }
+                    } catch (e) {
+                        alert('News analysis error: ' + e);
+                    } finally {
+                        this.newsAnalyzing = false;
+                    }
                 },
 
                 async refreshLedgerData() {
@@ -1297,6 +3159,7 @@
                     await Promise.all([this.fetchSignals(), this.fetchTrades(), this.fetchLiveConsensus()]);
                     setTimeout(() => { this.isRefreshing = false; }, 600);
                 },
+
 
                 async fetchTrades() {
                     try {
@@ -1517,6 +3380,56 @@
                     }
                 },
 
+                async runWalkForwardLab() {
+                    this.wfLoading = true;
+                    try {
+                        const res = await fetch('/api/backtest/walk-forward', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                strategy_name: this.btForm.strategy_name,
+                                symbol: this.btForm.symbol,
+                                timeframe: this.btForm.timeframe,
+                                total_days: this.btForm.days_back || 60,
+                                num_folds: 4,
+                                is_ratio: 0.70
+                            })
+                        });
+                        if (res.ok) {
+                            this.wfResult = await res.json();
+                        }
+                    } catch (e) {
+                        console.error('Walk-Forward error: ' + e);
+                    } finally {
+                        this.wfLoading = false;
+                    }
+                },
+
+                async runMonteCarloLab() {
+                    this.mcLoading = true;
+                    try {
+                        const res = await fetch('/api/backtest/monte-carlo', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                strategy_name: this.btForm.strategy_name,
+                                symbol: this.btForm.symbol,
+                                initial_capital: 1000.0,
+                                num_simulations: 1000,
+                                trades_per_simulation: 100,
+                                ruin_drawdown_threshold_pct: 20.0
+                            })
+                        });
+                        if (res.ok) {
+                            this.mcResult = await res.json();
+                        }
+                    } catch (e) {
+                        console.error('Monte Carlo error: ' + e);
+                    } finally {
+                        this.mcLoading = false;
+                    }
+                },
+
                 async fetchAccounts() {
                     try {
                         const res = await fetch('/api/accounts');
@@ -1715,6 +3628,181 @@
                     return this.cbotStatus.open_positions.reduce((sum, p) => sum + (parseFloat(p.net_profit) || 0.0), 0.0);
                 },
 
+                async toggleKillSwitch() {
+                    const nextState = !this.killSwitchActive;
+                    if (nextState) {
+                        if (!confirm('⚠️ EMERGENCY ACTION: Are you sure you want to STOP ALL TRADING? All automated signal execution will be blocked immediately.')) return;
+                    }
+                    try {
+                        const res = await fetch('/api/system/kill-switch', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ active: nextState, reason: 'Operator UI Emergency Action' })
+                        });
+                        if (res.ok) {
+                            const data = await res.json();
+                            this.killSwitchActive = data.kill_switch_active;
+                        }
+                    } catch (e) {
+                        console.error('Kill switch error:', e);
+                    }
+                },
+
+                async fetchKillSwitchStatus() {
+                    try {
+                        const res = await fetch('/api/system/kill-switch/status');
+                        if (res.ok) {
+                            const data = await res.json();
+                            this.killSwitchActive = data.kill_switch_active;
+                        }
+                    } catch (e) {}
+                },
+
+                async fetchSystemLogs() {
+                    try {
+                        const levelParam = this.logLevelFilter !== 'ALL' ? ('?level=' + this.logLevelFilter) : '';
+                        const res = await fetch('/api/system/logs' + levelParam);
+                        if (res.ok) {
+                            this.systemLogs = await res.json();
+                        }
+                    } catch (e) {}
+                },
+
+                async fetchJournal() {
+                    this.journalLoading = true;
+                    try {
+                        let url = `/api/journal/entries?limit=100&outcome=${this.journalFilterOutcome}&symbol=${this.journalFilterSymbol}&regime=${this.journalFilterRegime}`;
+                        const res = await fetch(url);
+                        if (res.ok) {
+                            this.journalEntries = await res.json();
+                        }
+                    } catch (e) {}
+                    finally {
+                        this.journalLoading = false;
+                    }
+                },
+
+                openNoteEditor(item) {
+                    this.activeJournalItem = item;
+                    this.editingJournalNote = item.notes || '';
+                    this.showNoteEditorModal = true;
+                },
+
+                async saveJournalNote() {
+                    if (!this.activeJournalItem) return;
+                    try {
+                        const id = this.activeJournalItem.id || this.activeJournalItem.trade_id;
+                        const res = await fetch(`/api/journal/entry/${id}/notes`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ notes: this.editingJournalNote })
+                        });
+                        if (res.ok) {
+                            this.activeJournalItem.notes = this.editingJournalNote;
+                            this.showNoteEditorModal = false;
+                            await this.fetchJournal();
+                        }
+                    } catch (e) {
+                        alert('Could not save note: ' + e);
+                    }
+                },
+
+                async fetchPerformanceAnalytics() {
+                    this.perfLoading = true;
+                    try {
+                        const [ovRes, eqRes, bdRes] = await Promise.all([
+                            fetch('/api/performance/overview'),
+                            fetch('/api/performance/equity-curve'),
+                            fetch('/api/performance/breakdown')
+                        ]);
+                        if (ovRes.ok) this.perfOverview = await ovRes.json();
+                        if (eqRes.ok) this.equityCurvePoints = await eqRes.json();
+                        if (bdRes.ok) this.perfBreakdown = await bdRes.json();
+                    } catch (e) {}
+                    finally {
+                        this.perfLoading = false;
+                    }
+                },
+
+                async fetchPaperData() {
+                    this.paperLoading = true;
+                    try {
+                        const [accRes, posRes] = await Promise.all([
+                            fetch('/api/paper/account'),
+                            fetch('/api/paper/positions')
+                        ]);
+                        if (accRes.ok) this.paperAccount = await accRes.json();
+                        if (posRes.ok) {
+                            const data = await posRes.json();
+                            this.paperPositions = data.open_positions || [];
+                        }
+                    } catch (e) {}
+                    finally {
+                        this.paperLoading = false;
+                    }
+                },
+
+                async closePaperTrade(posId) {
+                    if (!confirm(`Close simulated paper position #${posId}?`)) return;
+                    try {
+                        const res = await fetch(`/api/paper/close/${posId}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ reason: 'MANUAL_UI_CLOSE' })
+                        });
+                        if (res.ok) {
+                            await this.fetchPaperData();
+                            await this.fetchJournal();
+                        }
+                    } catch (e) {
+                        alert('Could not close paper position: ' + e);
+                    }
+                },
+
+                async resetPaperAccount() {
+                    if (!confirm('Are you sure you want to reset your virtual paper trading account to $1,000.00?')) return;
+                    try {
+                        const res = await fetch('/api/paper/reset', { method: 'POST' });
+                        if (res.ok) {
+                            this.paperAccount = await res.json();
+                            await this.fetchPaperData();
+                        }
+                    } catch (e) {}
+                },
+
+                async fetchSecurityKeys() {
+                    try {
+                        const res = await fetch('/api/security/masked-keys');
+                        if (res.ok) {
+                            this.maskedKeys = await res.json();
+                        }
+                    } catch (e) {}
+                },
+
+                async saveSecurityKey() {
+                    if (!this.keyUpdateForm.key || !this.keyUpdateForm.value) {
+                        alert('Please select a key and enter a value.');
+                        return;
+                    }
+                    try {
+                        const res = await fetch('/api/security/update-key', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(this.keyUpdateForm)
+                        });
+                        if (res.ok) {
+                            alert('Credential securely encrypted with Windows DPAPI and stored in vault.');
+                            this.keyUpdateForm.value = '';
+                            await this.fetchSecurityKeys();
+                        } else {
+                            const err = await res.json();
+                            alert('Failed to update key: ' + (err.detail || 'Error'));
+                        }
+                    } catch (e) {
+                        alert('Error updating key: ' + e);
+                    }
+                },
+
                 formatNumber(val, sym) {
                     if (val === undefined || val === null || isNaN(val)) return '0.00';
                     if (sym && (sym.includes('EUR') || sym.includes('GBP') || sym.includes('AUD') || sym.includes('CHF'))) {
@@ -1738,6 +3826,28 @@
                         return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                     } catch (e) {
                         return ts;
+                    }
+                },
+
+                setTheme(themeName) {
+                    this.currentTheme = themeName;
+                    try {
+                        localStorage.setItem('tradetalk_theme', themeName);
+                    } catch (e) {}
+                    document.documentElement.setAttribute('data-theme', themeName);
+                    if (themeName === 'light') {
+                        document.documentElement.classList.remove('dark');
+                    } else {
+                        document.documentElement.classList.add('dark');
+                    }
+                },
+
+                initTheme() {
+                    try {
+                        const saved = localStorage.getItem('tradetalk_theme') || 'comfort-dark';
+                        this.setTheme(saved);
+                    } catch (e) {
+                        this.setTheme('comfort-dark');
                     }
                 }
             }

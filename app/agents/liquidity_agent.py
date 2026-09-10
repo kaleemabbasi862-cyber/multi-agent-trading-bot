@@ -1,14 +1,25 @@
+import time
+import datetime
 from typing import Dict, Any
-from app.database.models import SignalPayload, AgentDecisionOutput
+from app.database.models import (
+    SignalPayload,
+    AgentDecisionOutput,
+    AgentOperationalCriticality,
+    AgentHealthStatus
+)
 
 class LiquiditySmartMoneyAgent:
     name: str = "Liquidity & SMC Agent"
     weight: float = 0.15
+    criticality: str = AgentOperationalCriticality.DECISION_CRITICAL
 
     def evaluate(self, signal: SignalPayload, market_data: Dict[str, Any]) -> AgentDecisionOutput:
-        p = signal.entry_price
+        t_start = time.time()
+        start_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        
+        p = float(signal.entry_price or 0.0)
         act = signal.action.upper()
-        ind = market_data.get("indicators", {})
+        ind = market_data.get("indicators", {}) if market_data else {}
         support = float(ind.get("support", p - 8.0))
         resistance = float(ind.get("resistance", p + 8.0))
         high_24h = float(market_data.get("high_24h", resistance + 5.0))
@@ -62,9 +73,27 @@ class LiquiditySmartMoneyAgent:
         reasons.append(f"Order Block mitigation zone identified near ${ob_level:.2f}")
         evidence.append({"type": "ORDER_BLOCK", "price": ob_level, "confidence": 0.80})
 
+        # 4. Integrate Smart Money Structural Engine if M15 candles available
+        candles = market_data.get("candles", {}).get("M15") or market_data.get("m15_candles", [])
+        structure_state = "EQUILIBRIUM"
+        if candles and len(candles) >= 10:
+            try:
+                from app.engine.smart_money_engine import smart_money_engine
+                smc_res = smart_money_engine.analyze_market_structure(candles, timeframe="M15")
+                structure_state = smc_res.get("structure_type", "RANGING")
+                if smc_res.get("fvg_imbalances"):
+                    evidence.append({"type": "FVG_IMBALANCE", "count": len(smc_res["fvg_imbalances"])})
+                if smc_res.get("order_blocks"):
+                    evidence.append({"type": "VALIDATED_ORDER_BLOCKS", "count": len(smc_res["order_blocks"])})
+            except Exception:
+                pass
+
         score = max(0.0, min(100.0, score))
-        decision = "PASS" if score >= 80.0 else ("FAIL" if score < 60.0 else "NEUTRAL")
+        decision = "PASS" if score >= 65.0 else ("FAIL" if score < 45.0 else "NEUTRAL")
         summary = f"SMC Score: {score:.1f}/100. " + "; ".join(reasons)
+        
+        t_end = time.time()
+        end_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
         
         return AgentDecisionOutput(
             agent_name=self.name,
@@ -72,12 +101,21 @@ class LiquiditySmartMoneyAgent:
             score=score,
             decision=decision,
             reasoning_summary=summary,
+            operational_criticality=self.criticality,
+            health_status=AgentHealthStatus.HEALTHY,
+            execution_started_at=start_iso,
+            execution_completed_at=end_iso,
+            execution_latency_ms=round((t_end - t_start) * 1000, 2),
+            data_source="cTrader Dealing Range & Smart Money Structure",
+            confidence=round(score / 100.0, 2),
+            decision_id=signal.id,
             metrics={
                 "equilibrium": equilibrium,
                 "is_discount": is_discount,
                 "is_premium": is_premium,
                 "high_24h": high_24h,
                 "low_24h": low_24h,
+                "structure_state": structure_state,
                 "evidence": evidence
             }
         )

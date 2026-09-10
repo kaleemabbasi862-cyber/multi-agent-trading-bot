@@ -1,14 +1,25 @@
+import time
+import datetime
 from typing import Dict, Any
-from app.database.models import SignalPayload, AgentDecisionOutput
+from app.database.models import (
+    SignalPayload,
+    AgentDecisionOutput,
+    AgentOperationalCriticality,
+    AgentHealthStatus
+)
 
 class MarketRegimeAgent:
     name: str = "Market Regime Agent"
     weight: float = 0.15
+    criticality: str = AgentOperationalCriticality.DECISION_CRITICAL
 
     def evaluate(self, signal: SignalPayload, market_data: Dict[str, Any]) -> AgentDecisionOutput:
-        p = signal.entry_price
+        t_start = time.time()
+        start_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        
+        p = float(signal.entry_price or 0.0)
         act = signal.action.upper()
-        ind = market_data.get("indicators", {})
+        ind = market_data.get("indicators", {}) if market_data else {}
         
         rsi = float(ind.get("rsi", 50.0))
         ema_20 = float(ind.get("ema_20", p))
@@ -69,8 +80,11 @@ class MarketRegimeAgent:
             reasons.append("Breakout structural momentum confirmed.")
 
         score = max(0.0, min(100.0, score))
-        decision = "PASS" if score >= 80.0 else ("FAIL" if score < 60.0 else "NEUTRAL")
+        decision = "PASS" if score >= 65.0 else ("FAIL" if score < 45.0 else "NEUTRAL")
         summary = f"Regime: {regime} (Score: {score:.1f}/100). " + "; ".join(reasons)
+        
+        t_end = time.time()
+        end_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
         
         return AgentDecisionOutput(
             agent_name=self.name,
@@ -78,6 +92,14 @@ class MarketRegimeAgent:
             score=score,
             decision=decision,
             reasoning_summary=summary,
+            operational_criticality=self.criticality,
+            health_status=AgentHealthStatus.HEALTHY,
+            execution_started_at=start_iso,
+            execution_completed_at=end_iso,
+            execution_latency_ms=round((t_end - t_start) * 1000, 2),
+            data_source="M15/H1 Market Structure & Range Telemetry",
+            confidence=round(score / 100.0, 2),
+            decision_id=signal.id,
             metrics={
                 "regime": regime,
                 "range_span": round(range_span, 2),

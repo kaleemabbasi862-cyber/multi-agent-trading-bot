@@ -1,20 +1,33 @@
+import time
+import datetime
 import math
 from typing import Dict, Any, Tuple
 from app.config import settings
-from app.database.models import SignalPayload, AgentDecisionOutput, RiskCheckResult
+from app.database.models import (
+    SignalPayload,
+    AgentDecisionOutput,
+    RiskCheckResult,
+    AgentOperationalCriticality,
+    AgentHealthStatus,
+    DataProvenance
+)
 import settings_manager
 
 class RiskManagementAgent:
     name: str = "Risk Management Agent"
     weight: float = 0.20
     has_veto_power: bool = True
+    criticality: str = AgentOperationalCriticality.SAFETY_CRITICAL
 
     def evaluate(self, signal: SignalPayload, account_status: Dict[str, Any], market_feed_data: Dict[str, Any]) -> Tuple[AgentDecisionOutput, RiskCheckResult]:
-        p = signal.entry_price
-        sl = signal.stop_loss
-        tp = signal.take_profit
+        t_start = time.time()
+        start_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        
+        p = float(signal.entry_price or 0.0)
+        sl = float(signal.stop_loss or 0.0)
+        tp = float(signal.take_profit or 0.0)
         act = signal.action.upper()
-        sym = signal.symbol.upper().replace("M", "").replace(".PRO", "").replace("_I", "")
+        sym = (signal.symbol or "XAUUSD").upper().replace("M", "").replace(".PRO", "").replace("_I", "")
         
         bal = float(account_status.get("balance", 1000.0))
         eq = float(account_status.get("equity", bal))
@@ -112,26 +125,26 @@ class RiskManagementAgent:
             else:
                 reasons.append(f"Risk:Reward 1:{rr_ratio:.2f} satisfies >= 1:{settings.MIN_RR_RATIO:.1f} criterion")
 
-        # 9. Monetary Risk Calculation (1 Lot of Gold = 100 oz)
-        # For 0.01 lot, $1 move in Gold = $1.00 PnL
-        sl_dist = abs(p - sl)
-        tp_dist = abs(tp - p)
+        # 9. Monetary Risk & Canonical 1R Calculation (1 Lot of Gold = 100 oz)
+        sl_dist = round(abs(p - sl), 2)
+        tp_dist = round(abs(tp - p), 2)
         rr = round(tp_dist / (sl_dist + 1e-6), 2)
         monetary_risk = round(sl_dist * (settings.DEFAULT_LOT_SIZE * 100), 2)
         max_allowed_risk_dollars = round((settings.MAX_ACCOUNT_RISK_PERCENT / 100.0) * eq, 2)
         
-        # If micro-account ($38 balance), max allowed risk is at least $0.40 - $1.00
         if max_allowed_risk_dollars < 0.40:
             max_allowed_risk_dollars = 0.60
             
         if passed:
             reasons.append(f"Calculated monetary risk: ${monetary_risk:.2f} on {settings.DEFAULT_LOT_SIZE} micro-lot")
-            reasons.append(f"Guaranteed SL pre-validated (Distance: ${sl_dist:.2f} >= 3x Spread)")
+            reasons.append(f"Canonical Initial 1R established: ${sl_dist:.2f}")
             decision = "PASS"
         else:
             decision = "VETO"
             
         summary = f"Risk Score: {score:.1f}/100. " + "; ".join(reasons)
+        t_end = time.time()
+        end_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
         
         agent_out = AgentDecisionOutput(
             agent_name=self.name,
@@ -139,6 +152,14 @@ class RiskManagementAgent:
             score=score,
             decision=decision,
             reasoning_summary=summary,
+            operational_criticality=self.criticality,
+            health_status=AgentHealthStatus.HEALTHY if passed else (AgentHealthStatus.INVALID_INPUT if sl <= 0 else AgentHealthStatus.HEALTHY),
+            execution_started_at=start_iso,
+            execution_completed_at=end_iso,
+            execution_latency_ms=round((t_end - t_start) * 1000, 2),
+            data_source="cTrader Account & Feed Telemetry",
+            confidence=1.0 if passed else 0.0,
+            decision_id=signal.id,
             metrics={
                 "account_balance": bal,
                 "account_equity": eq,
@@ -146,9 +167,11 @@ class RiskManagementAgent:
                 "max_allowed_risk_dollars": max_allowed_risk_dollars,
                 "sl_distance": sl_dist,
                 "tp_distance": tp_dist,
+                "initial_r": sl_dist,
                 "rr_ratio": rr,
                 "spread": spread,
-                "passed": passed
+                "passed": passed,
+                "has_veto_power": True
             }
         )
         
@@ -162,7 +185,9 @@ class RiskManagementAgent:
             tp_distance=tp_dist,
             rr_ratio=rr,
             spread=spread,
-            veto_reason=veto_reason
+            veto_reason=veto_reason,
+            initial_r=sl_dist,
+            data_provenance=DataProvenance.BROKER_DEMO
         )
         
         return agent_out, risk_check_res
