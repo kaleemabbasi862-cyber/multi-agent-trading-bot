@@ -4,6 +4,7 @@ import time
 import logging
 import asyncio
 import uuid
+import json
 import datetime
 import traceback
 from pathlib import Path
@@ -72,11 +73,14 @@ async def cloud_gateway_background_sync():
             active_sym = settings_manager.get_active_symbol()
             pairs_to_sync = list(set([active_sym, "XAUUSD", "EURUSD", "GBPUSD", "USDJPY"]))
             
-            # Also include any symbol in active open positions
-            status = ctrader_cloud_gateway.get_gateway_status()
-            for pos in status.get("open_positions", []):
-                if pos.get("symbol"):
-                    pairs_to_sync.append(pos.get("symbol"))
+            # Read open positions from GATEWAY_STATE directly — do NOT call
+            # get_gateway_status() here because local_cbot_background_sync already
+            # polls the bridge every 1.5s and duplicate HTTP calls cause main-thread
+            # contention in the cTrader cBot.
+            pairs_to_sync.extend([
+                pos.get("symbol") for pos in ctrader_cloud_gateway.GATEWAY_STATE.get("open_positions", [])
+                if pos.get("symbol")
+            ])
             
             # Periodically sync account details with Spotware Open API cloud
             sync_cycle += 1
@@ -185,6 +189,37 @@ async def autonomous_market_scanner_loop():
                         # If Pre-Trade Intelligence does NOT allow trade, log reason and skip
                         if not pretrade_scan.get("trade_allowed", False) or act not in ("BUY", "SELL"):
                             logger.debug(f"[Autonomous Pre-Trade Scanner] 🛑 Trade Blocked: {pretrade_scan.get('decision_reason')}")
+                            # Persist quality telemetry for blocked scans (audit trail)
+                            try:
+                                from app.database.db import db
+                                import datetime as _dt
+                                qs = pretrade_scan.get("quality_score", {})
+                                db.log_audit(
+                                    event_type="PRETRADE_QUALITY_SCAN",
+                                    actor="AutonomousScanner",
+                                    details=json.dumps({
+                                        "symbol": cur_sym,
+                                        "timestamp": _dt.datetime.now(_dt.timezone.utc).isoformat(),
+                                        "trade_allowed": False,
+                                        "rejection_reason": pretrade_scan.get("decision_reason"),
+                                        "setup_type": setup_type,
+                                        "direction": act,
+                                        "quality_score": qs.get("score"),
+                                        "quality_threshold": qs.get("threshold"),
+                                        "quality_passed": qs.get("passed"),
+                                        "quality_breakdown": qs.get("breakdown"),
+                                        "adx": pretrade_scan.get("indicators", {}).get("adx", {}).get("adx") if isinstance(pretrade_scan.get("indicators", {}).get("adx"), dict) else pretrade_scan.get("indicators", {}).get("adx"),
+                                        "rsi": pretrade_scan.get("indicators", {}).get("rsi"),
+                                        "spread_pips": pretrade_scan.get("spread_pips"),
+                                        "smc_structure": pretrade_scan.get("smc", {}).get("structure"),
+                                        "mtf_consensus": pretrade_scan.get("mtf", {}).get("consensus_trend"),
+                                        "dealing_zone": pretrade_scan.get("smc", {}).get("dealing_range", {}).get("zone"),
+                                        "reached_consensus": False,
+                                        "execution_dispatched": False
+                                    }, ensure_ascii=False)
+                                )
+                            except Exception:
+                                pass
                             await asyncio.sleep(5)
                             continue
 
@@ -242,7 +277,8 @@ async def autonomous_market_scanner_loop():
                             market_data=market_data,
                             macro_data=macro_data,
                             account_status=acc_status,
-                            save_to_db=True
+                            save_to_db=True,
+                            pretrade_scan=pretrade_scan
                         )
                         
                         last_emitted_signal_ts = now

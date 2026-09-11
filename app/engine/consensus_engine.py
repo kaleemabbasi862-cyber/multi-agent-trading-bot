@@ -38,7 +38,8 @@ class MultiAgentConsensusEngine:
         market_data: Dict[str, Any],
         macro_data: Dict[str, Any],
         account_status: Dict[str, Any],
-        save_to_db: bool = True
+        save_to_db: bool = True,
+        pretrade_scan: Optional[Dict[str, Any]] = None
     ) -> ConsensusResult:
         if not signal.id:
             signal.id = f"SIG_{uuid.uuid4().hex[:8].upper()}"
@@ -245,6 +246,30 @@ class MultiAgentConsensusEngine:
                 },
                 "critical_agent_failures": critical_failures
             }
+
+            # Persist Pre-Trade Quality Score telemetry (additive, backward-compatible)
+            if pretrade_scan and isinstance(pretrade_scan, dict):
+                qs = pretrade_scan.get("quality_score", {})
+                if qs and isinstance(qs, dict):
+                    decision_dna_snapshot["quality_telemetry"] = {
+                        "score": qs.get("score"),
+                        "threshold": qs.get("threshold"),
+                        "passed": qs.get("passed"),
+                        "verdict": qs.get("verdict"),
+                        "breakdown": qs.get("breakdown"),
+                        "setup_type": pretrade_scan.get("setup", {}).get("setup_type"),
+                        "trade_allowed": pretrade_scan.get("trade_allowed"),
+                        "decision_reason": pretrade_scan.get("decision_reason"),
+                        "adx": pretrade_scan.get("indicators", {}).get("adx", {}).get("adx") if isinstance(pretrade_scan.get("indicators", {}).get("adx"), dict) else pretrade_scan.get("indicators", {}).get("adx"),
+                        "rsi": pretrade_scan.get("indicators", {}).get("rsi"),
+                        "spread_pips": pretrade_scan.get("spread_pips"),
+                        "smc_structure": pretrade_scan.get("smc", {}).get("structure"),
+                        "mtf_consensus": pretrade_scan.get("mtf", {}).get("consensus_trend"),
+                        "dealing_zone": pretrade_scan.get("smc", {}).get("dealing_range", {}).get("zone"),
+                    "reached_consensus": True,
+                    "consensus_status": status,
+                    "execution_dispatched": False
+                    }
 
             # 6. Persist to SQLite Database
             db.save_signal({
