@@ -107,7 +107,7 @@ class PreTradeIntelligenceEngine:
         adx_minimum = float(trading_config.get("REGIME_ADX_MINIMUM"))
         structure = str(smc_result.get("structure", "RANGE")).upper()
         setup_type = str(setup.get("setup_type", "NO_VALID_SETUP")).upper()
-        consolidation_detected = structure in ("RANGE", "CONSOLIDATION", "CONSOLIDATING") or setup_type == "NO_VALID_SETUP"
+        consolidation_detected = (structure in ("RANGE", "CONSOLIDATION", "CONSOLIDATING") and setup_type not in ("STRUCTURE_REVERSAL",)) or setup_type == "NO_VALID_SETUP"
         disallow_consolidation = bool(trading_config.get("DISALLOW_CONSOLIDATION_ENTRIES"))
 
         if adx_value < adx_minimum:
