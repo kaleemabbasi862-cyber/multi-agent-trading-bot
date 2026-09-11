@@ -75,6 +75,9 @@ def execute_copilot_intent(user_query: str, system_state: dict) -> dict:
 
     # 2. Action: Enable / Start Auto-Trade
     if any(k in q for k in ["start auto", "enable auto", "turn on auto", "resume auto", "آٹو ٹریڈ آن", "آٹو ٹریڈنگ شروع", "چالو کرو"]):
+        if not acc_status.get("execution_ready"):
+            return {"reply": "Auto-trade remains disabled: fresh matching DEMO broker telemetry is required.",
+                    "action_taken": "AUTO_TRADE_BLOCKED", "system_state": system_state, "account_status": acc_status}
         system_state["auto_trade_enabled"] = True
         settings_manager.update_setting("auto_trade_enabled", True)
         reply = "آٹو ٹریڈنگ فعال کر دی گئی ہے (Auto-Trade: ON)۔ 7 ایجنٹس کا متفقہ نظام اب لائیو مارکیٹ اسکین کر کے ٹریڈز ایگزیکیوٹ کرے گا۔" if is_urdu else "Auto-trading is now ACTIVE (Auto-Trade: ON). Autonomous 7-agent consensus loop is scanning and executing approved setups."

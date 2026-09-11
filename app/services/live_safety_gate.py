@@ -58,6 +58,14 @@ class LiveSafetyGate:
 
         # 2. CIRCUIT BREAKER & DRAWDOWN CHECK
         account_summary = ctrader_cloud_gateway.get_gateway_status()
+        broker_health = ctrader_cloud_gateway.broker_telemetry.health(ctrader_cloud_gateway.GATEWAY_STATE, sym)
+        if not broker_health["execution_ready"]:
+            return False, "VETO_" + broker_health["reason"], {"gate": "BROKER_TELEMETRY", **broker_health}
+        quote = ctrader_cloud_gateway.get_live_price(sym)
+        executable = quote["ask"] if act == "BUY" else quote["bid"]
+        tolerance = max(quote["spread"] * 2, 0.01 if sym in ("XAUUSD", "GOLD") else 0.0001)
+        if abs(entry_price - executable) > tolerance:
+            return False, "VETO_BROKER_ENTRY_PRICE_MISMATCH", {"gate": "BROKER_TELEMETRY", "executable_price": executable}
         is_tripped, trip_reason, severity = risk_engine.check_circuit_breakers(account_summary, symbol=sym)
         if is_tripped:
             reason = f"VETO_CIRCUIT_BREAKER_LOCKED: {trip_reason}"
@@ -80,13 +88,10 @@ class LiveSafetyGate:
                 logger.warning(reason)
                 return False, reason, {"gate": "SPREAD_GUARD", "status": "EXCESSIVE_SPREAD", "current": current_spread_pips, "max": max_allowed_spread}
 
-        # 5. MARKET DATA INTEGRITY & FRESHNESS CHECK
-        if require_fresh_quotes:
-            is_fresh, fresh_msg, q_obj = market_data_integrity_monitor.evaluate_price_freshness(sym, max_age=5.0)
-            if not is_fresh:
-                reason = f"VETO_STALE_MARKET_DATA: {fresh_msg}"
-                logger.warning(reason)
-                return False, reason, {"gate": "MARKET_DATA_HEALTH", "quote": q_obj}
+        # 5. Recheck source freshness before further safety evaluation. Analytical
+        # monitor ticks cannot satisfy this gate, even if freshly downloaded.
+        if not ctrader_cloud_gateway.get_live_price(sym):
+            return False, "VETO_STALE_BROKER_QUOTE", {"gate": "MARKET_DATA_HEALTH"}
 
         # 6. ANTI-FLIP SAFEGUARD CHECK
         anti_flip_ok, anti_flip_reason = position_manager_v3.check_anti_flip_guard(sym, act)

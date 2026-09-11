@@ -4,7 +4,8 @@ import time
 import datetime
 import random
 import logging
-import math
+import copy
+from app.services import broker_telemetry
 import threading
 import requests
 import urllib.parse
@@ -158,17 +159,14 @@ def reset_cooldown():
     global LAST_EXECUTION_TIMESTAMP, LAST_TRADE_CLOSE_TIMESTAMP, GATEWAY_STATE, LINKED_ACCOUNTS
     LAST_EXECUTION_TIMESTAMP = 0.0
     LAST_TRADE_CLOSE_TIMESTAMP = 0.0
+    if os.getenv("TESTING") != "1":
+        return  # A cooldown reset is not evidence that broker positions closed.
     GATEWAY_STATE["open_positions"] = []
     GATEWAY_STATE["daily_loss"] = 0.0
     GATEWAY_STATE["total_unrealized_pnl"] = 0.0
     for acc in LINKED_ACCOUNTS.values():
         acc["open_positions"] = []
         acc["daily_loss"] = 0.0
-
-def get_live_price(symbol: str = "XAUUSD") -> Optional[Dict[str, Any]]:
-    """Returns live price object from GATEWAY_STATE if fresh."""
-    sym_clean = symbol.upper()
-    return GATEWAY_STATE.get("live_prices", {}).get(sym_clean)
 
 # Executed Trade History & In-Memory Receipts
 EXECUTED_RECEIPTS: Dict[str, Dict[str, Any]] = {}
@@ -184,11 +182,14 @@ def get_all_accounts() -> Dict[str, Any]:
         eq = GATEWAY_STATE["equity"] if is_active else acc_info.get("equity", 0.0)
         broker_name = acc_info.get("broker", "Spotware" if "5908" in acc_id else "Qartal Markets")
         acc_type = acc_info.get("account_type", "DEMO" if "5908" in acc_id else "LIVE")
+        telemetry_fresh = broker_telemetry.health(GATEWAY_STATE if is_active else acc_info)["account_fresh"]
         
         if acc_id == "abu_sarim" or "sarim" in acc_id.lower():
             label = f"{broker_name} • {acc_type} • Abu sarim (${bal:,.2f})"
         else:
             label = f"{broker_name} • {acc_type} • #{acc_id} (${bal:,.2f})"
+        if not telemetry_fresh:
+            label = f"{broker_name} • {acc_type} • #{acc_id} (telemetry unavailable)"
             
         accounts_list.append({
             "account_id": acc_id,
@@ -201,7 +202,8 @@ def get_all_accounts() -> Dict[str, Any]:
             "currency": acc_info.get("currency", "USD"),
             "broker": broker_name,
             "is_live": acc_info.get("is_live", acc_type == "LIVE"),
-            "is_active": is_active
+            "is_active": is_active,
+            "telemetry_fresh": telemetry_fresh
         })
     return {
         "status": "success",
@@ -214,6 +216,9 @@ def switch_active_account(account_id: str) -> Dict[str, Any]:
     """Switches the active cTrader account dynamically in runtime memory and settings."""
     global GATEWAY_STATE, CTRADER_CONFIG, LINKED_ACCOUNTS
     clean_id = str(account_id).strip().replace("#", "")
+    if clean_id == GATEWAY_STATE.get("account_id"):
+        return {"status": "SUCCESS", "active_account_id": clean_id,
+                "gateway_state": get_gateway_status(), "accounts": get_all_accounts()["accounts"]}
 
     if clean_id not in LINKED_ACCOUNTS:
         if "sarim" in clean_id.lower() or clean_id == "abu_sarim":
@@ -243,6 +248,9 @@ def switch_active_account(account_id: str) -> Dict[str, Any]:
     acc_data = LINKED_ACCOUNTS[clean_id]
     GATEWAY_STATE["positions_snapshot_valid"] = False
     GATEWAY_STATE["local_bridge_online"] = False
+    GATEWAY_STATE["broker_prices"] = {}
+    GATEWAY_STATE["broker_snapshot_at"] = 0
+    GATEWAY_STATE["broker_telemetry_error"] = "BROKER_ACCOUNT_SWITCH_REQUIRES_SNAPSHOT"
     GATEWAY_STATE["account_id"] = clean_id
     GATEWAY_STATE["account_type"] = acc_data.get("account_type", "LIVE")
     GATEWAY_STATE["is_live"] = acc_data.get("is_live", True)
@@ -261,6 +269,9 @@ def switch_active_account(account_id: str) -> Dict[str, Any]:
     try:
         import settings_manager
         settings_manager.set_active_account_id(clean_id)
+        user_settings = settings_manager.load_settings()
+        user_settings["auto_trade_enabled"] = False
+        settings_manager.save_settings(user_settings)
     except Exception:
         pass
 
@@ -394,15 +405,12 @@ def refresh_oauth_token() -> Dict[str, Any]:
 
 def sync_with_spotware_cloud() -> Dict[str, Any]:
     """
-    Syncs live account balance, equity, and positions directly with Spotware cTrader Open API.
+    Discovers linked accounts. Discovery metadata is not an authoritative trading snapshot.
     """
     global GATEWAY_STATE, CTRADER_CONFIG, LINKED_ACCOUNTS
     token = CTRADER_CONFIG.get("access_token")
     target_acc = str(CTRADER_CONFIG.get("account_id", GATEWAY_STATE["account_id"]))
     
-    GATEWAY_STATE["last_sync_timestamp"] = time.time()
-    GATEWAY_STATE["last_sync"] = datetime.datetime.now(datetime.timezone.utc).strftime("%H:%M:%S UTC")
-
     if not token:
         # Running in Autonomous Cloud Simulated Live Sync
         return GATEWAY_STATE
@@ -438,15 +446,8 @@ def sync_with_spotware_cloud() -> Dict[str, Any]:
                             "last_seen": time.time()
                         }
 
-                    if acc_id_str == target_acc or not target_acc:
-                        GATEWAY_STATE["account_id"] = acc_id_str
-                        GATEWAY_STATE["balance"] = round(real_bal, 2)
-                        GATEWAY_STATE["equity"] = round(real_bal, 2)
-                        GATEWAY_STATE["currency"] = str(acc.get("depositCurrency", "USD"))
-                        GATEWAY_STATE["broker"] = str(acc.get("brokerTitle", "IC Markets cTrader"))
-                        GATEWAY_STATE["last_error"] = None
-                        print(f"[cTrader Cloud Sync] 🟢 Linked Live Account #{acc_id_str} | Balance: ${GATEWAY_STATE['balance']}")
-                        break
+                    # Discovery metadata cannot overwrite broker account telemetry.
+
                 break
         except Exception as e:
             logger.debug(f"Spotware sync attempt note: {e}")
@@ -474,6 +475,11 @@ def dispatch_local_bridge_order(
             "error": "Real external broker execution is strictly prohibited when TESTING=1."
         }
 
+    sync_local_cbot_telemetry()
+    health = broker_telemetry.health(GATEWAY_STATE, symbol)
+    if not health["execution_ready"] or GATEWAY_STATE.get("is_live", True):
+        return {"status": "REJECTED_BROKER_TELEMETRY", "error": health["reason"] or "DEMO_ONLY"}
+    quote = get_live_price(symbol)
     bridge_url = os.getenv("CBOT_BRIDGE_URL", "http://127.0.0.1:5001/trade/").strip()
     payload = {
         "symbol": symbol.upper().replace(".PRO", "").replace("_I", ""),
@@ -485,7 +491,12 @@ def dispatch_local_bridge_order(
         "take_profit_pips": tp_pips or 80.0,
         "sl_price": float(sl_price or 0.0),
         "tp_price": float(tp_price or 0.0),
-        "comment": comment
+        "comment": comment,
+        "account_id": GATEWAY_STATE["account_id"],
+        "snapshot_at": GATEWAY_STATE["broker_snapshot_at"],
+        "quote_at": quote["quote_at"],
+        "expected_bid": quote["bid"],
+        "expected_ask": quote["ask"]
     }
     
     try:
@@ -568,6 +579,12 @@ def execute_market_order(
             "symbol": sym_clean
         }
 
+    # No order path may use unobserved/stale balances or analytical quotes.
+    get_gateway_status(force_local_sync=True)
+    telemetry = broker_telemetry.health(GATEWAY_STATE, sym_clean)
+    if not telemetry["execution_ready"]:
+        return {"status": "REJECTED_BROKER_TELEMETRY", "error": telemetry["reason"]}
+
     # 2. Strict Max 1 Open Position Cap
     open_positions = GATEWAY_STATE.get("open_positions", [])
     if len(open_positions) >= MAX_ACTIVE_OPEN_POSITIONS:
@@ -602,13 +619,13 @@ def execute_market_order(
     # Estimate Fill Price from live prices or entry
     decimals = 4 if ("EUR" in sym_clean or "GBP" in sym_clean or "USD" in sym_clean and "JPY" not in sym_clean and "XAU" not in sym_clean and "XAG" not in sym_clean) else (3 if "JPY" in sym_clean or "XAG" in sym_clean else 2)
     
-    live_feed = GATEWAY_STATE.get("live_prices", {}).get(sym_clean, {})
+    live_feed = get_live_price(sym_clean)
     if not (live_feed and live_feed.get("price")):
         return {
             "status": "REJECTED_UNVERIFIED_MARKET_DATA",
             "error": f"No broker/live gateway price is available for {sym_clean}; synthetic fill prices are prohibited."
         }
-    fill_price = round(float(live_feed["price"]), decimals)
+    fill_price = round(float(live_feed["ask"] if act_upper == "BUY" else live_feed["bid"]), decimals)
 
     is_gold = "XAU" in sym_clean or "GOLD" in sym_clean
     is_silver = "XAG" in sym_clean or "SILVER" in sym_clean
@@ -733,12 +750,9 @@ def execute_market_order(
         "comment": comment
     }
 
-    # Margin calculation for 1:500 leverage
-    margin_req = round((fill_price * units) / 500.0, 2) if is_gold else 2.00
-    GATEWAY_STATE["margin"] = round(margin_req, 2)
-    GATEWAY_STATE["free_margin"] = round(GATEWAY_STATE["equity"] - margin_req, 2)
+    # Receipt reserves a slot until the next snapshot; account finances stay broker-owned.
     GATEWAY_STATE["open_positions"].append(new_position)
-    GATEWAY_STATE["last_sync"] = datetime.datetime.now(datetime.timezone.utc).strftime("%H:%M:%S UTC")
+    GATEWAY_STATE["positions_snapshot_valid"] = False
 
     receipt = {
         "status": "SUCCESS",
@@ -855,18 +869,23 @@ def close_position(position_id: Any, close_price: Optional[float] = None, force:
             }
 
     # If local cBot bridge is active, dispatch close request directly to cTrader
+    if os.getenv("TESTING") == "1":
+        return {"status": "REJECTED_TEST_MODE_EXTERNAL_EXECUTION_BLOCKED"}
+    if not get_live_price(target_pos.get("symbol", "XAUUSD")):
+        return {"status": "REJECTED_BROKER_TELEMETRY"}
     bridge_url = os.getenv("CBOT_BRIDGE_URL", "http://127.0.0.1:5001/trade/").strip()
     try:
-        requests.post(bridge_url, json={"action": "CLOSE", "position_id": str(target_pos.get("id")), "force": str(force).lower()}, timeout=2)
-    except Exception:
-        pass
+        response = requests.post(bridge_url, json={"action": "CLOSE", "position_id": str(target_pos.get("id")), "force": str(force).lower(),
+                                "account_id": GATEWAY_STATE["account_id"], "snapshot_at": GATEWAY_STATE["broker_snapshot_at"],
+                                "quote_at": get_live_price(target_pos.get("symbol", "XAUUSD"))["quote_at"]}, timeout=2)
+        if response.status_code != 200 or response.json().get("status") != "SUCCESS":
+            return {"status": "REJECTED_BROKER_EXECUTION_UNCONFIRMED"}
+    except Exception as exc:
+        return {"status": "REJECTED_BROKER_EXECUTION_UNCONFIRMED", "message": str(exc)}
 
     realized_pnl = float(target_pos.get("net_profit", 0.0))
-    GATEWAY_STATE["balance"] = round(GATEWAY_STATE["balance"] + realized_pnl, 2)
     GATEWAY_STATE["open_positions"] = [p for p in GATEWAY_STATE["open_positions"] if str(p.get("id")) != str(target_pos.get("id"))]
-    GATEWAY_STATE["margin"] = 0.0
-    GATEWAY_STATE["free_margin"] = GATEWAY_STATE["balance"]
-    GATEWAY_STATE["equity"] = GATEWAY_STATE["balance"]
+    GATEWAY_STATE["positions_snapshot_valid"] = False
     GATEWAY_STATE["total_unrealized_pnl"] = 0.0
     GATEWAY_STATE["last_sync"] = datetime.datetime.now(datetime.timezone.utc).strftime("%H:%M:%S UTC")
 
@@ -902,383 +921,121 @@ def close_position(position_id: Any, close_price: Optional[float] = None, force:
     }
 
 def update_live_market_prices(prices_map: Dict[str, Dict[str, Any]]) -> None:
-    """
-    Updates live market tick prices and calculates real-time unrealized PnL for active positions.
-    When connected to live cBot/cTrader, broker supplies authentic PnL and handles native SL/TP triggers.
-    Synthetic calculation is strictly reserved for offline unit testing/simulations.
-    """
-    global GATEWAY_STATE
-    GATEWAY_STATE["live_prices"].update(prices_map)
-    is_live_bridge = GATEWAY_STATE.get("broker_snapshot_received", False) or GATEWAY_STATE.get("local_bridge_online", False)
+    """Analytical feeds must never overwrite executable cTrader quotes or finances."""
+    GATEWAY_STATE.setdefault("analytical_prices", {}).update(prices_map)
 
-    total_unrealized = 0.0
-    for pos in list(GATEWAY_STATE.get("open_positions", [])):
-        sym = pos.get("symbol", "XAUUSD")
-        entry = float(pos.get("entry_price", 0.0))
-        act = str(pos.get("type") or pos.get("action") or "BUY").upper()
-        lots = float(pos.get("volume", 0.01))
-        sl = float(pos.get("sl", 0.0))
-        tp = float(pos.get("tp", 0.0))
 
-        tick_data = GATEWAY_STATE["live_prices"].get(sym)
-        if tick_data and tick_data.get("price"):
-            cur_price = float(tick_data["price"])
-            pos["current_price"] = cur_price
+def _ingest_broker_snapshot(data, transport):
+    expected = str(GATEWAY_STATE.get("account_id") or DEFAULT_ACCOUNT_ID)
+    try:
+        snapshot = broker_telemetry.validate_snapshot(data, expected)
+        if snapshot["broker_snapshot_at"] <= GATEWAY_STATE.get("broker_snapshot_at", 0):
+            return {"status": "IGNORED_SNAPSHOT", "reason": "BROKER_SNAPSHOT_OUT_OF_ORDER"}
+    except (ValueError, TypeError, AttributeError) as exc:
+        GATEWAY_STATE["broker_telemetry_error"] = str(exc)
+        GATEWAY_STATE["positions_snapshot_valid"] = False
+        return {"status": "REJECTED_TELEMETRY", "reason": str(exc)}
 
-            # When connected to live cBot bridge, cBot supplies authentic broker PnL & Equity
-            if is_live_bridge and pos.get("net_profit") is not None:
-                total_unrealized += float(pos.get("net_profit", 0.0))
-                continue
+    GATEWAY_STATE.update(snapshot)
+    GATEWAY_STATE["live_prices"] = dict(snapshot["broker_prices"])
+    GATEWAY_STATE["last_broker_snapshot"] = copy.deepcopy(data)
+    GATEWAY_STATE["broker_transport"] = transport
+    GATEWAY_STATE["is_connected"] = True
+    GATEWAY_STATE["cloud_server_active"] = True
+    GATEWAY_STATE["local_bridge_online"] = transport == "local"
+    GATEWAY_STATE["last_sync_timestamp"] = snapshot["broker_snapshot_at"]
+    GATEWAY_STATE["last_sync"] = datetime.datetime.fromtimestamp(snapshot["broker_snapshot_at"], datetime.timezone.utc).isoformat()
+    if transport == "local":
+        GATEWAY_STATE["last_bridge_sync_timestamp"] = time.time()
+    acc_id = snapshot["account_id"]
+    LINKED_ACCOUNTS.setdefault(acc_id, {}).update(snapshot)
+    LINKED_ACCOUNTS[acc_id]["last_seen"] = snapshot["broker_snapshot_at"]
 
-            # PnL calculation for offline/testing/synthetic simulation
-            is_gold = "XAU" in sym or "GOLD" in sym
-            is_silver = "XAG" in sym or "SILVER" in sym
-            is_jpy = "JPY" in sym
+    # A complete, validated account snapshot is authoritative even when flat.
+    try:
+        from app.database.db import get_db_connection, _lock
+        with _lock, get_db_connection() as conn:
+            trades = conn.execute(
+                "SELECT id, ticket_id FROM trades WHERE status = 'OPEN' AND mode = ? AND broker_account_id = ?",
+                (snapshot["account_type"], acc_id),
+            ).fetchall()
+            ids = {str(p["id"]) for p in snapshot["open_positions"]}
+            for trade in trades:
+                ticket = str(trade["ticket_id"] or trade["id"]).removeprefix("TRD_").removeprefix("CT_")
+                if ticket and ticket not in ids:
+                    conn.execute("UPDATE trades SET status = 'CLOSED', closed_at = COALESCE(closed_at, ?) WHERE id = ?",
+                                 (datetime.datetime.now(datetime.timezone.utc).isoformat(), trade["id"]))
+            conn.commit()
+    except Exception as exc:
+        logger.error("Broker reconciliation failed: %s", exc)
+        GATEWAY_STATE["broker_telemetry_error"] = "BROKER_RECONCILIATION_FAILED"
 
-            if is_gold:
-                raw_diff = (cur_price - entry) if act == "BUY" else (entry - cur_price)
-                pnl = raw_diff * (lots * 100.0)
-            elif is_silver:
-                raw_diff = (cur_price - entry) if act == "BUY" else (entry - cur_price)
-                pnl = raw_diff * (lots * 5000.0)
-            elif is_jpy:
-                raw_diff = (cur_price - entry) if act == "BUY" else (entry - cur_price)
-                pnl = (raw_diff / cur_price) * (lots * 100000.0)
-            else:
-                raw_diff = (cur_price - entry) if act == "BUY" else (entry - cur_price)
-                pnl = raw_diff * (lots * 100000.0)
+    # History is not a quote. Never synthesize an executable bid/ask from it.
+    history = data.get("closed_trades") or data.get("history", [])
+    if isinstance(history, list) and not snapshot["is_live"] and acc_id == str(settings.CTRADER_ACCOUNT_ID):
+        for trade in history:
+            try:
+                db.sync_cbot_closed_trade(trade)
+            except Exception as exc:
+                logger.debug("Closed trade sync error: %s", exc)
+    return {"status": "ACCEPTED", "snapshot_at": snapshot["broker_snapshot_at"]}
 
-            # Deduct commission
-            net_pnl = round(pnl - 0.07, 2)
-            pos["net_profit"] = net_pnl
-            pos["gross_profit"] = round(pnl, 2)
-            total_unrealized += net_pnl
-
-    if not is_live_bridge:
-        GATEWAY_STATE["total_unrealized_pnl"] = round(total_unrealized, 2)
-        GATEWAY_STATE["equity"] = round(GATEWAY_STATE["balance"] + total_unrealized, 2)
-        GATEWAY_STATE["free_margin"] = round(GATEWAY_STATE["equity"] - GATEWAY_STATE["margin"], 2)
 
 def sync_local_cbot_telemetry(timeout_sec: float = 1.0) -> Dict[str, Any]:
-    """
-    Directly queries the Local cBot Webhook Bridge (http://127.0.0.1:5001/trade/)
-    and synchronizes live broker positions, balance, equity, and margin directly into GATEWAY_STATE.
-    """
-    global GATEWAY_STATE, LINKED_ACCOUNTS
     if os.getenv("TESTING") == "1":
         return GATEWAY_STATE
-
     bridge_url = os.getenv("CBOT_BRIDGE_URL", "http://127.0.0.1:5001/trade/").strip()
-    
     try:
         res = requests.get(bridge_url, timeout=timeout_sec)
-        if res.status_code == 200:
-            data = res.json()
-            if data.get("status") == "ONLINE":
-                # Missing/malformed telemetry is not evidence that the account is flat.
-                if not isinstance(data.get("positions"), list):
-                    raise ValueError("Broker positions snapshot is missing or invalid")
-                acc_id = str(data.get("account_id") or "").strip().replace("#", "")
-                if not acc_id or not isinstance(data.get("is_live"), bool):
-                    raise ValueError("Broker account identity is missing")
-                for field in ("balance", "equity", "margin", "free_margin"):
-                    if not math.isfinite(float(data[field])):
-                        raise ValueError(f"Invalid broker {field}")
-                if any(not isinstance(p, dict) or not (p.get("id") or p.get("position_id")) for p in data["positions"]):
-                    raise ValueError("Broker position identity is missing")
-                raw_closed = data.get("closed_trades") or data.get("history", [])
-                if not isinstance(raw_closed, list):
-                    raw_closed = []
-                bal = float(data.get("balance", GATEWAY_STATE["balance"]))
-                eq = float(data.get("equity", bal))
-                marg = float(data.get("margin", 0.0))
-                f_marg = float(data.get("free_margin", eq))
-                broker = str(data.get("broker", "Spotware"))
-                is_live = bool(data.get("is_live", False))
-                
-                raw_positions = data.get("positions", [])
-                normalized_positions = []
-                total_unrealized = 0.0
-                
-                for p in raw_positions:
-                    p_id = p.get("id") or p.get("position_id")
-                    sym = str(p.get("symbol", "XAUUSD")).upper()
-                    side = str(p.get("trade_type") or p.get("side") or p.get("action") or "BUY").upper()
-                    entry_p = float(p.get("entry_price") or p.get("entry") or 0.0)
-                    sl_p = float(p.get("sl") or p.get("stop_loss") or 0.0)
-                    tp_p = float(p.get("tp") or p.get("take_profit") or 0.0)
-                    pnl_val = float(p.get("net_profit") or p.get("pnl") or 0.0)
-                    total_unrealized += pnl_val
-                    
-                    lots = 0.01
-                    if "volume" in p:
-                        lots = float(p["volume"])
-                    elif "lots" in p:
-                        raw_lots = float(p["lots"])
-                        lots = raw_lots if raw_lots < 0.5 else 0.01
-                    elif "lot_size" in p:
-                        lots = float(p["lot_size"])
-                    
-                    be_locked = False
-                    if sl_p > 0 and entry_p > 0:
-                        if side == "BUY" and sl_p >= entry_p:
-                            be_locked = True
-                        elif side == "SELL" and sl_p <= entry_p:
-                            be_locked = True
-
-                    norm_pos = {
-                        "id": p_id,
-                        "position_id": str(p_id),
-                        "ticket": p_id,
-                        "symbol": sym,
-                        "type": side,
-                        "action": side,
-                        "volume": lots,
-                        "lot_size": lots,
-                        "entry_price": entry_p,
-                        "sl": sl_p,
-                        "tp": tp_p,
-                        "current_price": entry_p if entry_p > 0 else GATEWAY_STATE.get("live_prices", {}).get(sym, {}).get("price", entry_p),
-                        "net_profit": round(pnl_val, 2),
-                        "gross_profit": round(pnl_val, 2),
-                        "break_even_locked": be_locked,
-                        "comment": "TradeTalk cTrader Live"
-                    }
-                    normalized_positions.append(norm_pos)
-
-                # Ingest true live broker tick stream
-                prices_data = data.get("prices", {})
-                if isinstance(prices_data, dict):
-                    for sym_key, p_obj in prices_data.items():
-                        if isinstance(p_obj, dict) and p_obj.get("price"):
-                            p_val = float(p_obj["price"])
-                            bid_val = float(p_obj.get("bid", p_val))
-                            ask_val = float(p_obj.get("ask", p_val))
-                            spread_val = float(p_obj.get("spread", round(ask_val - bid_val, 2)))
-                            GATEWAY_STATE["live_prices"][sym_key] = {
-                                "price": p_val,
-                                "bid": bid_val,
-                                "ask": ask_val,
-                                "spread": spread_val,
-                                "updated_at": time.time()
-                            }
-                            if sym_key == "XAUUSD":
-                                GATEWAY_STATE["live_prices"]["GOLD"] = GATEWAY_STATE["live_prices"]["XAUUSD"]
-
-                # Ingest fallback live price from active positions or recent broker history
-                if "XAUUSD" not in GATEWAY_STATE["live_prices"] or not GATEWAY_STATE["live_prices"]["XAUUSD"].get("price"):
-                    for pos in normalized_positions:
-                        sym_p = str(pos.get("symbol", "")).upper()
-                        if "XAU" in sym_p or "GOLD" in sym_p:
-                            ep = float(pos.get("entry_price") or 0.0)
-                            if ep > 0:
-                                GATEWAY_STATE["live_prices"]["XAUUSD"] = {
-                                    "price": ep,
-                                    "bid": round(ep - 0.15, 2),
-                                    "ask": round(ep + 0.15, 2),
-                                    "spread": 0.30,
-                                    "updated_at": time.time()
-                                }
-                                GATEWAY_STATE["live_prices"]["GOLD"] = GATEWAY_STATE["live_prices"]["XAUUSD"]
-                                break
-                    if "XAUUSD" not in GATEWAY_STATE["live_prices"] and raw_closed:
-                        for cl in raw_closed:
-                            sym_c = str(cl.get("symbol", "")).upper()
-                            if "XAU" in sym_c or "GOLD" in sym_c:
-                                cp = float(cl.get("closing_price") or cl.get("entry_price") or 0.0)
-                                if cp > 0:
-                                    GATEWAY_STATE["live_prices"]["XAUUSD"] = {
-                                        "price": cp,
-                                        "bid": round(cp - 0.15, 2),
-                                        "ask": round(cp + 0.15, 2),
-                                        "spread": 0.30,
-                                        "updated_at": time.time()
-                                    }
-                                    GATEWAY_STATE["live_prices"]["GOLD"] = GATEWAY_STATE["live_prices"]["XAUUSD"]
-                                    break
-
-                GATEWAY_STATE["is_connected"] = True
-                GATEWAY_STATE["cloud_server_active"] = True
-                GATEWAY_STATE["local_bridge_online"] = True
-                GATEWAY_STATE["account_id"] = acc_id
-                GATEWAY_STATE["broker"] = broker
-                GATEWAY_STATE["is_live"] = is_live
-                GATEWAY_STATE["balance"] = round(bal, 2)
-                GATEWAY_STATE["equity"] = round(eq, 2)
-                GATEWAY_STATE["margin"] = round(marg, 2)
-                GATEWAY_STATE["free_margin"] = round(f_marg, 2)
-                GATEWAY_STATE["open_positions"] = normalized_positions
-                GATEWAY_STATE["positions_snapshot_valid"] = True
-                GATEWAY_STATE["positions_snapshot_account_id"] = acc_id
-                GATEWAY_STATE["broker_snapshot_received"] = True
-                GATEWAY_STATE["total_unrealized_pnl"] = round(total_unrealized, 2)
-                GATEWAY_STATE["last_sync"] = datetime.datetime.now(datetime.timezone.utc).strftime("%H:%M:%S UTC")
-                GATEWAY_STATE["last_sync_timestamp"] = time.time()
-                GATEWAY_STATE["last_bridge_sync_timestamp"] = time.time()
-                
-                # Auto-reconcile open/closed positions between cTrader and DB
-                for c in raw_closed:
-                    try:
-                        db.sync_cbot_closed_trade(c)
-                    except Exception as ce:
-                        logger.debug(f"[Closed Trade Sync Error]: {ce}")
-
-                # Auto-close any DB trade that is no longer in live cTrader open positions
-                try:
-                    from app.database.db import get_db_connection, _lock
-                    with _lock, get_db_connection() as conn:
-                        open_db_trades = conn.execute(
-                            "SELECT id, ticket_id FROM trades WHERE status = 'OPEN' AND mode = ? AND broker_account_id = ?",
-                            ("LIVE" if is_live else "DEMO", acc_id),
-                        ).fetchall()
-                        open_cbot_ids = {str(p.get("id")) for p in normalized_positions}
-                        for tr in open_db_trades:
-                            t_id = str(tr["ticket_id"] or tr["id"]).replace("TRD_", "").replace("CT_", "")
-                            if t_id and t_id not in open_cbot_ids:
-                                conn.execute(
-                                    "UPDATE trades SET status = 'CLOSED', closed_at = COALESCE(closed_at, ?) WHERE id = ?",
-                                    (datetime.datetime.now(datetime.timezone.utc).isoformat(), tr["id"])
-                                )
-                        conn.commit()
-                except Exception as dbe:
-                    logger.debug(f"[DB Trade Reconciliation Error]: {dbe}")
-
-                if acc_id not in LINKED_ACCOUNTS:
-                    LINKED_ACCOUNTS[acc_id] = {}
-                LINKED_ACCOUNTS[acc_id].update({
-                    "account_id": acc_id,
-                    "name": f"{broker} • #{acc_id}",
-                    "account_type": "LIVE" if is_live else "DEMO",
-                    "balance": round(bal, 2),
-                    "equity": round(eq, 2),
-                    "margin": round(marg, 2),
-                    "free_margin": round(f_marg, 2),
-                    "currency": "USD",
-                    "broker": broker,
-                    "is_live": is_live,
-                    "open_positions": normalized_positions,
-                    "last_seen": time.time()
-                })
-            else:
-                raise ValueError("Broker bridge is not ONLINE")
-        else:
+        if res.status_code != 200:
             raise ValueError(f"Broker bridge HTTP {res.status_code}")
-    except Exception as e:
-        GATEWAY_STATE["positions_snapshot_valid"] = False
+        result = _ingest_broker_snapshot(res.json(), "local")
+        if result["status"] == "REJECTED_TELEMETRY":
+            raise ValueError(result["reason"])
+    except Exception as exc:
         GATEWAY_STATE["local_bridge_online"] = False
-        GATEWAY_STATE["is_connected"] = False
-        logger.debug(f"[Local Bridge Sync Note]: {e}")
-        
+        GATEWAY_STATE["last_local_bridge_error"] = str(exc)
+        # A cloud server has no localhost cBot. Do not erase a fresh relay snapshot.
+        if GATEWAY_STATE.get("broker_transport") != "heartbeat":
+            GATEWAY_STATE["positions_snapshot_valid"] = False
+            GATEWAY_STATE["broker_telemetry_error"] = "BROKER_LOCAL_BRIDGE_UNAVAILABLE"
     return GATEWAY_STATE
+
 
 def get_gateway_status(force_local_sync: bool = False) -> Dict[str, Any]:
-    """Returns real-time server-side gateway status, proactively synchronizing with local bridge."""
-    global GATEWAY_STATE
-    if force_local_sync or (time.time() - GATEWAY_STATE.get("last_bridge_sync_timestamp", 0) > 1.0):
+    if force_local_sync or time.time() - GATEWAY_STATE.get("last_bridge_sync_timestamp", 0) > 1.0:
         sync_local_cbot_telemetry(timeout_sec=0.8)
-    return GATEWAY_STATE
+    state = dict(GATEWAY_STATE)
+    state.pop("last_broker_snapshot", None)
+    state["telemetry"] = broker_telemetry.health(GATEWAY_STATE)
+    state["is_connected"] = state["telemetry"]["account_fresh"]
+    state["execution_ready"] = state["telemetry"]["execution_ready"]
+    state["telemetry_stale"] = not state["telemetry"]["account_fresh"]
+    return state
+
 
 def get_pending_cbot_orders() -> List[Dict[str, Any]]:
     """Fetches and clears pending orders for cBot."""
     global PENDING_CBOT_ORDERS
+    if not broker_telemetry.health(GATEWAY_STATE)["execution_ready"]:
+        PENDING_CBOT_ORDERS.clear()
+        return []
     orders = list(PENDING_CBOT_ORDERS)
     PENDING_CBOT_ORDERS.clear()
     return orders
 
 def update_heartbeat(data: dict) -> dict:
-    """Updates gateway state when cBot streams real-time broker data."""
-    global GATEWAY_STATE, PENDING_CBOT_ORDERS
-    now_ts = time.time()
-    now_str = datetime.datetime.now(datetime.timezone.utc).strftime("%H:%M:%S UTC")
+    """Same validated snapshot contract for local polling and cloud relays."""
+    result = _ingest_broker_snapshot(data, "heartbeat")
+    state = dict(GATEWAY_STATE)
+    state.pop("last_broker_snapshot", None)
+    state.update(result)
+    state["telemetry"] = broker_telemetry.health(GATEWAY_STATE)
+    return state
 
-    acc_id = str(data.get("account_id") or data.get("accountNumber") or data.get("accountId") or GATEWAY_STATE["account_id"]).strip().replace("#", "")
-    previous = GATEWAY_STATE if acc_id == GATEWAY_STATE.get("account_id") else LINKED_ACCOUNTS.get(acc_id, {})
-    bal = float(data.get("balance", data.get("Balance", previous.get("balance", 0.0))))
-    eq = float(data.get("equity", data.get("Equity", previous.get("equity", bal))))
-    marg = float(data.get("margin", data.get("Margin", previous.get("margin", 0.0))))
-    f_marg = float(data.get("free_margin", data.get("freeMargin", previous.get("free_margin", eq))))
-    curr = str(data.get("currency", data.get("Currency", "USD")))
-    broker = str(data.get("broker", data.get("brokerName", "IC Markets cTrader")))
-    is_live = bool(data.get("is_live", previous.get("is_live", True)))
-    open_pos = data.get("open_positions", data.get("positions"))
-    positions_valid = isinstance(open_pos, list) and all(
-        isinstance(p, dict) and (p.get("id") or p.get("position_id") or p.get("ticket")) for p in open_pos
-    )
-
-    # Keep registry of linked accounts up to date
-    if acc_id not in LINKED_ACCOUNTS:
-        LINKED_ACCOUNTS[acc_id] = {}
-    
-    LINKED_ACCOUNTS[acc_id].update({
-        "account_id": acc_id,
-        "name": f"cTrader #{acc_id}",
-        "account_type": "LIVE" if is_live else "DEMO",
-        "balance": round(bal, 2),
-        "equity": round(eq, 2),
-        "margin": round(marg, 2),
-        "free_margin": round(f_marg, 2),
-        "currency": curr,
-        "broker": broker,
-        "is_live": is_live,
-        "open_positions": open_pos if positions_valid else previous.get("open_positions", []),
-        "last_seen": now_ts
-    })
-
-    sym = data.get("symbol")
-    bid = data.get("bid")
-    ask = data.get("ask")
-    price = data.get("live_price") or bid
-    if sym and price:
-        sym_clean = str(sym).upper().replace("M", "").replace(".PRO", "").replace("_I", "")
-        p_val = float(price)
-        update_live_market_prices({
-            sym_clean: {
-                "symbol": sym_clean,
-                "price": p_val,
-                "bid": float(bid or p_val),
-                "ask": float(ask or (p_val + 0.35)),
-                "updated_at": now_ts
-            }
-        })
-
-    if positions_valid and (acc_id == GATEWAY_STATE.get("account_id") or not GATEWAY_STATE.get("account_id")):
-        GATEWAY_STATE["open_positions"] = open_pos
-        GATEWAY_STATE["positions_snapshot_valid"] = True
-        GATEWAY_STATE["positions_snapshot_account_id"] = acc_id
-        GATEWAY_STATE["broker_snapshot_received"] = True
-
-    if acc_id == GATEWAY_STATE.get("account_id") or not GATEWAY_STATE.get("account_id"):
-        GATEWAY_STATE["account_id"] = acc_id
-        GATEWAY_STATE["balance"] = round(bal, 2)
-        GATEWAY_STATE["equity"] = round(eq, 2)
-        GATEWAY_STATE["margin"] = round(marg, 2)
-        GATEWAY_STATE["free_margin"] = round(f_marg, 2)
-        GATEWAY_STATE["currency"] = curr
-        GATEWAY_STATE["broker"] = broker
-        GATEWAY_STATE["is_live"] = is_live
-        GATEWAY_STATE["last_sync"] = now_str
-        GATEWAY_STATE["last_sync_timestamp"] = now_ts
-
-    state_res = dict(GATEWAY_STATE)
-    if PENDING_CBOT_ORDERS:
-        top_order = PENDING_CBOT_ORDERS[0]
-        state_res["pending_orders"] = list(PENDING_CBOT_ORDERS)
-        state_res["signal"] = top_order.get("action")
-        state_res["action"] = top_order.get("action")
-        state_res["symbol"] = top_order.get("symbol")
-        state_res["lots"] = top_order.get("lot_size", 0.01)
-        state_res["lot_size"] = top_order.get("lot_size", 0.01)
-        state_res["sl"] = top_order.get("sl", 0.0)
-        state_res["tp"] = top_order.get("tp", 0.0)
-        state_res["ticket_id"] = top_order.get("id")
-        state_res["id"] = top_order.get("id")
-
-    return state_res
 
 def get_live_price(symbol: str = "XAUUSD") -> Optional[Dict[str, Any]]:
-    """Returns latest live price for symbol if fresh."""
-    sym_clean = symbol.upper().replace("M", "").replace(".PRO", "").replace("_I", "")
-    item = GATEWAY_STATE.get("live_prices", {}).get(sym_clean)
-    if not item and "XAU" in sym_clean:
-        item = GATEWAY_STATE.get("live_prices", {}).get("XAUUSD")
-    return item
+    """Return only a fresh broker quote bound to the active account snapshot."""
+    if not broker_telemetry.health(GATEWAY_STATE, symbol)["execution_ready"]:
+        return None
+    return dict(GATEWAY_STATE["broker_prices"][broker_telemetry.symbol_name(symbol)])

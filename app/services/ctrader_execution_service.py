@@ -50,28 +50,15 @@ class CTraderExecutionService:
 
         sig_id = signal_id or f"SIG_{uuid.uuid4().hex[:8].upper()}"
 
+        # This check is mandatory even when other strategy checks are bypassed.
+        self.gateway.get_gateway_status()
+        live_tick = self.gateway.get_live_price(sym)
+        if not live_tick:
+            return {"status": "VETOED_BY_SAFETY_GATE", "reason": "VETO_UNVERIFIED_BROKER_TELEMETRY"}
+        live_p = float(live_tick["ask"] if act == "BUY" else live_tick["bid"])
+
         # 1. Non-negotiable Live Safety Gatekeeper Verification
         if not bypass_safety:
-            # Retrieve fresh, validated live broker quote
-            from app.services.market_data_integrity_monitor import market_data_integrity_monitor
-            from app.services.position_manager_v3 import position_manager_v3
-
-            is_fresh, q_msg, live_tick = market_data_integrity_monitor.evaluate_price_freshness(sym, max_age=5.0)
-            if is_fresh and live_tick:
-                live_p = float(live_tick["mid"])
-            else:
-                live_feed = self.gateway.GATEWAY_STATE.get("live_prices", {}).get(sym, {})
-                live_p = float(live_feed.get("price")) if (live_feed and live_feed.get("price")) else None
-
-            if live_p is None:
-                if formatted_sl and formatted_tp:
-                    live_p = round((formatted_sl + abs(formatted_sl - formatted_tp) / 3.0) if act == "BUY" else (formatted_sl - abs(formatted_sl - formatted_tp) / 3.0), digits)
-                else:
-                    return {
-                        "status": "VETOED_BY_SAFETY_GATE",
-                        "reason": f"VETO_UNVERIFIED_MARKET_DATA: No live quote available for {sym}."
-                    }
-
             is_safe, safety_msg, safety_telemetry = live_safety_gate.evaluate_order_safety(
                 symbol=sym,
                 action=act,
@@ -174,21 +161,9 @@ class CTraderExecutionService:
         """
         Closes an active open position by ticket ID.
         """
-        logger.info(f"Closing position #{position_id} (force={force})")
-        pos = self._find_position(position_id)
-        clean_key = str(position_id).replace("CT_", "")
-        self._positions_cache.pop(clean_key, None)
         res = self.gateway.close_position(position_id=position_id, force=force)
         if res.get("status") == "SUCCESS":
-            return res
-        if force or pos:
-            return {
-                "status": "SUCCESS",
-                "closed_position_id": position_id,
-                "symbol": (pos or {}).get("symbol", "XAUUSD"),
-                "realized_pnl": float((pos or {}).get("net_profit", 0.0)),
-                "new_balance": self.gateway.GATEWAY_STATE.get("balance", 10000.0)
-            }
+            self._positions_cache.pop(str(position_id).replace("CT_", ""), None)
         return res
 
     def partial_close_position(
@@ -199,51 +174,10 @@ class CTraderExecutionService:
         """
         Partially closes an active position (e.g. 50% at 1.5R target).
         """
-        target_pos = self._find_position(position_id)
-
-        if not target_pos:
-            return {"status": "ERROR", "message": f"Position #{position_id} not found."}
-
-        current_lots = float(target_pos.get("volume", target_pos.get("lot_size", 0.01)))
-        if close_volume >= current_lots:
-            return self.close_position(position_id=position_id, force=True)
-
-        remaining_lots = round(current_lots - close_volume, 2)
-        target_pos["volume"] = remaining_lots
-        target_pos["lot_size"] = remaining_lots
-
-        # Calculate realized PnL on closed portion
-        entry_price = float(target_pos.get("entry_price", 0.0))
-        current_price = float(target_pos.get("current_price", entry_price))
-        pos_type = target_pos.get("type", target_pos.get("action", "BUY")).upper()
-        
-        spec = symbol_resolver.get_symbol_spec(target_pos.get("symbol", "XAUUSD"))
-        lot_size_units = spec.get("lot_size", 100.0)
-
-        price_diff = (current_price - entry_price) if pos_type == "BUY" else (entry_price - current_price)
-        partial_pnl = round(price_diff * close_volume * lot_size_units, 2)
-
-        # Update balance
-        active_acc = self.gateway.get_active_account()
-        active_acc["balance"] = round(active_acc.get("balance", 1000.0) + partial_pnl, 2)
-        active_acc["equity"] = active_acc["balance"]
-
-        logger.info(f"Partial Close #{position_id}: closed {close_volume} lots, {remaining_lots} lots remaining. Realized: ${partial_pnl:+.2f}")
-
-        db.log_audit(
-            event_type="PARTIAL_CLOSE",
-            actor="cTraderExecutionService",
-            details=f"Position #{position_id} partially closed: {close_volume} lots. PnL: ${partial_pnl:+.2f}"
-        )
-
-        return {
-            "status": "SUCCESS",
-            "position_id": position_id,
-            "closed_volume": close_volume,
-            "remaining_volume": remaining_lots,
-            "realized_pnl": partial_pnl,
-            "new_balance": active_acc["balance"]
-        }
+        # There is no broker partial-close protocol in this bridge. Do not simulate
+        # volume or realized P&L and then label it broker state.
+        return {"status": "REJECTED_UNSUPPORTED_BROKER_OPERATION",
+                "message": "Partial close requires broker-confirmed support; account state unchanged."}
 
     def modify_position_sltp(
         self,
@@ -259,6 +193,11 @@ class CTraderExecutionService:
         if not target_pos:
             return {"status": "ERROR", "message": f"Position #{position_id} not found"}
 
+        if os.getenv("TESTING") == "1":
+            return {"status": "REJECTED_TEST_MODE_EXTERNAL_EXECUTION_BLOCKED"}
+        if not self.gateway.get_live_price(target_pos.get("symbol", "XAUUSD")):
+            return {"status": "REJECTED_BROKER_TELEMETRY"}
+        target_pos = dict(target_pos)  # Do not mutate the authoritative snapshot optimistically.
         sym = target_pos.get("symbol", "XAUUSD")
         spec = symbol_resolver.get_symbol_spec(sym)
         digits = spec.get("digits", 2)
@@ -278,14 +217,20 @@ class CTraderExecutionService:
         bridge_url = os.getenv("CBOT_BRIDGE_URL", "http://127.0.0.1:5001/trade/").strip()
         try:
             import requests
-            requests.post(bridge_url, json={
+            response = requests.post(bridge_url, json={
                 "action": "MODIFY",
                 "position_id": str(target_pos.get("id")),
+                "account_id": self.gateway.GATEWAY_STATE["account_id"],
+                "snapshot_at": self.gateway.GATEWAY_STATE["broker_snapshot_at"],
+                "quote_at": self.gateway.get_live_price(sym)["quote_at"],
                 "sl_price": target_pos.get("sl_price"),
                 "tp_price": target_pos.get("tp_price")
             }, timeout=2.0)
+            if response.status_code != 200 or response.json().get("status") != "SUCCESS":
+                return {"status": "REJECTED_BROKER_EXECUTION_UNCONFIRMED"}
+            self.gateway.GATEWAY_STATE["positions_snapshot_valid"] = False
         except Exception as be:
-            logger.debug(f"[Modify SL/TP Bridge Notice]: {be}")
+            return {"status": "REJECTED_BROKER_EXECUTION_UNCONFIRMED", "message": str(be)}
 
         db.log_audit(
             event_type="POSITION_MODIFIED",
@@ -333,7 +278,7 @@ class CTraderExecutionService:
         Returns reconciliation status and flags any discrepancies.
         """
         state = self.gateway.GATEWAY_STATE
-        if not state.get("positions_snapshot_valid") or state.get("positions_snapshot_account_id") != state.get("account_id"):
+        if not self.gateway.broker_telemetry.health(state)["account_fresh"]:
             return {"is_synced": False, "status": "TELEMETRY_UNAVAILABLE",
                     "broker_position_count": None, "cached_position_count": len(self._positions_cache),
                     "orphaned_cleaned": []}

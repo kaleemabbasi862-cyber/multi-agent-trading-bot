@@ -5,12 +5,12 @@
   ],
   "active_lot_size": 0.01,
   "fixed_lot_size": 0.01,
-  "auto_trade_enabled": true,
+  "auto_trade_enabled": false,
   "scanner_active": true,
   "max_risk_percent": 1.0,
   "min_confidence_threshold": 75.0,
   "min_consensus_agents": 4,
-  "trading_mode": "LIVE",
+  "trading_mode": "DEMO",
   "account_id": "5908018",
   "environment_mode": "MULTI_ASSET_QUANT"
 }

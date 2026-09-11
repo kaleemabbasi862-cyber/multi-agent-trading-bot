@@ -30,6 +30,20 @@ namespace cAlgo.Robots
         private CancellationTokenSource _cts;
         private Thread _listenerThread;
         private readonly object _orderLock = new object();
+        private readonly Dictionary<string, Ticks> _brokerTicks = new Dictionary<string, Ticks>();
+
+        private static double UnixSeconds(DateTime utc)
+        {
+            return (utc.ToUniversalTime() - new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalSeconds;
+        }
+
+        private double LastQuoteTime(Symbol symbol)
+        {
+            if (!_brokerTicks.ContainsKey(symbol.Name))
+                _brokerTicks[symbol.Name] = MarketData.GetTicks(symbol.Name);
+            var ticks = _brokerTicks[symbol.Name];
+            return ticks.Count > 0 ? UnixSeconds(DateTime.SpecifyKind(ticks.LastTick.Time, DateTimeKind.Utc)) : 0;
+        }
 
         protected override void OnStart()
         {
@@ -272,8 +286,8 @@ namespace cAlgo.Robots
                     double mid = Math.Round((s.Bid + s.Ask) / 2.0, s.Digits);
                     double spread = Math.Round(s.Ask - s.Bid, s.Digits);
                     priceItems.Add(string.Format(CultureInfo.InvariantCulture,
-                        "\"{0}\":{{\"bid\":{1},\"ask\":{2},\"price\":{3},\"spread\":{4},\"digits\":{5},\"pip\":{6}}}",
-                        symName.ToUpperInvariant(), s.Bid, s.Ask, mid, spread, s.Digits, s.PipSize));
+                        "\"{0}\":{{\"bid\":{1},\"ask\":{2},\"price\":{3},\"spread\":{4},\"digits\":{5},\"pip\":{6},\"quote_at\":{7},\"broker_symbol\":\"{8}\"}}",
+                        symName.ToUpperInvariant(), s.Bid, s.Ask, mid, spread, s.Digits, s.PipSize, LastQuoteTime(s), EscapeJson(s.Name)));
                 }
             }
             return "{" + string.Join(",", priceItems) + "}";
@@ -281,6 +295,8 @@ namespace cAlgo.Robots
 
         private string GetOverviewJson()
         {
+            if (!Server.IsConnected || IsBacktesting)
+                return "{\"status\":\"OFFLINE\",\"error\":\"BROKER_CONNECTION_UNAVAILABLE\"}";
             string posJson = GetPositionsJson();
             string histJson = GetHistoryJson();
             string pricesJson = GetLivePricesJson();
@@ -295,8 +311,8 @@ namespace cAlgo.Robots
             int openCount = Positions != null ? Positions.Count : 0;
 
             return string.Format(CultureInfo.InvariantCulture,
-                "{{\"status\":\"ONLINE\",\"bridge\":\"TradeTalk CleanBridge C#\",\"account_id\":\"{0}\",\"broker\":\"{1}\",\"is_live\":{2},\"balance\":{3:F2},\"equity\":{4:F2},\"margin\":{5:F2},\"free_margin\":{6:F2},\"open_positions_count\":{7},\"positions\":{8},\"history\":{9},\"prices\":{10}}}",
-                accNum, broker, isLive ? "true" : "false", bal, eq, marg, freeMarg, openCount, posJson, histJson, pricesJson);
+                "{{\"status\":\"ONLINE\",\"source\":\"CTRADER_CBOT\",\"snapshot_at\":{11},\"bridge\":\"TradeTalk CleanBridge C#\",\"account_id\":\"{0}\",\"broker\":\"{1}\",\"is_live\":{2},\"balance\":{3:F2},\"equity\":{4:F2},\"margin\":{5:F2},\"free_margin\":{6:F2},\"open_positions_count\":{7},\"positions\":{8},\"history\":{9},\"prices\":{10}}}",
+                accNum, EscapeJson(broker), isLive ? "true" : "false", bal, eq, marg, freeMarg, openCount, posJson, histJson, pricesJson, UnixSeconds(DateTime.UtcNow));
         }
 
         private string HandleTradeExecution(string json, out int httpStatus)
@@ -308,6 +324,17 @@ namespace cAlgo.Robots
                     string actionStr = (ExtractJsonValue(json, "action") ?? ExtractJsonValue(json, "side") ?? ExtractJsonValue(json, "trade_type") ?? "BUY").ToUpperInvariant();
                     string symbolStr = ExtractJsonValue(json, "symbol") ?? "XAUUSD";
                     string comment = ExtractJsonValue(json, "comment") ?? "CleanBridge AI";
+                    double requestSnapshotAt, requestQuoteAt;
+                    double requestNow = UnixSeconds(DateTime.UtcNow);
+                    if (!Server.IsConnected || IsBacktesting || Account.IsLive || ExtractJsonValue(json, "account_id") != Account.Number.ToString()
+                        || !double.TryParse(ExtractJsonValue(json, "snapshot_at"), NumberStyles.Float, CultureInfo.InvariantCulture, out requestSnapshotAt)
+                        || !double.TryParse(ExtractJsonValue(json, "quote_at"), NumberStyles.Float, CultureInfo.InvariantCulture, out requestQuoteAt)
+                        || !(requestNow - requestSnapshotAt >= -2 && requestNow - requestSnapshotAt <= 10)
+                        || !(requestNow - requestQuoteAt >= -2 && requestNow - requestQuoteAt <= 5))
+                    {
+                        httpStatus = 409;
+                        return "{\"status\":\"REJECTED\",\"error\":\"BROKER_ACCOUNT_OR_TELEMETRY_UNVERIFIED\"}";
+                    }
 
                     // 1. Close Position Handler with STRICT Anti-Churn 300s Hold Guard
                     if (actionStr == "CLOSE" || actionStr.Contains("CLOSE"))
@@ -342,6 +369,11 @@ namespace cAlgo.Robots
                             }
 
                             var closeResult = ClosePosition(targetPos);
+                            if (!closeResult.IsSuccessful)
+                            {
+                                httpStatus = 409;
+                                return "{\"status\":\"REJECTED\",\"error\":\"BROKER_CLOSE_FAILED\"}";
+                            }
                             Print(string.Format("🛑 [POSITION CLOSED] #{0} ({1}) Net Profit: ${2:F2}", targetPos.Id, targetPos.SymbolName, targetPos.NetProfit));
                             httpStatus = 200;
                             return string.Format(CultureInfo.InvariantCulture,
@@ -392,6 +424,11 @@ namespace cAlgo.Robots
                             }
 
                             var modResult = ModifyPosition(targetPos, newSl, newTp);
+                            if (!modResult.IsSuccessful)
+                            {
+                                httpStatus = 409;
+                                return "{\"status\":\"REJECTED\",\"error\":\"BROKER_MODIFY_FAILED\"}";
+                            }
                             Print(string.Format("🛠️ [POSITION MODIFIED] #{0} ({1}) SL -> {2:F2} | TP -> {3:F2}", targetPos.Id, targetPos.SymbolName, newSl ?? 0, newTp ?? 0));
                             httpStatus = 200;
                             return string.Format(CultureInfo.InvariantCulture,
@@ -421,6 +458,25 @@ namespace cAlgo.Robots
                         Print("🚨 Symbol resolution failed for: " + symbolStr);
                         httpStatus = 400;
                         return string.Format("{{\"status\":\"REJECTED\",\"error\":\"SYMBOL_NOT_FOUND\",\"symbol\":\"{0}\"}}", EscapeJson(symbolStr));
+                    }
+
+                    // Bind each new entry to the observed DEMO account and executable quote.
+                    double snapshotAt, quoteAt, expectedBid, expectedAsk;
+                    double now = UnixSeconds(DateTime.UtcNow);
+                    bool observed = double.TryParse(ExtractJsonValue(json, "snapshot_at"), NumberStyles.Float, CultureInfo.InvariantCulture, out snapshotAt)
+                        & double.TryParse(ExtractJsonValue(json, "quote_at"), NumberStyles.Float, CultureInfo.InvariantCulture, out quoteAt)
+                        & double.TryParse(ExtractJsonValue(json, "expected_bid"), NumberStyles.Float, CultureInfo.InvariantCulture, out expectedBid)
+                        & double.TryParse(ExtractJsonValue(json, "expected_ask"), NumberStyles.Float, CultureInfo.InvariantCulture, out expectedAsk);
+                    double tolerance = Math.Max((sym.Ask - sym.Bid) * 2, sym.TickSize * 2);
+                    if (Account.IsLive || ExtractJsonValue(json, "account_id") != Account.Number.ToString()
+                        || !observed || !(now - snapshotAt >= -2 && now - snapshotAt <= 10)
+                        || !(now - quoteAt >= -2 && now - quoteAt <= 5)
+                        || !(now - LastQuoteTime(sym) >= -2 && now - LastQuoteTime(sym) <= 5)
+                        || !(expectedBid > 0 && expectedAsk >= expectedBid)
+                        || !(Math.Abs(sym.Bid - expectedBid) <= tolerance && Math.Abs(sym.Ask - expectedAsk) <= tolerance))
+                    {
+                        httpStatus = 409;
+                        return "{\"status\":\"REJECTED\",\"error\":\"BROKER_TELEMETRY_STALE_OR_MISMATCHED\"}";
                     }
 
                     // Spread Guard for Gold

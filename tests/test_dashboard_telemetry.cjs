@@ -1,0 +1,24 @@
+// Run with node tests/test_dashboard_telemetry.cjs; no browser/server/network needed.
+const fs = require('node:fs');
+const vm = require('node:vm');
+const assert = require('node:assert/strict');
+const path = require('node:path');
+const html = fs.readFileSync(path.join(__dirname, '../templates/dashboard.html'), 'utf8');
+const start = html.indexOf('function dashboardApp()');
+const code = html.slice(start, html.indexOf('</script>', start));
+const context = {localStorage: {getItem: () => null}, Date, console};
+vm.createContext(context);
+vm.runInContext(code, context);
+const app = context.dashboardApp();
+assert.equal(app.brokerAccountFresh(), false);
+const now = Date.now() / 1000;
+app.telemetryClock = now;
+app.cbotStatus = {account_id: '5908018', telemetry_stale: false, telemetry: {account_snapshot_at: now}};
+const quote = {account_id: '5908018', executable: true, quote_at: now};
+assert.equal(app.brokerQuoteFresh(quote), true);
+assert.equal(app.brokerQuoteFresh({...quote, account_id: 'other'}), false);
+app.telemetryClock = now + 6;
+assert.equal(app.brokerQuoteFresh(quote), false);
+app.telemetryClock = now + 11;
+assert.equal(app.brokerAccountFresh(), false);
+console.log('Dashboard telemetry: 5 assertions passed');

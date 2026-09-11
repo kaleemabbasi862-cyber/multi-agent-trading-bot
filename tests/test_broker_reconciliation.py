@@ -9,13 +9,14 @@ os.environ["TESTING"] = "1"
 
 import ctrader_cloud_gateway as gateway
 import settings_manager
+from tests.broker_fixtures import snapshot, install_state
 from app.config import settings
 from app.database.db import get_db_connection
 from app.database.schema import init_db_schema
 from app.services.ctrader_execution_service import CTraderExecutionService
 
 
-class TestBrokerReconciliation(unittest.TestCase):
+class BrokerDatabaseFixture(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.db_patch = patch.object(settings, "DATABASE_PATH", os.path.join(self.tmp.name, "test.db"))
@@ -28,6 +29,7 @@ class TestBrokerReconciliation(unittest.TestCase):
         self.state = copy.deepcopy(gateway.GATEWAY_STATE)
         self.accounts = copy.deepcopy(gateway.LINKED_ACCOUNTS)
         gateway.GATEWAY_STATE.update(account_id="5908018", open_positions=[{"id": "stale"}], live_prices={})
+        gateway.GATEWAY_STATE["broker_snapshot_at"] = 0
         self.service = CTraderExecutionService()
         self.service._positions_cache = {"stale": {"id": "stale"}}
 
@@ -48,7 +50,7 @@ class TestBrokerReconciliation(unittest.TestCase):
         return conn
 
     def snapshot(self, **changes):
-        data = dict(status="ONLINE", account_id="5908018", is_live=False,
+        data = snapshot(
                     balance=1234.56, equity=1220.12, margin=14.44, free_margin=1205.68, positions=[])
         data.update(changes)
         return data
@@ -63,6 +65,8 @@ class TestBrokerReconciliation(unittest.TestCase):
             conn.execute("INSERT INTO trades (id, mode, symbol, direction, entry_price, volume, status, opened_at, ticket_id, broker_account_id, signal_id, stop_loss, take_profit) VALUES (?, ?, 'XAUUSD', 'BUY', 2000, 0.01, 'OPEN', '2026-01-01', ?, ?, '', 1990, 2020)", (ident, mode, ticket, account))
             conn.commit()
 
+
+class TestBrokerReconciliation(BrokerDatabaseFixture):
     def test_empty_snapshot_clears_cache_and_preserves_broker_financials(self):
         state = self.sync(self.snapshot())
         self.assertTrue(state["positions_snapshot_valid"])
@@ -134,7 +138,8 @@ class TestAutoTradePersistence(unittest.TestCase):
     def test_backend_update_and_read_agree_on_auto_trade_state(self):
         import asyncio
         from main_native import SettingsUpdateRequest, update_settings, get_pairs_settings
-        with patch.object(settings_manager, "_IN_MEMORY_SETTINGS", dict(settings_manager.DEFAULT_SETTINGS)):
+        with patch.dict(gateway.GATEWAY_STATE), patch.object(settings_manager, "_IN_MEMORY_SETTINGS", dict(settings_manager.DEFAULT_SETTINGS)):
+            install_state(gateway)
             for enabled in (True, False):
                 result = asyncio.run(update_settings(SettingsUpdateRequest(auto_trade_enabled=enabled)))
                 self.assertIs(result["auto_trade_enabled"], enabled)

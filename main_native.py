@@ -78,23 +78,6 @@ async def cloud_gateway_background_sync():
                 if pos.get("symbol"):
                     pairs_to_sync.append(pos.get("symbol"))
             
-            price_map = {}
-            for sym in set(pairs_to_sync):
-                snap = get_market_snapshot(sym, force_refresh=False)
-                if snap and snap.get("price"):
-                    p = float(snap["price"])
-                    sp = float(snap.get("spread", 0.35))
-                    price_map[sym] = {
-                        "symbol": sym,
-                        "price": p,
-                        "bid": p,
-                        "ask": round(p + sp, 4 if "EUR" in sym or "GBP" in sym else 2),
-                        "updated_at": snap.get("timestamp")
-                    }
-            
-            if price_map:
-                ctrader_cloud_gateway.update_live_market_prices(price_map)
-                
             # Periodically sync account details with Spotware Open API cloud
             sync_cycle += 1
             if sync_cycle % 6 == 0:
@@ -145,6 +128,10 @@ async def autonomous_market_scanner_loop():
                         continue
 
                     gateway_status = ctrader_cloud_gateway.get_gateway_status()
+                    if not gateway_status.get("execution_ready"):
+                        logger.warning("Autonomous execution blocked: %s", gateway_status.get("telemetry", {}).get("reason"))
+                        await asyncio.sleep(2)
+                        continue
                     open_positions = gateway_status.get("open_positions", [])
                     
                     # -------------------------------------------------------------
@@ -285,18 +272,8 @@ async def local_cbot_background_sync():
             state = ctrader_cloud_gateway.sync_local_cbot_telemetry(timeout_sec=1.0)
             if state and state.get("local_bridge_online"):
                 try:
-                    payload = {
-                        "account_id": state.get("account_id", "5908018"),
-                        "broker": state.get("broker", "Spotware"),
-                        "balance": state.get("balance", 1017.10),
-                        "equity": state.get("equity", 1017.10),
-                        "margin": state.get("margin", 0.0),
-                        "free_margin": state.get("free_margin", 1017.10),
-                        "is_live": state.get("is_live", False),
-                        "open_positions": state.get("open_positions", []),
-                        "total_unrealized_pnl": state.get("total_unrealized_pnl", 0.0),
-                        "local_bridge_online": True,
-                    }
+                    from cloud_telemetry_relay import build_heartbeat_payload
+                    payload = build_heartbeat_payload(state["last_broker_snapshot"])
                     requests.post(f"{cloud_url}/api/cbot/heartbeat", json=payload, timeout=2.5)
                 except Exception:
                     pass
@@ -633,6 +610,11 @@ async def update_settings(req: SettingsUpdateRequest):
         settings_manager.set_active_lot_size(req.active_lot_size)
     if req.min_confidence_threshold is not None:
         settings_manager.set_min_confidence_threshold(req.min_confidence_threshold)
+    if req.auto_trade_enabled is True:
+        telemetry = ctrader_cloud_gateway.get_gateway_status()
+        requested_account = req.account_id or req.active_account_id or telemetry.get("account_id")
+        if str(requested_account).strip().replace("#", "") != str(telemetry.get("account_id")) or not telemetry.get("execution_ready") or telemetry.get("is_live", True):
+            raise HTTPException(status_code=409, detail="Fresh matching DEMO account and broker quotes required")
     if req.auto_trade_enabled is not None:
         s = settings_manager.load_settings()
         s["auto_trade_enabled"] = bool(req.auto_trade_enabled)

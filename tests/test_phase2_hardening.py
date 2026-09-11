@@ -30,6 +30,11 @@ from app.services.position_manager_v3 import position_manager_v3
 class TestPhase2CoreHardening(unittest.TestCase):
     def setUp(self):
         import ctrader_cloud_gateway
+        from tests.broker_fixtures import install_state
+        state_patch = patch.dict(ctrader_cloud_gateway.GATEWAY_STATE)
+        state_patch.start()
+        self.addCleanup(state_patch.stop)
+        install_state(ctrader_cloud_gateway, bid=2749.85, ask=2750.15)
         ctrader_cloud_gateway.LAST_EXECUTION_TIMESTAMP = 0.0
         ctrader_cloud_gateway.LAST_TRADE_CLOSE_TIMESTAMP = 0.0
         ctrader_cloud_gateway.GATEWAY_STATE["open_positions"] = []

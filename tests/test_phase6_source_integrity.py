@@ -14,11 +14,13 @@ os.environ["TESTING"] = "1"
 from app.config import settings, trading_config
 from app.services.pretrade_intelligence_engine import pretrade_intelligence_engine
 import ctrader_cloud_gateway as gateway
+from tests.broker_fixtures import install_state
 
 
 class TestPhase6SourceIntegrity(unittest.TestCase):
     def setUp(self):
         self.original_state = dict(gateway.GATEWAY_STATE)
+        install_state(gateway)
         gateway.GATEWAY_STATE["open_positions"] = []
         gateway.LAST_EXECUTION_TIMESTAMP = 0
         gateway.LAST_TRADE_CLOSE_TIMESTAMP = 0
@@ -49,11 +51,13 @@ class TestPhase6SourceIntegrity(unittest.TestCase):
         gateway.GATEWAY_STATE["is_live"] = False
         gateway.GATEWAY_STATE["account_type"] = "DEMO"
         gateway.GATEWAY_STATE["live_prices"] = {}
+        gateway.GATEWAY_STATE["broker_prices"] = {}
         result = gateway.execute_market_order(
             symbol="XAUUSD", action="BUY", lot_size=0.01,
             sl_price=4990.0, tp_price=5020.0, signal_id="TEST_NO_PRICE"
         )
-        self.assertEqual(result["status"], "REJECTED_UNVERIFIED_MARKET_DATA")
+        self.assertEqual(result["status"], "REJECTED_BROKER_TELEMETRY")
+        self.assertEqual(result["error"], "BROKER_QUOTE_UNVERIFIED")
         self.assertEqual(gateway.GATEWAY_STATE["open_positions"], [])
 
     @patch("ctrader_cloud_gateway.dispatch_local_bridge_order")

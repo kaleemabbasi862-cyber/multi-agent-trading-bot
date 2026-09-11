@@ -158,6 +158,9 @@ class PositionManagerV3:
 
         # Reconcile open list
         from app.services.ctrader_execution_service import ctrader_execution_service
+        gateway = ctrader_execution_service.gateway
+        if not gateway.get_gateway_status().get("telemetry", {}).get("account_fresh"):
+            return []
         broker_positions = ctrader_execution_service.get_open_positions()
         active_ids = {str(p.get("id") or p.get("position_id")) for p in broker_positions}
 
@@ -166,7 +169,7 @@ class PositionManagerV3:
                 continue
 
             # Check if position was closed at broker
-            if pos_id not in active_ids and broker_positions:
+            if pos_id not in active_ids:
                 pos["state"] = "CLOSED"
                 self._record_closed_position(pos, exit_model="BROKER_SETTLED")
                 continue
@@ -179,8 +182,8 @@ class PositionManagerV3:
             tp_p = pos["current_tp"]
 
             # Get live validated broker quote
-            is_fresh, q_reason, tick = market_data_integrity_monitor.evaluate_price_freshness(sym, max_age=10.0)
-            if not is_fresh or not tick:
+            tick = gateway.get_live_price(sym)
+            if not tick:
                 continue
 
             live_bid = tick["bid"]

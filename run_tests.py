@@ -123,11 +123,13 @@ from tests.test_phase3_soak import TestPhase3DemoSoakValidation
 from tests.test_broker_provenance_integrity import TestBrokerProvenanceIntegrity
 from tests.test_phase6_source_integrity import TestPhase6SourceIntegrity
 from tests.test_broker_reconciliation import TestBrokerReconciliation, TestAutoTradePersistence
+from tests.test_broker_telemetry import TestBrokerTelemetry
 
 def run_broker_reconciliation_tests():
     suite = unittest.TestSuite([
         unittest.TestLoader().loadTestsFromTestCase(TestBrokerReconciliation),
         unittest.TestLoader().loadTestsFromTestCase(TestAutoTradePersistence),
+        unittest.TestLoader().loadTestsFromTestCase(TestBrokerTelemetry),
     ])
     result = unittest.TextTestRunner(verbosity=0).run(suite)
     assert result.wasSuccessful(), "Broker reconciliation and settings regression failures"

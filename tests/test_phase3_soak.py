@@ -30,9 +30,14 @@ from app.services.position_manager_v3 import position_manager_v3
 from app.services.session_engine import session_engine
 from app.services.volatility_engine import volatility_engine
 import ctrader_cloud_gateway
+from tests.broker_fixtures import install_state
 
 class TestPhase3DemoSoakValidation(unittest.TestCase):
     def setUp(self):
+        state_patch = patch.dict(ctrader_cloud_gateway.GATEWAY_STATE)
+        state_patch.start()
+        self.addCleanup(state_patch.stop)
+        install_state(ctrader_cloud_gateway, bid=2750.0, ask=2750.3)
         ctrader_cloud_gateway.LAST_EXECUTION_TIMESTAMP = 0.0
         ctrader_cloud_gateway.LAST_TRADE_CLOSE_TIMESTAMP = 0.0
         ctrader_cloud_gateway.GATEWAY_STATE["open_positions"] = []

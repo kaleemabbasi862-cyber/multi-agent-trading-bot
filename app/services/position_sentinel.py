@@ -33,6 +33,8 @@ class PositionSentinel:
         """
         now = time.time()
         self.last_sentinel_scan_ts = now
+        if not ctrader_cloud_gateway.get_gateway_status().get("execution_ready"):
+            return []
         
         # 1. Run PositionManagerV3 evaluation
         v3_actions = position_manager_v3.evaluate_managed_positions()
@@ -63,8 +65,10 @@ class PositionSentinel:
             initial_risk_1r = abs(entry_p - sl_p) if (sl_p > 0 and abs(entry_p - sl_p) > 0.5) else 5.0
 
             # Fetch fresh live market data
-            market_data = get_market_snapshot(sym, force_refresh=True)
-            live_price = float(market_data.get("price") or entry_p)
+            market_data = ctrader_cloud_gateway.get_live_price(sym)
+            if not market_data:
+                continue
+            live_price = float(market_data["bid"] if pos_type == "BUY" else market_data["ask"])
 
             is_gold = "XAU" in sym or "GOLD" in sym
             pip_size = 0.01 if is_gold else 0.0001

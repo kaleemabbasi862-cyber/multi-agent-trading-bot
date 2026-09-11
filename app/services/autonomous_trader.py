@@ -30,6 +30,9 @@ class AutonomousTrader:
         self.last_scan_time = 0.0
 
     def start(self):
+        if not ctrader_cloud_gateway.get_gateway_status().get("execution_ready"):
+            self.is_running = False
+            return False
         self.is_running = True
         logger.info("Autonomous Multi-Agent Trading loop STARTED.")
         db.log_audit("AUTONOMOUS_TRADER_STARTED", "AutonomousTrader", "Autonomous trading mode activated.")
@@ -73,6 +76,8 @@ class AutonomousTrader:
         logger.info(f"Evaluating Autonomous Setup: {act} {sym} @ {entry_price} (SL: {stop_loss}, TP: {take_profit})")
 
         acc_summary = ctrader_cloud_gateway.get_gateway_status()
+        if not ctrader_cloud_gateway.broker_telemetry.health(ctrader_cloud_gateway.GATEWAY_STATE, sym)["execution_ready"]:
+            return {"status": "BLOCKED_BROKER_TELEMETRY", "telemetry": acc_summary.get("telemetry")}
         bal = float(acc_summary.get("balance", 1000.0))
 
         # Build SignalPayload
@@ -213,7 +218,10 @@ class AutonomousTrader:
             entry = float(pos.get("entry_price", 0.0))
             sl = float(pos.get("sl_price", 0.0))
             tp = float(pos.get("tp_price", 0.0))
-            cur_p = live_prices.get(sym, float(pos.get("current_price", entry)))
+            quote = ctrader_cloud_gateway.get_live_price(sym)
+            if not quote:
+                continue
+            cur_p = quote["bid"] if pos_type == "BUY" else quote["ask"]
 
             if not entry or not sl:
                 continue

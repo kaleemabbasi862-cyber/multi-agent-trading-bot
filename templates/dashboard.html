@@ -184,8 +184,8 @@
     <div class="border-b border-dark-border bg-slate-950/95 backdrop-blur py-2.5 px-4 lg:px-8 overflow-x-auto custom-scrollbar sticky top-0 z-50 shadow-md">
         <div class="flex items-center space-x-4 min-w-max text-xs">
             <div class="flex items-center space-x-2 text-[11px] font-extrabold text-slate-400 uppercase tracking-wider pr-2 border-r border-slate-800">
-                <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 pulse-live shadow-sm shadow-emerald-400/50"></span>
-                <span>Live Feed:</span>
+                <span class="w-2.5 h-2.5 rounded-full" :class="brokerQuoteFresh(marketPrices.XAUUSD) ? 'bg-emerald-400 pulse-live' : 'bg-amber-400'"></span>
+                <span x-text="brokerQuoteFresh(marketPrices.XAUUSD) ? 'Broker feed:' : 'Broker feed unavailable:'"></span>
             </div>
 
             <!-- DYNAMIC TICKER CARDS -->
@@ -202,7 +202,7 @@
                     <div class="flex items-center space-x-2 font-mono">
                         <span class="font-extrabold text-sm"
                               :class="data.change_24h >= 0 ? 'text-emerald-400' : 'text-rose-400'"
-                              x-text="'$' + formatNumber(data.price, data.symbol)"></span>
+                              x-text="brokerQuoteFresh(data) ? formatNumber(data.bid, data.symbol) + ' / ' + formatNumber(data.ask, data.symbol) : 'Unavailable / stale'"></span>
                         <span class="text-[10px] px-1.5 py-0.5 rounded font-bold"
                               :class="data.change_24h >= 0 ? 'bg-emerald-500/15 text-emerald-400' : 'bg-rose-500/15 text-rose-400'"
                               x-text="(data.change_24h >= 0 ? '+' : '') + data.change_24h + '%'"></span>
@@ -274,11 +274,11 @@
                             <option :value="acc.account_id"
                                     :selected="acc.account_id === (selectedAccountId || cbotStatus.account_id)"
                                     class="bg-slate-900 text-slate-200 font-semibold"
-                                    x-text="(acc.account_type === 'LIVE' ? '🟢 Live' : '🔵 Demo') + ' #' + acc.account_id + ' ($' + formatMoney(acc.balance) + ')'">
+                                    x-text="(acc.account_type === 'LIVE' ? '🟢 Live' : '🔵 Demo') + ' #' + acc.account_id + (acc.telemetry_fresh ? ' ($' + formatMoney(acc.balance) + ')' : ' (telemetry unavailable)')">
                             </option>
                         </template>
                         <template x-if="!availableAccounts || availableAccounts.length === 0">
-                            <option value="5908018" class="bg-slate-900 text-slate-200" selected>🟢 Live #5908018 ($1,007.44)</option>
+                            <option value="5908018" class="bg-slate-900 text-slate-200" selected>Demo #5908018 (awaiting telemetry)</option>
                         </template>
                     </select>
                 </div>
@@ -299,7 +299,7 @@
             </div>
 
             <!-- AUTO TRADE TOGGLE -->
-            <button @click="toggleAutoTrade()" class="flex items-center space-x-2 px-3 py-1.5 rounded-xl border text-xs font-bold transition shadow-sm"
+            <button :disabled="!systemState.auto_trade_enabled &amp;&amp; !brokerQuoteFresh(marketPrices.XAUUSD)" @click="toggleAutoTrade()" class="flex items-center space-x-2 px-3 py-1.5 rounded-xl border text-xs font-bold transition shadow-sm"
                     :class="systemState.auto_trade_enabled ? 'bg-emerald-600/15 border-emerald-500/40 text-emerald-300' : 'bg-slate-900 border-slate-700 text-slate-400'">
                 <i class="fa-solid" :class="systemState.auto_trade_enabled ? 'fa-toggle-on text-emerald-400 text-base' : 'fa-toggle-off text-slate-500 text-base'"></i>
                 <span x-text="systemState.auto_trade_enabled ? 'Auto-Trade: ON' : 'Auto-Trade: OFF'"></span>
@@ -674,6 +674,12 @@
         </div>
 
 
+        <div class="px-4 py-2 text-sm text-amber-300 bg-slate-950" role="status">
+            <span x-text="brokerQuoteFresh(marketPrices.XAUUSD) ? 'Broker telemetry verified' : 'Broker telemetry unavailable, stale or mismatched — Auto-Trade blocked'"></span>
+            <span class="ml-3" x-text="cbotStatus.telemetry?.account_snapshot_at ? 'Account observed: ' + new Date(cbotStatus.telemetry.account_snapshot_at * 1000).toISOString() : 'No verified account snapshot'"></span>
+            <span class="ml-3" x-text="marketPrices.XAUUSD?.quote_at ? 'XAUUSD tick: ' + new Date(marketPrices.XAUUSD.quote_at * 1000).toISOString() : 'No fresh broker quote'"></span>
+        </div>
+
         <!-- TOP STATS METRIC SUMMARY (5 CARDS) -->
         <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
             <!-- 1. Real cTrader Account Balance -->
@@ -682,10 +688,10 @@
                     <span>cTrader Live Balance</span>
                     <i class="fa-solid fa-wallet text-emerald-400"></i>
                 </div>
-                <div class="font-mono font-black text-xl text-white tracking-tight" x-text="'$' + formatMoney(cbotStatus.balance || 0.00)"></div>
+                <div class="font-mono font-black text-xl text-white tracking-tight" x-text="brokerAccountFresh() ? '$' + formatMoney(cbotStatus.balance) : 'Unavailable / stale'"></div>
                 <div class="mt-2 text-[11px] font-bold text-emerald-400 flex items-center space-x-1">
                     <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1 pulse-live"></span>
-                    <span x-text="'Real Equity: $' + formatMoney(cbotStatus.equity || 0.00)"></span>
+                    <span x-text="brokerAccountFresh() ? 'Equity: $' + formatMoney(cbotStatus.equity) : 'Broker account verification required'"></span>
                 </div>
             </div>
 
@@ -1174,7 +1180,7 @@
                     <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 pulse-live shadow-sm shadow-emerald-400/50"></span>
                     <h2 class="font-bold text-white text-sm">Active Open Positions (cTrader Account #<span x-text="selectedAccountId || cbotStatus.account_id || '5908018'"></span>)</h2>
                     <span class="text-xs px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 font-mono font-bold"
-                          x-text="(cbotStatus.open_positions ? cbotStatus.open_positions.length : 0) + ' / 1 Position'"></span>
+                          x-text="brokerAccountFresh() ? (cbotStatus.open_positions ? cbotStatus.open_positions.length : 0) + ' / 1 Position' : 'Positions unknown / stale'"></span>
                 </div>
                 <div class="flex items-center space-x-2 text-xs">
                     <span class="text-slate-400">Total Live PnL:</span>
@@ -1200,7 +1206,7 @@
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-dark-border">
-                        <template x-for="pos in (cbotStatus.open_positions || [])" :key="pos.id">
+                        <template x-for="pos in (brokerAccountFresh() ? (cbotStatus.open_positions || []) : [])" :key="pos.id">
                             <tr class="hover:bg-dark-hover transition">
                                 <td class="py-3 px-4 font-mono text-indigo-300 font-bold whitespace-nowrap" x-text="'#' + pos.id"></td>
                                 <td class="py-3 px-4 font-bold text-white whitespace-nowrap" x-text="pos.symbol"></td>
@@ -1233,11 +1239,11 @@
                                 </td>
                             </tr>
                         </template>
-                        <template x-if="!cbotStatus.open_positions || cbotStatus.open_positions.length === 0">
+                        <template x-if="!brokerAccountFresh() || !cbotStatus.open_positions || cbotStatus.open_positions.length === 0">
                             <tr>
                                 <td colspan="9" class="text-center py-6 text-slate-500 text-xs">
                                     <i class="fa-solid fa-folder-open text-xl mb-1.5 block opacity-40"></i>
-                                    No open market positions currently active on cTrader Account #<span x-text="selectedAccountId || cbotStatus.account_id || '5908018'"></span>.
+                                    <span x-text="brokerAccountFresh() ? 'No open positions confirmed by cTrader.' : 'Broker positions unavailable — awaiting a fresh account snapshot.'"></span>
                                 </td>
                             </tr>
                         </template>
@@ -1753,11 +1759,11 @@
                 </div>
                 <div class="flex items-center justify-between">
                     <span class="text-slate-400">Live Server Balance:</span>
-                    <span class="font-bold font-mono text-emerald-400 text-sm" x-text="'$' + formatMoney(cbotStatus.balance || 39.05) + ' USD'"></span>
+                    <span class="font-bold font-mono text-emerald-400 text-sm" x-text="brokerAccountFresh() ? '$' + formatMoney(cbotStatus.balance) + ' USD' : 'Unavailable / stale'"></span>
                 </div>
                 <div class="flex items-center justify-between">
                     <span class="text-slate-400">Live Server Equity:</span>
-                    <span class="font-bold font-mono text-cyan-300 text-sm" x-text="'$' + formatMoney(cbotStatus.equity || 39.05) + ' USD'"></span>
+                    <span class="font-bold font-mono text-cyan-300 text-sm" x-text="brokerAccountFresh() ? '$' + formatMoney(cbotStatus.equity) + ' USD' : 'Unavailable / stale'"></span>
                 </div>
                 <div class="flex items-center justify-between">
                     <span class="text-slate-400">Architecture:</span>
@@ -2958,11 +2964,10 @@
                 rejectedSignals: [],
                 marketPrices: {},
                 priceFlashes: {},
-                availableAccounts: [
-                    { account_id: '5908018', name: 'Spotware Demo #5908018', account_type: 'DEMO', balance: 1018.96, equity: 1018.96, is_live: false, is_active: true }
-                ],
+                availableAccounts: [],
                 selectedAccountId: '5908018',
-                cbotStatus: { mode: 'DEMO', is_connected: true, balance: 1018.96, equity: 1018.96, account_id: '5908018', currency: 'USD', is_live: false, broker: 'Spotware cTrader' },
+                cbotStatus: { mode: 'DEMO', is_connected: false, telemetry_stale: true, account_id: '5908018', is_live: false },
+                telemetryClock: Date.now() / 1000,
                 systemState: { auto_trade_enabled: false },
                 selectedSymbol: 'XAUUSD',
                 selectedLotSize: 0.01,
@@ -3022,6 +3027,7 @@
                 initDashboard() {
                     this.initTheme();
                     this.fetchAccounts();
+                    setInterval(() => { this.telemetryClock = Date.now() / 1000; }, 1000);
                     this.fetchSettings();
                     this.fetchLivePrices();
                     this.fetchSignals();
@@ -3820,6 +3826,18 @@
                         return Number(val).toFixed(3);
                     }
                     return Number(val).toFixed(2);
+                },
+
+                brokerAccountFresh() {
+                    const stamp = this.cbotStatus.telemetry?.account_snapshot_at;
+                    const age = this.telemetryClock - stamp;
+                    return !this.cbotStatus.telemetry_stale && Number.isFinite(stamp) && age >= -2 && age <= 10;
+                },
+
+                brokerQuoteFresh(data) {
+                    const age = this.telemetryClock - data?.quote_at;
+                    return this.brokerAccountFresh() && data?.executable === true && data.account_id === this.cbotStatus.account_id
+                        && Number.isFinite(data.quote_at) && age >= -2 && age <= 5;
                 },
 
                 formatMoney(val) {

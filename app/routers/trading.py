@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from app.engine.execution_engine import execution_engine
 from app.database.db import db
@@ -25,6 +25,10 @@ async def set_trading_mode(req: ModeChangeRequest):
 async def toggle_auto_trade():
     settings = settings_manager.load_settings()
     current = settings.get("auto_trade_enabled", False)
+    if not current:
+        import ctrader_cloud_gateway
+        if not ctrader_cloud_gateway.get_gateway_status().get("execution_ready"):
+            raise HTTPException(status_code=409, detail="Fresh matching DEMO broker telemetry required")
     settings["auto_trade_enabled"] = not current
     settings_manager.save_settings(settings)
     
