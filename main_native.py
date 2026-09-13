@@ -305,7 +305,7 @@ async def local_cbot_background_sync():
     cloud_url = os.getenv("RENDER_CLOUD_URL", "https://multi-agent-trading-bot.onrender.com").rstrip("/")
     while True:
         try:
-            state = ctrader_cloud_gateway.sync_local_cbot_telemetry(timeout_sec=1.0)
+            state = ctrader_cloud_gateway.sync_local_cbot_telemetry(timeout_sec=2.5)
             if state and state.get("local_bridge_online"):
                 try:
                     from cloud_telemetry_relay import build_heartbeat_payload
