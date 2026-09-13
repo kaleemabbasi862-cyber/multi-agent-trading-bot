@@ -26,7 +26,7 @@ from tests.test_risk_calculations import (
     test_risk_agent_vetoes_circuit_breaker,
     test_dynamic_pair_settings_and_lot_controls
 )
-from tests.test_7_agents import test_all_7_agents_evaluate_valid_setup
+from tests.test_7_agents import test_all_6_agents_evaluate_valid_setup
 from tests.test_guardian import test_guardian_blocks_high_spread, test_guardian_blocks_upcoming_news
 from tests.test_webhook_security import test_webhook_security_valid_token, test_webhook_security_invalid_token
 from tests.test_backtester import test_strategy_lab_backtest_execution
@@ -183,7 +183,7 @@ def main():
         ("Phase 4: Post-News Volatility & Spread Normalization Guard", test_spread_normalization_guard),
         ("Phase 4: Financial NLP News & Polarity Sentiment Engine", test_financial_nlp_news_sentiment_engine),
         ("Phase 4: Calendar & News REST API Endpoints", test_phase4_api_endpoints),
-        ("Phase 5: 7-Agent Weighted Consensus Decision Pipeline", test_7_agents_weighted_consensus_approval),
+        ("Phase 5: 6-Agent Weighted Consensus Decision Pipeline", test_7_agents_weighted_consensus_approval),
         ("Phase 5: Non-Negotiable Risk & Guardian Veto Overrides", test_hard_risk_veto_overrides_consensus),
         ("Phase 5: Decision DNA Snapshot Persistence & Query API", test_decision_dna_persistence_and_retrieval),
         ("Phase 5: Bilingual Urdu & English Explainability Engine", test_bilingual_explainability_synthesis),
@@ -201,7 +201,7 @@ def main():
         ("Risk Agent: Vetoes Insufficient R:R", test_risk_agent_vetoes_insufficient_rr),
         ("Risk Agent: Vetoes Circuit Breaker", test_risk_agent_vetoes_circuit_breaker),
         ("Pair & Lot: Dynamic Selector & Lot Stepper", test_dynamic_pair_settings_and_lot_controls),
-        ("7 Agents: Complete Consensus Pipeline", test_all_7_agents_evaluate_valid_setup),
+        ("6 Agents: Complete Consensus Pipeline", test_all_6_agents_evaluate_valid_setup),
         ("cTrader Cloud: Server-Side Open API Execution", test_ctrader_cloud_order_execution),
         ("cTrader Open API: Wire Protocol & Framing", run_ctrader_openapi_tests),
         ("No-Trade Guardian: High Spread Blocker", test_guardian_blocks_high_spread),

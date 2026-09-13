@@ -15,6 +15,24 @@ class TechnicalAnalystAgent:
     weight: float = 0.20
     criticality: str = AgentOperationalCriticality.DECISION_CRITICAL
 
+    def _classify_regime(self, rsi, ema_20, ema_50, ema_200, support, resistance, entry_price):
+        range_span = abs(resistance - support)
+        ema_spread = abs(ema_20 - ema_50)
+        if ema_20 > ema_50 > ema_200 and rsi >= 55.0:
+            return "STRONG_UPTREND", range_span, ema_spread
+        elif ema_20 > ema_50 and rsi >= 50.0:
+            return "WEAK_UPTREND", range_span, ema_spread
+        elif ema_20 < ema_50 < ema_200 and rsi <= 45.0:
+            return "STRONG_DOWNTREND", range_span, ema_spread
+        elif ema_20 < ema_50 and rsi <= 50.0:
+            return "WEAK_DOWNTREND", range_span, ema_spread
+        elif range_span < 5.0 and abs(entry_price - ema_50) < 1.5:
+            return "RANGE", range_span, ema_spread
+        elif range_span > 25.0:
+            return "HIGH_VOLATILITY", range_span, ema_spread
+        else:
+            return "BREAKOUT", range_span, ema_spread
+
     def evaluate(self, signal: SignalPayload, market_data: Dict[str, Any]) -> AgentDecisionOutput:
         t_start = time.time()
         start_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -23,7 +41,6 @@ class TechnicalAnalystAgent:
         act = signal.action.upper()
         ind = market_data.get("indicators", {}) if market_data else {}
         
-        # Check input validity
         if p <= 0.0:
             end_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
             return AgentDecisionOutput(
@@ -67,7 +84,6 @@ class TechnicalAnalystAgent:
         score = 70.0
         direction = "NEUTRAL"
         
-        # 1. 1H Multi-Timeframe Alignment Check
         is_1h_bull = (trend_1h == "BULLISH" or ema_20_1h >= ema_50_1h)
         is_1h_bear = (trend_1h == "BEARISH" or ema_20_1h <= ema_50_1h)
         
@@ -79,16 +95,12 @@ class TechnicalAnalystAgent:
             else:
                 score -= 35.0
                 reasons.append(f"1H Trend MISALIGNED (1H is {trend_1h})")
-                
-            # 15m EMAs Check
             if p >= ema_20_15m >= ema_50_15m:
                 score += 10.0
                 reasons.append("15m Price above EMA20 and EMA50 (Strong Bullish Stack)")
             elif p < ema_50_15m:
                 score -= 15.0
                 reasons.append("15m Price below EMA50")
-                
-            # RSI Momentum Check
             if 45.0 <= rsi_15m <= 68.0:
                 score += 5.0
                 reasons.append(f"RSI 14 in optimal expansion zone ({rsi_15m:.1f})")
@@ -107,16 +119,12 @@ class TechnicalAnalystAgent:
             else:
                 score -= 35.0
                 reasons.append(f"1H Trend MISALIGNED (1H is {trend_1h})")
-                
-            # 15m EMAs Check
             if p <= ema_20_15m <= ema_50_15m:
                 score += 10.0
                 reasons.append("15m Price below EMA20 and EMA50 (Strong Bearish Stack)")
             elif p > ema_50_15m:
                 score -= 15.0
                 reasons.append("15m Price above EMA50")
-                
-            # RSI Momentum Check
             if 32.0 <= rsi_15m <= 55.0:
                 score += 5.0
                 reasons.append(f"RSI 14 in optimal bearish expansion zone ({rsi_15m:.1f})")
@@ -126,6 +134,34 @@ class TechnicalAnalystAgent:
             elif rsi_15m > 65.0:
                 score -= 15.0
                 reasons.append(f"RSI 14 Strong Bullish Momentum ({rsi_15m:.1f})")
+
+        regime, range_span, ema_spread = self._classify_regime(
+            rsi_15m, ema_20_15m, ema_50_15m, ema_200_15m, support, resistance, p
+        )
+
+        if regime in ("STRONG_UPTREND", "WEAK_UPTREND"):
+            if act == "BUY":
+                score += 10.0
+                reasons.append(f"Regime {regime} supports directional alignment")
+            else:
+                score -= 20.0
+                reasons.append(f"Regime {regime} conflicts with counter-trend short")
+        elif regime in ("STRONG_DOWNTREND", "WEAK_DOWNTREND"):
+            if act == "SELL":
+                score += 10.0
+                reasons.append(f"Regime {regime} supports directional alignment")
+            else:
+                score -= 20.0
+                reasons.append(f"Regime {regime} conflicts with counter-trend long")
+        elif regime == "RANGE":
+            score -= 15.0
+            reasons.append(f"Regime RANGE: choppy consolidation, low trend-follow win rate")
+        elif regime == "HIGH_VOLATILITY":
+            score -= 5.0
+            reasons.append(f"Regime HIGH_VOLATILITY: wide swings, strict SL enforcement required")
+        elif regime == "BREAKOUT":
+            score += 5.0
+            reasons.append(f"Regime BREAKOUT: structural momentum confirmed")
 
         if is_stale:
             score = 0.0
@@ -170,7 +206,10 @@ class TechnicalAnalystAgent:
                 "ema_50_1h": ema_50_1h,
                 "trend_1h": trend_1h,
                 "support": support,
-                "resistance": resistance
+                "resistance": resistance,
+                "regime": regime,
+                "range_span": round(range_span, 2),
+                "ema_spread": round(ema_spread, 2)
             }
         )
 

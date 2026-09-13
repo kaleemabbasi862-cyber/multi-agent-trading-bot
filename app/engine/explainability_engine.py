@@ -53,14 +53,14 @@ class ExplainabilityEngine:
         if status == "APPROVED":
             en_headline = f"🎯 HIGH-CONVICTION {act} ORDER APPROVED ON {sym} ({score:.1f}% Confidence)"
             en_summary = (
-                f"Autonomous Consensus Engine verified strong alignment across {len([d for d in agent_decisions if d.score >= 75])}/6 analytical agents.\n"
+                f"Autonomous Consensus Engine verified strong alignment across {len([d for d in agent_decisions if d.score >= 75])}/5 analytical agents.\n"
                 f"• Execution Parameters: {act} {vol:.2f} lots @ ${p:.2f} | SL: ${sl:.2f} | TP: ${tp:.2f} (R:R 1:{rr:.2f})\n"
                 f"• Structural Confluence: " + "; ".join(positive_factors[:3]) + "\n"
                 f"• Risk Clearance: 100% checks passed. 1.0% capital risk protected. Guardian rules clear."
             )
             ur_headline = f"🎯 {sym} پر {act} کا ٹریڈ آرڈر منظور ({score:.1f}% اعتماد)"
             ur_summary = (
-                f"تمام 7 AI ایجنٹس نے مارکیٹ اسٹرکچر اور انڈیکیٹرز کی جانچ کے بعد متفقہ منظوری دے دی ہے۔\n"
+                f"تمام 6 AI ایجنٹس نے مارکیٹ اسٹرکچر اور انڈیکیٹرز کی جانچ کے بعد متفقہ منظوری دے دی ہے۔\n"
                 f"• اینٹری: ${p:.2f} | اسٹاپ لاس: ${sl:.2f} | ٹیک پرافٹ: ${tp:.2f} (رسک ٹو ریوارڈ 1:{rr:.2f})\n"
                 f"• ایجنٹ تجزیہ: ٹیکنیکل، سمارٹ منی اور مارکیٹ ریجیم ایجنٹس نے {act} کے حق میں ٹھوس شواہد فراہم کیے۔\n"
                 f"• رسک پروٹیکشن: 1% رسک فلٹر اور گارڈین کے تمام 17 حفاظتی اصول پاس ہو چکے ہیں۔"

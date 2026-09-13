@@ -17,7 +17,6 @@ from app.database.db import db
 from app.agents.technical_agent import technical_agent
 from app.agents.fundamental_agent import fundamental_agent
 from app.agents.risk_agent import risk_agent
-from app.agents.regime_agent import regime_agent
 from app.agents.liquidity_agent import liquidity_agent
 from app.agents.quality_agent import quality_agent
 from app.agents.head_desk_agent import head_desk_agent
@@ -28,7 +27,7 @@ _PROCESSED_SIGNAL_IDS = set()
 
 class MultiAgentConsensusEngine:
     """
-    Orchestrates the 7-Agent Quantitative Decision Pipeline + No-Trade Guardian.
+    Orchestrates the 6-Agent Quantitative Decision Pipeline + No-Trade Guardian.
     Computes weighted multi-agent consensus, enforces safety gates, and synthesizes bilingual Decision DNA.
     """
 
@@ -56,7 +55,7 @@ class MultiAgentConsensusEngine:
             signal, market_data, macro_data, account_status, _PROCESSED_SIGNAL_IDS
         )
         
-        # 2. Run All 6 Analytical / Risk Agents (Fail-safe per agent with Health Contracts)
+        # 2. Run All 5 Analytical / Risk Agents (Fail-safe per agent with Health Contracts)
         try:
             tech_decision = technical_agent.evaluate(signal, market_data)
             if tech_decision.health_status != AgentHealthStatus.HEALTHY and tech_decision.decision != "PASS":
@@ -124,24 +123,6 @@ class MultiAgentConsensusEngine:
             )
 
         try:
-            regime_decision = regime_agent.evaluate(signal, market_data)
-            if regime_decision.health_status != AgentHealthStatus.HEALTHY and regime_decision.decision != "PASS":
-                critical_failures.append(f"Navigator: {regime_decision.health_status}")
-        except Exception as e:
-            critical_failures.append(f"Navigator: ERROR ({e})")
-            regime_decision = AgentDecisionOutput(
-                agent_name="Market Regime Agent",
-                direction="NEUTRAL",
-                score=0.0,
-                decision="FAIL",
-                reasoning_summary=f"Regime Agent Offline / Error: {e}",
-                operational_criticality=AgentOperationalCriticality.DECISION_CRITICAL,
-                health_status=AgentHealthStatus.ERROR,
-                error=str(e),
-                metrics={"error": str(e), "unavailable": True}
-            )
-
-        try:
             liq_decision = liquidity_agent.evaluate(signal, market_data)
             if liq_decision.health_status != AgentHealthStatus.HEALTHY and liq_decision.decision != "PASS":
                 critical_failures.append(f"SMC Hunter: {liq_decision.health_status}")
@@ -179,7 +160,6 @@ class MultiAgentConsensusEngine:
         all_agent_decisions = [
             tech_decision,
             fund_decision,
-            regime_decision,
             liq_decision,
             quality_decision,
             risk_decision

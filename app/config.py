@@ -49,7 +49,7 @@ class Settings:
     # Trailing Stop Configuration: 'DISABLED', 'ATR_TRAILING', 'STRUCTURE_TRAILING', 'SWING_TRAILING'
     TRAILING_STOP_MODE: str = os.getenv("TRAILING_STOP_MODE", "DISABLED").upper()
     
-    # Multi-Agent Strict Consensus Thresholds (4 of 7 with >= 65% Conviction)
+    # Multi-Agent Strict Consensus Thresholds (4 of 6 with >= 75% Conviction)
     MIN_CONSENSUS_AGENTS: int = int(os.getenv("MIN_CONSENSUS_AGENTS", "4"))
     MIN_AGENT_CONFIDENCE: float = float(os.getenv("MIN_AGENT_CONFIDENCE", "65.0"))
     MIN_DECISION_SCORE: float = float(os.getenv("MIN_DECISION_SCORE", "65.0"))

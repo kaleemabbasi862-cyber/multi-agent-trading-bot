@@ -1,13 +1,12 @@
 from app.database.models import SignalPayload
 from app.agents.technical_agent import technical_agent
 from app.agents.fundamental_agent import fundamental_agent
-from app.agents.regime_agent import regime_agent
 from app.agents.liquidity_agent import liquidity_agent
 from app.agents.quality_agent import quality_agent
 from app.agents.head_desk_agent import head_desk_agent
 from app.agents.risk_agent import risk_agent
 
-def test_all_7_agents_evaluate_valid_setup():
+def test_all_6_agents_evaluate_valid_setup():
     sig = SignalPayload(
         symbol="XAUUSD",
         action="BUY",
@@ -50,12 +49,11 @@ def test_all_7_agents_evaluate_valid_setup():
     t_dec = technical_agent.evaluate(sig, market_data)
     f_dec = fundamental_agent.evaluate(sig, macro_data)
     r_dec, risk_check = risk_agent.evaluate(sig, account_status, market_data)
-    reg_dec = regime_agent.evaluate(sig, market_data)
     l_dec = liquidity_agent.evaluate(sig, market_data)
     q_dec = quality_agent.evaluate(sig, hist_stats, market_data)
 
-    all_decs = [t_dec, f_dec, reg_dec, l_dec, q_dec, r_dec]
-    assert len(all_decs) == 6
+    all_decs = [t_dec, f_dec, l_dec, q_dec, r_dec]
+    assert len(all_decs) == 5
 
     status, score, explanation = head_desk_agent.arbitrate(
         signal=sig,

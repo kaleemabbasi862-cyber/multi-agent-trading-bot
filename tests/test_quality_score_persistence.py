@@ -89,7 +89,6 @@ def _mock_all_agents():
         "technical_agent": {"evaluate": agent_decision},
         "fundamental_agent": {"evaluate": agent_decision},
         "risk_agent": {"evaluate": risk_decision},
-        "regime_agent": {"evaluate": agent_decision},
         "liquidity_agent": {"evaluate": agent_decision},
         "quality_agent": {"evaluate": agent_decision},
         "head_desk_agent": {"arbitrate": ("APPROVED", 88.5, "Test approval")},
@@ -120,7 +119,6 @@ def _run_consensus_with_mock(pretrade_scan=None):
          patch("app.engine.consensus_engine.technical_agent") as m_tech, \
          patch("app.engine.consensus_engine.fundamental_agent") as m_fund, \
          patch("app.engine.consensus_engine.risk_agent") as m_risk, \
-         patch("app.engine.consensus_engine.regime_agent") as m_regime, \
          patch("app.engine.consensus_engine.liquidity_agent") as m_liq, \
          patch("app.engine.consensus_engine.quality_agent") as m_quality, \
          patch("app.engine.consensus_engine.head_desk_agent") as m_head, \
@@ -130,7 +128,6 @@ def _run_consensus_with_mock(pretrade_scan=None):
         m_tech.evaluate.return_value = mocks["technical_agent"]["evaluate"]
         m_fund.evaluate.return_value = mocks["fundamental_agent"]["evaluate"]
         m_risk.evaluate.return_value = mocks["risk_agent"]["evaluate"]
-        m_regime.evaluate.return_value = mocks["regime_agent"]["evaluate"]
         m_liq.evaluate.return_value = mocks["liquidity_agent"]["evaluate"]
         m_quality.evaluate.return_value = mocks["quality_agent"]["evaluate"]
         m_head.arbitrate.return_value = mocks["head_desk_agent"]["arbitrate"]

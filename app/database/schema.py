@@ -142,7 +142,7 @@ SCHEMA_STATEMENTS = [
     );
     """,
 
-    # 9. Agent Decisions (7 Agents)
+    # 9. Agent Decisions (5 Specialist Agents + Head Desk)
     """
     CREATE TABLE IF NOT EXISTS agent_decisions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -388,7 +388,7 @@ async def receive_tradingview_webhook(
     x_tradetalk_timestamp: str = Header(None)
 ):
     """
-    Ingests TradingView alerts and runs through 7-Agent Consensus & Risk Veto Gate.
+    Ingests TradingView alerts and runs through 6-Agent Consensus & Risk Veto Gate.
     """
     raw_body = await request.body()
     try:
@@ -447,7 +447,7 @@ async def receive_tradingview_webhook(
     macro_data = economic_calendar.get_macro_status()
     acc_status = cbot_bridge.get_cbot_status()
 
-    # Process through 7 Agents + Guardian
+    # Process through 6 Agents + Guardian
     consensus_res = consensus_engine.process_signal(
         signal=sig_model,
         market_data=market_data,

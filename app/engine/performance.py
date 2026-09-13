@@ -50,12 +50,11 @@ class PerformanceAnalyticsEngine:
 
             # 3. Agent Performance Metrics
             agent_performance = [
-                {"name": "Technical Analyst Agent", "accuracy": 78.5, "impact": "Positive", "weight": 20},
-                {"name": "Fundamental & Sentiment", "accuracy": 82.0, "impact": "High Positive", "weight": 15},
-                {"name": "Risk Management Agent", "accuracy": 96.0, "impact": "Critical Guardian", "weight": 20},
-                {"name": "Market Regime Agent", "accuracy": 75.0, "impact": "Positive", "weight": 15},
-                {"name": "Liquidity & SMC Agent", "accuracy": 79.0, "impact": "Positive", "weight": 15},
-                {"name": "Trade Quality Agent", "accuracy": 74.0, "impact": "Neutral-Positive", "weight": 15},
+                {"name": "Technical Analyst Agent", "accuracy": 78.5, "impact": "Positive", "weight": 25},
+                {"name": "Fundamental & Sentiment", "accuracy": 82.0, "impact": "High Positive", "weight": 18},
+                {"name": "Risk Management Agent", "accuracy": 96.0, "impact": "Critical Guardian", "weight": 25},
+                {"name": "Liquidity & SMC Agent", "accuracy": 79.0, "impact": "Positive", "weight": 18},
+                {"name": "Trade Quality Agent", "accuracy": 74.0, "impact": "Neutral-Positive", "weight": 18},
                 {"name": "Head Desk Manager", "accuracy": 84.5, "impact": "Executive Arbiter", "weight": 100}
             ]
 

@@ -20,7 +20,6 @@ from app.database.db import db
 from app.agents.technical_agent import technical_agent
 from app.agents.fundamental_agent import fundamental_agent
 from app.agents.risk_agent import risk_agent
-from app.agents.regime_agent import regime_agent
 from app.agents.liquidity_agent import liquidity_agent
 from app.agents.quality_agent import quality_agent
 from app.agents.head_desk_agent import head_desk_agent
@@ -145,7 +144,7 @@ class TestPhase3DemoSoakValidation(unittest.TestCase):
         self.assertTrue(bool(res.signal_id))
         self.assertTrue(bool(res.execution_intent_id))
         self.assertIsNotNone(res.decision_score)
-        self.assertEqual(len(res.agent_decisions), 6)
+        self.assertEqual(len(res.agent_decisions), 5)
         
         # Verify persistence in SQLite
         dna = db.get_decision_dna(sig.id)

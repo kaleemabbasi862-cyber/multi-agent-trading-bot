@@ -71,7 +71,7 @@ def test_7_agents_weighted_consensus_approval():
 
     assert res.decision_status == "APPROVED", f"Expected APPROVED, got {res.decision_status}"
     assert res.decision_score >= 80.0, f"Expected score >= 80, got {res.decision_score}"
-    assert len(res.agent_decisions) == 6, "Expected 6 analytical agent evaluations"
+    assert len(res.agent_decisions) == 5, "Expected 5 analytical agent evaluations"
     assert "URDU EXPLANATION" in res.full_analysis, "Urdu explanation must be synthesized"
 
 def test_hard_risk_veto_overrides_consensus():

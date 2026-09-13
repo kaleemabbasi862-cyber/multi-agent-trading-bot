@@ -19,7 +19,6 @@ from app.database.db import db
 from app.agents.technical_agent import technical_agent
 from app.agents.fundamental_agent import fundamental_agent
 from app.agents.risk_agent import risk_agent
-from app.agents.regime_agent import regime_agent
 from app.agents.liquidity_agent import liquidity_agent
 from app.agents.quality_agent import quality_agent
 from app.agents.head_desk_agent import head_desk_agent
@@ -129,7 +128,7 @@ class TestPhase2CoreHardening(unittest.TestCase):
 
     def test_decision_critical_agent_failure_triggers_degraded_no_trade(self):
         """
-        Decision-Critical Agent (Chart Sniper, SMC Hunter, Navigator, Quant Brain) failure
+        Decision-Critical Agent (Chart Sniper, SMC Hunter, Quant Brain) failure
         MUST result in DEGRADED_NO_TRADE.
         """
         # Construct an agent decision with health_status = ERROR

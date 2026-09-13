@@ -16,14 +16,13 @@ class HeadDeskManagerAgent:
     name: str = "Head Desk Manager"
     criticality: str = AgentOperationalCriticality.SAFETY_CRITICAL
 
-    # Default Quantitative Weights
+    # Canonical 6-Agent Quantitative Weights (Navigator removed, proportional renormalization)
     WEIGHTS = {
-        "Technical Analyst Agent": 0.20,
-        "Fundamental & Sentiment Agent": 0.15,
-        "Market Regime Agent": 0.15,
-        "Liquidity & SMC Agent": 0.15,
-        "Trade Quality Agent": 0.15,
-        "Risk Management Agent": 0.20
+        "Technical Analyst Agent": 4 / 17,
+        "Fundamental & Sentiment Agent": 3 / 17,
+        "Liquidity & SMC Agent": 3 / 17,
+        "Trade Quality Agent": 3 / 17,
+        "Risk Management Agent": 4 / 17,
     }
 
     def arbitrate(
@@ -132,7 +131,7 @@ class HeadDeskManagerAgent:
             and d.decision != "VETO"
         ]
         
-        # General's vote counts as the 7th arbiter if aggregate score >= threshold
+        # General's vote counts as the 6th arbiter if aggregate score >= threshold
         general_agrees = (final_score >= min_confidence)
         total_agreeing = len(agreeing_agents) + (1 if general_agrees else 0)
 
@@ -143,17 +142,17 @@ class HeadDeskManagerAgent:
         if total_agreeing >= min_agents_required and final_score >= min_confidence and risk_check.passed:
             decision_status = "APPROVED"
             final_explanation = (
-                f"[DECISION: APPROVED — HIGH CONVICTION] 🎯 [CONSENSUS CLEARANCE GRANTED]\n"
-                f"• Multi-Agent Consensus: {total_agreeing}/7 Agents in Full Agreement (>= {min_agents_required} Required)\n"
+                f"[DECISION: APPROVED — HIGH CONVICTION] [CONSENSUS CLEARANCE GRANTED]\n"
+                f"• Multi-Agent Consensus: {total_agreeing}/6 Agents in Full Agreement (>= {min_agents_required} Required)\n"
                 f"• Aggregate Decision Confidence Score: {final_score}% (Threshold >= {int(min_confidence)}% Met)\n"
                 f"• Risk-to-Reward: 1:{risk_check.rr_ratio:.2f} (>= 1:2.0 Verified) | Protected SL: ${signal.stop_loss:.2f} | TP: ${signal.take_profit:.2f}\n"
                 f"• {lot_str} on {sym_str} approved for autonomous execution."
             )
         else:
-            decision_status = f"BLOCKED ({total_agreeing}/7 Consensus)"
+            decision_status = f"BLOCKED ({total_agreeing}/6 Consensus)"
             final_explanation = (
-                f"[DECISION: BLOCKED — INSUFFICIENT CONSENSUS] 🚫 [EXECUTION HALTED]\n"
-                f"• Multi-Agent Agreement: {total_agreeing}/7 Agents Agreed (Requires at least {min_agents_required}/7 with score >= {int(min_confidence)}%)\n"
+                f"[DECISION: BLOCKED — INSUFFICIENT CONSENSUS] [EXECUTION HALTED]\n"
+                f"• Multi-Agent Agreement: {total_agreeing}/6 Agents Agreed (Requires at least {min_agents_required}/6 with score >= {int(min_confidence)}%)\n"
                 f"• Aggregate Decision Score: {final_score}%\n"
                 f"• Capital preserved. Trade held until at least {min_agents_required} quantitative agents confirm setup alignment."
             )

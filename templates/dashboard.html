@@ -6,7 +6,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <title>TradeTalk AI - Autonomous 7-Agent Quantitative Trading System (XAUUSD)</title>
+    <title>TradeTalk AI - Autonomous 6-Agent Quantitative Trading System (XAUUSD)</title>
     <script>
         (function() {
             try {
@@ -228,7 +228,7 @@
                     <span class="font-black text-xl tracking-tight text-white">TradeTalk<span class="text-indigo-400">.AI</span></span>
                     <span class="px-2 py-0.5 text-[10px] font-black rounded-full flex items-center space-x-1 bg-amber-500/15 text-amber-300 border border-amber-500/30">
                         <i class="fa-solid fa-network-wired text-amber-400 text-[9px]"></i>
-                        <span>7-Agent Quantitative Engine</span>
+                        <span>6-Agent Quantitative Engine</span>
                     </span>
                     <span class="px-2 py-0.5 text-[10px] font-black rounded-full flex items-center space-x-1"
                           :class="cbotStatus.is_live ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'">
@@ -784,7 +784,7 @@
                 <div class="flex items-end">
                     <button type="submit" :disabled="loading" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center space-x-2 transition disabled:opacity-50 shadow-md shadow-indigo-600/20">
                         <template x-if="!loading">
-                            <span><i class="fa-solid fa-play mr-1"></i> Run 7 Agents</span>
+                            <span><i class="fa-solid fa-play mr-1"></i> Run 6 Agents</span>
                         </template>
                         <template x-if="loading">
                             <span><i class="fa-solid fa-circle-notch fa-spin mr-1"></i> Evaluating...</span>
@@ -802,7 +802,7 @@
                     <span class="w-2 h-2 rounded-full bg-emerald-400 pulse-live"></span>
                     <h2 class="font-extrabold text-white text-xs tracking-wider uppercase flex items-center gap-1.5">
                         <i class="fa-solid fa-chess-board text-indigo-400"></i>
-                        <span>7-Agent AI War-Room &bull; Round Table</span>
+                        <span>6-Agent AI War-Room &bull; Round Table</span>
                     </h2>
                     <span class="text-[10px] text-slate-400 font-mono hidden sm:inline">(Hover or click avatar for instant deep intelligence)</span>
                 </div>
@@ -970,55 +970,7 @@
                     </div>
                 </div>
 
-                <!-- AVATAR 4: THE MARKET NAVIGATOR (Regime) -->
-                <div class="relative flex flex-col items-center text-center cursor-pointer"
-                     @mouseenter="hoverPopover = 'regime'"
-                     @mouseleave="hoverPopover = null"
-                     @click.stop="togglePopover('regime')">
-                    <div class="w-11 h-11 sm:w-13 sm:h-13 rounded-full bg-gradient-to-tr from-teal-950 via-slate-900 to-teal-900/80 border-2 border-teal-500/70 p-0.5 flex items-center justify-center shadow-lg shadow-teal-500/20 hover:scale-110 hover:border-teal-400 transition-all duration-200"
-                         :class="(activePopover === 'regime' || hoverPopover === 'regime') ? 'ring-2 ring-teal-400 scale-110' : ''">
-                        <div class="w-full h-full rounded-full bg-slate-950/90 flex items-center justify-center text-teal-400 text-sm sm:text-base">
-                            <i class="fa-solid fa-compass"></i>
-                        </div>
-                    </div>
-                    <span class="mt-1 text-[11px] font-bold text-slate-200 tracking-tight whitespace-nowrap">Navigator</span>
-                    <span class="text-[9px] px-1.5 py-0.2 rounded-full font-extrabold bg-teal-500/15 text-teal-400 border border-teal-500/30"
-                          x-text="getAgentScore('Market Regime Agent')"></span>
-
-                    <!-- CYBERPUNK HUD POPOVER -->
-                    <div class="absolute bottom-full mb-3.5 left-1/2 -translate-x-1/2 z-50 transition-all duration-200 ease-out text-left"
-                         :class="(activePopover === 'regime' || hoverPopover === 'regime') ? 'opacity-100 pointer-events-auto visible scale-100' : 'opacity-0 pointer-events-none invisible scale-95'"
-                         style="background: rgba(13, 17, 28, 0.96); backdrop-filter: blur(16px); border: 1px solid rgba(20, 184, 166, 0.4); box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.7), 0 0 20px rgba(20, 184, 166, 0.2); border-radius: 12px; min-width: 270px; max-width: 320px; padding: 14px 16px;">
-                        <!-- CARET ARROW -->
-                        <div class="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-[#0d111c] border-b border-r border-teal-400/40 rotate-45"></div>
-                        
-                        <!-- HEADER -->
-                        <div class="flex items-center justify-between border-b border-slate-800/80 pb-2 mb-2.5">
-                            <div class="flex items-center gap-2">
-                                <div class="w-6 h-6 rounded-md bg-teal-500/20 border border-teal-400/40 flex items-center justify-center text-teal-400 text-xs">
-                                    <i class="fa-solid fa-compass"></i>
-                                </div>
-                                <div>
-                                    <h4 class="font-bold text-white text-sm leading-tight">The Market Navigator</h4>
-                                    <span class="text-[10px] text-teal-300 font-semibold tracking-wide uppercase">Regime Classifier (15%)</span>
-                                </div>
-                            </div>
-                            <span class="px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-teal-500/20 text-teal-300 border border-teal-500/40" x-text="getAgentScore('Market Regime Agent')"></span>
-                        </div>
-                        
-                        <!-- BODY -->
-                        <p class="text-xs text-slate-300 leading-relaxed urdu-text mb-2.5" x-text="getAgentSummary('Market Regime Agent')"></p>
-                        
-                        <!-- BADGES -->
-                        <div class="flex flex-wrap gap-1.5 pt-2 border-t border-slate-800/80">
-                            <span style="background: rgba(255, 255, 255, 0.06); padding: 2px 6px; border-radius: 4px; color: #2dd4bf; font-size: 10px; font-weight: 700;">ADX Volatility</span>
-                            <span style="background: rgba(255, 255, 255, 0.06); padding: 2px 6px; border-radius: 4px; color: #2dd4bf; font-size: 10px; font-weight: 700;">Trend / Chop Filter</span>
-                            <span style="background: rgba(255, 255, 255, 0.06); padding: 2px 6px; border-radius: 4px; color: #2dd4bf; font-size: 10px; font-weight: 700;">ATR Expansion</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- AVATAR 5: THE LIQUIDITY HUNTER (SMC) -->
+                <!-- AVATAR 4: THE LIQUIDITY HUNTER (SMC) -->
                 <div class="relative flex flex-col items-center text-center cursor-pointer"
                      @mouseenter="hoverPopover = 'smc'"
                      @mouseleave="hoverPopover = null"
@@ -1114,7 +1066,7 @@
                     </div>
                 </div>
 
-                <!-- AVATAR 7: THE GENERAL (Head Desk - Centerpiece) -->
+                <!-- AVATAR 6: THE GENERAL (Head Desk - Centerpiece) -->
                 <div class="relative flex flex-col items-center text-center cursor-pointer"
                      @mouseenter="hoverPopover = 'head'"
                      @mouseleave="hoverPopover = null"
@@ -1159,7 +1111,7 @@
                         
                         <!-- BODY -->
                         <p class="text-xs text-slate-200 leading-relaxed urdu-text mb-2.5"
-                           x-text="activeSignal ? (activeSignal.rejection_reason || activeSignal.full_analysis || 'All 7 quantitative agents satisfied. Execution cleared.') : 'Continuously arbitrating weighted consensus across all 7 agents...'"></p>
+                                                       x-text="activeSignal ? (activeSignal.rejection_reason || activeSignal.full_analysis || 'All 5 quantitative agents satisfied. Execution cleared.') : 'Continuously arbitrating weighted consensus across all 7 agents...'"></p>
                         
                         <!-- BADGES -->
                         <div class="flex flex-wrap gap-1.5 pt-2 border-t border-slate-800/80">
@@ -1268,7 +1220,7 @@
                             class="flex items-center space-x-2 px-3.5 py-1.5 rounded-xl font-bold text-xs transition border"
                             :class="activeLedgerTab === 'signals' ? 'bg-indigo-600/30 text-indigo-200 border-indigo-500/50 shadow-md shadow-indigo-600/20' : 'bg-slate-900/60 text-slate-400 border-dark-border hover:text-white'">
                         <i class="fa-solid fa-network-wired text-emerald-400"></i>
-                        <span>7-Agent Signal Pipeline & AI Audit</span>
+                        <span>6-Agent Signal Pipeline & AI Audit</span>
                         <span class="px-1.5 py-0.2 rounded-full text-[10px] font-extrabold bg-emerald-500/20 text-emerald-300" x-text="signals.length"></span>
                     </button>
                 </div>
@@ -2262,7 +2214,7 @@
                         <i class="fa-solid fa-brain text-sm"></i>
                     </div>
                     <div>
-                        <h3 class="font-bold text-white text-base">7-Agent Quantitative AI Consensus Suite</h3>
+                        <h3 class="font-bold text-white text-base">6-Agent Quantitative AI Consensus Suite</h3>
                         <p class="text-[11px] text-slate-400">Weighted Quorum Consensus &bull; Bilingual Urdu & English Explainability &bull; Decision DNA</p>
                     </div>
                 </div>
@@ -2281,7 +2233,7 @@
                             <span x-text="activeSignal ? activeSignal.status : 'MONITORING'"></span>
                             <span class="text-xs px-2 py-0.5 rounded-full font-mono bg-indigo-500/20 text-indigo-300 font-bold" x-text="(activeSignal ? activeSignal.decision_score : 85) + '% Score'"></span>
                         </div>
-                        <div class="text-[11px] text-slate-400 mt-1">Quorum: Requires &ge; 5 of 7 agents agreeing with &ge; 75% confidence and zero Risk/Guardian vetoes.</div>
+                        <div class="text-[11px] text-slate-400 mt-1">Quorum: Requires &ge; 4 of 6 agents agreeing with &ge; 75% confidence and zero Risk/Guardian vetoes.</div>
                     </div>
 
                     <div class="flex items-center space-x-4">
@@ -2300,7 +2252,7 @@
                     </div>
                 </div>
 
-                <!-- 7 AGENTS VOTING TILES -->
+                <!-- 6 AGENTS VOTING TILES -->
                 <div class="space-y-2">
                     <h4 class="font-bold text-slate-200 uppercase tracking-wider text-[11px]">Individual Agent Voting Cards</h4>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-2.5">
