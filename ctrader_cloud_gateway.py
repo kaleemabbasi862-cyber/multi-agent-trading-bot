@@ -1003,7 +1003,7 @@ def sync_local_cbot_telemetry(timeout_sec: float = 1.0) -> Dict[str, Any]:
 
 
 def get_gateway_status(force_local_sync: bool = False) -> Dict[str, Any]:
-    if force_local_sync or time.time() - GATEWAY_STATE.get("last_bridge_sync_timestamp", 0) > 1.0:
+    if force_local_sync or time.time() - GATEWAY_STATE.get("last_bridge_sync_timestamp", 0) > 3.0:
         sync_local_cbot_telemetry(timeout_sec=0.8)
     state = dict(GATEWAY_STATE)
     state.pop("last_broker_snapshot", None)

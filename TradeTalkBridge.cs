@@ -32,6 +32,15 @@ namespace cAlgo.Robots
         private readonly object _orderLock = new object();
         private readonly Dictionary<string, Ticks> _brokerTicks = new Dictionary<string, Ticks>();
 
+        // Snapshot cache + request coalescing: prevents concurrent main-thread starvation
+        private string _overviewCacheJson = null;
+        private DateTime _overviewCacheUtc = DateTime.MinValue;
+        private readonly object _overviewCacheLock = new object();
+        private Task<string> _inflightOverview = null;
+        private DateTime _inflightCreatedUtc = DateTime.MinValue;
+        private static readonly TimeSpan CacheTtl = TimeSpan.FromSeconds(2.0);
+        private static readonly TimeSpan InflightMaxAge = TimeSpan.FromSeconds(8.0);
+
         private static double UnixSeconds(DateTime utc)
         {
             return (utc.ToUniversalTime() - new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalSeconds;
@@ -192,7 +201,7 @@ namespace cAlgo.Robots
                     }
                     else
                     {
-                        string statusJson = RunOnMainThread(GetOverviewJson);
+                        string statusJson = GetOverviewJsonCoalesced();
                         response.StatusCode = 200;
                         SendJsonResponse(response, statusJson);
                         return;
@@ -313,6 +322,80 @@ namespace cAlgo.Robots
             return string.Format(CultureInfo.InvariantCulture,
                 "{{\"status\":\"ONLINE\",\"source\":\"CTRADER_CBOT\",\"snapshot_at\":{11},\"bridge\":\"TradeTalk CleanBridge C#\",\"account_id\":\"{0}\",\"broker\":\"{1}\",\"is_live\":{2},\"balance\":{3:F2},\"equity\":{4:F2},\"margin\":{5:F2},\"free_margin\":{6:F2},\"open_positions_count\":{7},\"positions\":{8},\"history\":{9},\"prices\":{10}}}",
                 accNum, EscapeJson(broker), isLive ? "true" : "false", bal, eq, marg, freeMarg, openCount, posJson, histJson, pricesJson, UnixSeconds(DateTime.UtcNow));
+        }
+
+        private string GetOverviewJsonCoalesced()
+        {
+            // Fast path: serve from cache if fresh (avoids main-thread marshaling entirely)
+            lock (_overviewCacheLock)
+            {
+                if (_overviewCacheJson != null && (DateTime.UtcNow - _overviewCacheUtc) < CacheTtl)
+                {
+                    return _overviewCacheJson;
+                }
+            }
+
+            // If an in-flight fetch is already running and recent, await it
+            // instead of queuing another expensive main-thread delegate
+            Task<string> inflight;
+            lock (_overviewCacheLock)
+            {
+                if (_inflightOverview != null && !_inflightOverview.IsCompleted
+                    && (DateTime.UtcNow - _inflightCreatedUtc) < InflightMaxAge)
+                {
+                    inflight = _inflightOverview;
+                }
+                else
+                {
+                    inflight = null;
+                }
+            }
+            if (inflight != null)
+            {
+                try
+                {
+                    return inflight.Result;
+                }
+                catch
+                {
+                    lock (_overviewCacheLock)
+                    {
+                        if (_overviewCacheJson != null) return _overviewCacheJson;
+                    }
+                    return "{\"status\":\"OFFLINE\",\"error\":\"OVERVIEW_INFLIGHT_FAILED\"}";
+                }
+            }
+
+            // Leader: become the single main-thread caller for this cycle
+            Task<string> leaderTask;
+            lock (_overviewCacheLock)
+            {
+                _inflightCreatedUtc = DateTime.UtcNow;
+                _inflightOverview = Task.Run(() =>
+                {
+                    string json = RunOnMainThread(GetOverviewJson);
+                    lock (_overviewCacheLock)
+                    {
+                        _overviewCacheJson = json;
+                        _overviewCacheUtc = DateTime.UtcNow;
+                    }
+                    return json;
+                });
+                leaderTask = _inflightOverview;
+            }
+
+            try
+            {
+                return leaderTask.Result;
+            }
+            catch
+            {
+                lock (_overviewCacheLock)
+                {
+                    if (_overviewCacheJson != null) return _overviewCacheJson;
+                }
+                return "{\"status\":\"OFFLINE\",\"error\":\"OVERVIEW_FETCH_FAILED\"}";
+            }
         }
 
         private string HandleTradeExecution(string json, out int httpStatus)
