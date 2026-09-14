@@ -26,21 +26,33 @@ ICON_PATH = str(BASE_DIR / "app_icon.ico")
 PORT = 8000
 LOCAL_URL = f"http://127.0.0.1:{PORT}"
 
-def is_server_running(host: str = "127.0.0.1", port: int = PORT, timeout: float = 0.4) -> bool:
+def is_port_open(host: str = "127.0.0.1", port: int = PORT, timeout: float = 0.4) -> bool:
     import socket
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.settimeout(timeout)
     try:
-        s.connect((host, port))
-        s.close()
-        return True
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+def is_server_running(url: str = LOCAL_URL, timeout: float = 1.0) -> bool:
+    """Verify port 8000 is serving TradeTalk, not merely any HTTP process."""
+    try:
+        req = urllib.request.Request(url.rstrip("/") + "/api/health", headers={"User-Agent": "TradeTalk-Desktop"})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            if resp.status != 200:
+                return False
+            import json
+            payload = json.loads(resp.read().decode("utf-8"))
+            return isinstance(payload, dict) and ("account_id" in payload or "broker" in payload)
     except Exception:
         return False
 
 def start_backend_server():
-    """Runs uvicorn FastAPI backend in background thread."""
+    """Runs uvicorn FastAPI backend in background thread without creating duplicates."""
     if is_server_running():
         return
+    if is_port_open():
+        raise RuntimeError("Port 8000 is occupied but is not responding as TradeTalk. Refusing to start a duplicate backend.")
 
     from main_native import app
     config = uvicorn.Config(
@@ -59,6 +71,7 @@ def start_backend_server():
         time.sleep(0.25)
         if is_server_running():
             return
+    raise RuntimeError("TradeTalk backend failed health verification after startup.")
 
 class DesktopAPI:
     """JS Bridge exposed to web frontend for native OS features."""
@@ -99,7 +112,7 @@ def launch_app_window():
     launched = False
     for b in browser_candidates:
         if os.path.isfile(b):
-            user_data = os.path.expandvars(r"%LocalAppData%\TradeTalk_App_Profile")
+            user_data = os.path.expandvars(r"%LocalAppData%\TradeTalk_Desktop_Profile")
             cmd = [
                 b,
                 f"--app={LOCAL_URL}",

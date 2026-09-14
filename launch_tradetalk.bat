@@ -1,19 +1,17 @@
 @echo off
-setlocal EnableDelayedExpansion
-title TradeTalk AI Launcher
+setlocal
 cd /d "%~dp0"
+title TradeTalk AI Launcher
 
 echo ===================================================
-echo           TradeTalk AI - System Launcher
+echo        TradeTalk AI - Professional Launcher
 echo ===================================================
-echo [*] Checking and clearing stale backend ports (8000)...
+echo [*] Verifying the existing TradeTalk backend safely...
 
-:: Terminate any lingering process on port 8000
-for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":8000" ^| findstr "LISTENING"') do (
-    taskkill /F /PID %%a >nul 2>&1
+call "%~dp0launch_desktop_app.bat" %*
+set "RC=%errorlevel%"
+
+if not "%RC%"=="0" (
+    echo [ERROR] TradeTalk launcher exited with code %RC%.
 )
-
-echo [*] Starting TradeTalk Desktop Application...
-start "" "C:\Users\AL RAZZAQ\AppData\Local\Python\pythoncore-3.14-64\pythonw.exe" "desktop_app.py"
-
-exit /b 0
+exit /b %RC%

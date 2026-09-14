@@ -1,3 +1,6 @@
-Set WshShell = CreateObject("WScript.Shell")
-WshShell.CurrentDirectory = "d:\Users\AL RAZZAQ\Desktop\Trade Talk"
-WshShell.Run """C:\Users\AL RAZZAQ\AppData\Local\Python\pythoncore-3.14-64\python.exe"" desktop_app.py", 0, False
+Set fso = CreateObject("Scripting.FileSystemObject")
+Set shell = CreateObject("WScript.Shell")
+baseDir = fso.GetParentFolderName(WScript.ScriptFullName)
+shell.CurrentDirectory = baseDir
+cmd = "cmd.exe /c """ & baseDir & "\launch_tradetalk.bat"""
+shell.Run cmd, 0, False
