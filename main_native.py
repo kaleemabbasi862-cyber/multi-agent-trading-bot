@@ -85,7 +85,7 @@ async def cloud_gateway_background_sync():
             # Periodically sync account details with Spotware Open API cloud
             sync_cycle += 1
             if sync_cycle % 6 == 0:
-                ctrader_cloud_gateway.sync_with_spotware_cloud()
+                await asyncio.to_thread(ctrader_cloud_gateway.sync_with_spotware_cloud)
                 
         except Exception as e:
             logger.debug(f"[Cloud Gateway Sync Note]: {e}")
@@ -305,12 +305,12 @@ async def local_cbot_background_sync():
     cloud_url = os.getenv("RENDER_CLOUD_URL", "https://multi-agent-trading-bot.onrender.com").rstrip("/")
     while True:
         try:
-            state = ctrader_cloud_gateway.sync_local_cbot_telemetry(timeout_sec=2.5)
+            state = await asyncio.to_thread(ctrader_cloud_gateway.sync_local_cbot_telemetry, 2.5)
             if state and state.get("local_bridge_online"):
                 try:
                     from cloud_telemetry_relay import build_heartbeat_payload
                     payload = build_heartbeat_payload(state["last_broker_snapshot"])
-                    requests.post(f"{cloud_url}/api/cbot/heartbeat", json=payload, timeout=2.5)
+                    await asyncio.to_thread(requests.post, f"{cloud_url}/api/cbot/heartbeat", json=payload, timeout=2.5)
                 except Exception:
                     pass
         except Exception as e:
@@ -353,7 +353,7 @@ async def get_trades_direct(limit: int = 100):
 @app.get("/health")
 @app.get("/api/health")
 async def get_system_status():
-    return ctrader_cloud_gateway.get_gateway_status()
+    return await asyncio.to_thread(ctrader_cloud_gateway.get_gateway_status)
 
 @app.get("/trade")
 @app.get("/trade/")
