@@ -63,7 +63,7 @@ def start_backend_server():
 class DesktopAPI:
     """JS Bridge exposed to web frontend for native OS features."""
     def get_version(self):
-        return "2.0.0"
+        return "2.0.0-6agents"
 
     def minimize_window(self):
         try:

@@ -758,7 +758,7 @@ async def serve_dashboard():
         "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
         "Pragma": "no-cache",
         "Expires": "0",
-        "X-TradeTalk-Version": "2.0.0-7agents"
+        "X-TradeTalk-Version": "2.0.0-6agents"
     }
     if html_path.exists():
         with open(html_path, "r", encoding="utf-8") as f:
