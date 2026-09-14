@@ -291,13 +291,13 @@ TRADING_CONSTANTS_REGISTRY: Dict[str, TradingConstantDefinition] = {
     "MIN_CONSENSUS_AGENTS": TradingConstantDefinition(
         name="MIN_CONSENSUS_AGENTS",
         value=4,
-        unit="Count (out of 7)",
+        unit="Count (out of 6)",
         category=ConstantCategory.STRATEGY_CONFIG,
         min_value=4,
-        max_value=7,
+        max_value=6,
         symbol_scope="GLOBAL",
         provenance_source="Multi-Agent Consensus Architecture Specification",
-        rationale="Requires supermajority agreement (at least 4 out of 7 agents) before trade dispatch."
+        rationale="Requires supermajority agreement (at least 4 out of 6 agents) before trade dispatch."
     ),
     "MIN_AGENT_CONFIDENCE_THRESHOLD": TradingConstantDefinition(
         name="MIN_AGENT_CONFIDENCE_THRESHOLD",

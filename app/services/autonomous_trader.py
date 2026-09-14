@@ -17,7 +17,7 @@ logger = logging.getLogger("TradeTalk.AutonomousTrader")
 class AutonomousTrader:
     """
     Phase 10: Autonomous Multi-Agent Trading Engine.
-    Coordinates continuous market scanning, 7-agent consensus evaluation,
+    Coordinates continuous market scanning, 6-agent consensus evaluation,
     safety gating, execution via cTrader Open API, and post-entry trade management.
     """
 
@@ -62,7 +62,7 @@ class AutonomousTrader:
     ) -> Dict[str, Any]:
         """
         Full-lifecycle pipeline:
-        1. 7-Agent Consensus Evaluation
+        1. 6-Agent Consensus Evaluation
         2. Position Sizing
         3. Live Safety Gate verification
         4. cTrader Order Execution
@@ -129,7 +129,7 @@ class AutonomousTrader:
                 "reason": dev_msg
             }
 
-        # 2. 7-AGENT CONSENSUS EVALUATION
+        # 2. 6-AGENT CONSENSUS EVALUATION
         consensus_res_obj = consensus_engine.process_signal(
             signal=signal,
             market_data=market_data,
@@ -158,7 +158,7 @@ class AutonomousTrader:
                 "decision_score": decision_score,
                 "consensus_result": consensus_result,
                 "sizing": sizing,
-                "message": consensus_result.get("full_analysis", "Setup did not achieve 7-agent consensus.")
+                "message": consensus_result.get("full_analysis", "Setup did not achieve 6-agent consensus.")
             }
 
         # 4. LIVE SAFETY GATE EVALUATION

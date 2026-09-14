@@ -80,7 +80,7 @@ def execute_copilot_intent(user_query: str, system_state: dict) -> dict:
                     "action_taken": "AUTO_TRADE_BLOCKED", "system_state": system_state, "account_status": acc_status}
         system_state["auto_trade_enabled"] = True
         settings_manager.update_setting("auto_trade_enabled", True)
-        reply = "آٹو ٹریڈنگ فعال کر دی گئی ہے (Auto-Trade: ON)۔ 7 ایجنٹس کا متفقہ نظام اب لائیو مارکیٹ اسکین کر کے ٹریڈز ایگزیکیوٹ کرے گا۔" if is_urdu else "Auto-trading is now ACTIVE (Auto-Trade: ON). Autonomous 7-agent consensus loop is scanning and executing approved setups."
+        reply = "آٹو ٹریڈنگ فعال کر دی گئی ہے (Auto-Trade: ON)۔ 6 ایجنٹس کا متفقہ نظام اب لائیو مارکیٹ اسکین کر کے ٹریڈز ایگزیکیوٹ کرے گا۔" if is_urdu else "Auto-trading is now ACTIVE (Auto-Trade: ON). Autonomous 6-agent consensus loop is scanning and executing approved setups."
         return {
             "reply": reply,
             "action_taken": "AUTO_TRADE_ENABLED",
@@ -197,7 +197,7 @@ def execute_copilot_intent(user_query: str, system_state: dict) -> dict:
             f"• **ٹرینڈ مومینٹم:** 15m ٹرینڈ **{trend_urdu}** ہے اور 1H ہائیر ٹائم فریم کے ساتھ **{alignment_urdu}**۔\n"
             f"• **RSI (14):** `{rsi:.1f}` ({'اوور باٹ (واپسی کا خطرہ)' if rsi > 70 else 'اوور سولڈ (ریباؤنڈ متوقع)' if rsi < 30 else 'معتدل مومینٹم'})\n"
             f"• **SMC لیولز:** سپورٹ `${supp:.2f}` | ریزسٹنس `${res:.2f}` | اسپریڈ `${spread:.2f}`\n"
-            f"• **AI ایجنٹس کی رائے:** 7 ایجنٹس 15m اور 1H کنفلونس پر بریک آؤٹ مانیٹر کر رہے ہیں۔ محفوظ SL $6.00 اور TP $12.00 تجویز کردہ ہے۔"
+            f"• **AI ایجنٹس کی رائے:** 6 ایجنٹس 15m اور 1H کنفلونس پر بریک آؤٹ مانیٹر کر رہے ہیں۔ محفوظ SL $6.00 اور TP $12.00 تجویز کردہ ہے۔"
         )
     else:
         trend_en = "BULLISH" if trend_15m == "BULLISH" else "BEARISH"
@@ -208,7 +208,7 @@ def execute_copilot_intent(user_query: str, system_state: dict) -> dict:
             f"• **Trend & Structure:** 15m is **{trend_en}** and **{alignment_en}** with 1H Higher Timeframe (EMA20: `${ema20_15m:.2f}`, EMA50: `${ema50_15m:.2f}`).\n"
             f"• **RSI 14 Momentum:** `{rsi:.1f}` ({'Overbought / Pullback Risk' if rsi > 70 else 'Oversold / Rebound Expected' if rsi < 30 else 'Optimal Expansion Zone'}).\n"
             f"• **Institutional SMC Levels:** Key Support `${supp:.2f}` | Resistance `${res:.2f}` | Spread `${spread:.2f}`.\n"
-            f"• **7-Agent Consensus Verdict:** Active scanner is filtering for high-probability setups with strict 1:2.0 R:R ($6.00 SL / $12.00 TP on Gold)."
+            f"• **6-Agent Consensus Verdict:** Active scanner is filtering for high-probability setups with strict 1:2.0 R:R ($6.00 SL / $12.00 TP on Gold)."
         )
 
     return {

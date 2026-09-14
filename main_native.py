@@ -95,7 +95,7 @@ async def autonomous_market_scanner_loop():
     """
     Autonomous Quantitative Market Scanner:
     Continuously scans the active pair with strict anti-churn guards, 15m/30m cooldown pacing,
-    technical entry triggers, LiveSafetyGate validation, and 7-agent consensus before dispatching.
+    technical entry triggers, LiveSafetyGate validation, and 6-agent consensus before dispatching.
     """
     from app.services.live_safety_gate import live_safety_gate
     await asyncio.sleep(5)
@@ -154,7 +154,7 @@ async def autonomous_market_scanner_loop():
                         continue
 
                     # -------------------------------------------------------------
-                    # B. AUTONOMOUS PRE-TRADE INTELLIGENCE & 7-AGENT CONVICTION ENTRY
+                    # B. AUTONOMOUS PRE-TRADE INTELLIGENCE & 6-AGENT CONVICTION ENTRY
                     # -------------------------------------------------------------
                     cur_sym = cur_settings.get("active_symbol", "XAUUSD")
                     cur_lot = cur_settings.get("active_lot_size", 0.01)

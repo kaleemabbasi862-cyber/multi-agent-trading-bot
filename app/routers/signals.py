@@ -26,7 +26,7 @@ async def get_pending_signals_queue():
 @router.get("/consensus")
 async def get_live_consensus():
     """
-    Returns live quantitative consensus data across all 7 agents for active instrument.
+    Returns live quantitative consensus data across all 6 participants (5 specialists + The General) for active instrument.
     """
     cur_sym = settings_manager.get_active_symbol()
     cur_lot = settings_manager.get_active_lot_size()
@@ -106,11 +106,11 @@ async def get_live_consensus():
         "account": acc_status,
         "consensus": consensus_res.dict() if hasattr(consensus_res, "dict") else consensus_res,
         "agents": [
-            _agent_payload("agent_1", "Chart Sniper (Technical)", "Technical Analyst Agent", "25%", "15m & 1H EMAs, RSI 14, S/R Levels, Regime Classification"),
-            _agent_payload("agent_2", "News Radar (Fundamental)", "Fundamental & Sentiment Agent", "18%", "CPI, NFP, FOMC High-Impact News Lockout"),
-            _agent_payload("agent_3", "Shield Guard (Risk Veto)", "Risk Management Agent", "25% (Hard Veto)", "0.01 Lots Only, Min 1:2 R:R, -$5.00 Daily Circuit Breaker"),
-            _agent_payload("agent_4", "SMC Hunter (Liquidity)", "Liquidity & SMC Agent", "18%", "Order Blocks, Liquidity Sweeps, Fair Value Gaps (FVG)"),
-            _agent_payload("agent_5", "Quant Brain (Trade Quality)", "Trade Quality Agent", "18%", "Historical Pattern Expectancy & Edge Scoring"),
+            _agent_payload("agent_1", "Chart Sniper (Technical)", "Technical Analyst Agent", "23.53%", "15m & 1H EMAs, RSI 14, S/R Levels, Regime Classification"),
+            _agent_payload("agent_2", "News Radar (Fundamental)", "Fundamental & Sentiment Agent", "17.65%", "CPI, NFP, FOMC High-Impact News Lockout"),
+            _agent_payload("agent_3", "Shield Guard (Risk Veto)", "Risk Management Agent", "23.53% (Hard Veto)", "0.01 Lots Only, Min 1:2 R:R, -$5.00 Daily Circuit Breaker"),
+            _agent_payload("agent_4", "SMC Hunter (Liquidity)", "Liquidity & SMC Agent", "17.65%", "Order Blocks, Liquidity Sweeps, Fair Value Gaps (FVG)"),
+            _agent_payload("agent_5", "Quant Brain (Trade Quality)", "Trade Quality Agent", "17.65%", "Historical Pattern Expectancy & Edge Scoring"),
             {
                 "id": "agent_6",
                 "name": "The General (Head Desk)",
@@ -154,7 +154,7 @@ async def get_signal_explanation(signal_id: str):
 @router.post("/signals/simulate")
 async def simulate_signal(signal: SignalPayload):
     """
-    Simulates a signal through all 7 agents without executing a live order.
+    Simulates a signal through the 6-participant consensus architecture without executing a live order.
     """
     sym = signal.symbol or settings_manager.get_active_symbol()
     market_data = get_market_snapshot(sym, force_refresh=False)
