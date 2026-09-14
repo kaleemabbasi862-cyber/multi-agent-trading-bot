@@ -184,8 +184,8 @@
     <div class="border-b border-dark-border bg-slate-950/95 backdrop-blur py-2.5 px-4 lg:px-8 overflow-x-auto custom-scrollbar sticky top-0 z-50 shadow-md">
         <div class="flex items-center space-x-4 min-w-max text-xs">
             <div class="flex items-center space-x-2 text-[11px] font-extrabold text-slate-400 uppercase tracking-wider pr-2 border-r border-slate-800">
-                <span class="w-2.5 h-2.5 rounded-full" :class="brokerQuoteFresh(marketPrices.XAUUSD) ? 'bg-emerald-400 pulse-live' : 'bg-amber-400'"></span>
-                <span x-text="brokerQuoteFresh(marketPrices.XAUUSD) ? 'Broker feed:' : 'Broker feed unavailable:'"></span>
+                <span class="w-2.5 h-2.5 rounded-full" :class="brokerAccountFresh() ? (brokerQuoteFresh(marketPrices.XAUUSD) ? 'bg-emerald-400 pulse-live' : 'bg-amber-400 pulse-live') : 'bg-rose-400'"></span>
+                <span x-text="!brokerAccountFresh() ? 'Bridge offline:' : (marketPrices.XAUUSD?.stale ? 'Quote stale:' : (brokerQuoteFresh(marketPrices.XAUUSD) ? 'Broker feed:' : 'Feed unavailable:'))"></span>
             </div>
 
             <!-- DYNAMIC TICKER CARDS -->
@@ -196,21 +196,22 @@
                     
                     <div class="flex items-center space-x-1.5">
                         <i class="fa-solid text-xs" :class="sym === 'XAUUSD' ? 'fa-coins text-amber-400' : 'fa-chart-line text-indigo-400'"></i>
-                        <span class="font-bold text-white tracking-tight" x-text="data.symbol"></span>
+                        <span class="font-bold text-white tracking-wight" x-text="data.symbol"></span>
                     </div>
 
                     <div class="flex items-center space-x-2 font-mono">
-                        <span class="font-extrabold text-sm"
-                              :class="data.change_24h >= 0 ? 'text-emerald-400' : 'text-rose-400'"
-                              x-text="brokerQuoteFresh(data) ? formatNumber(data.bid, data.symbol) + ' / ' + formatNumber(data.ask, data.symbol) : 'Unavailable / stale'"></span>
-                        <span class="text-[10px] px-1.5 py-0.5 rounded font-bold"
-                              :class="data.change_24h >= 0 ? 'bg-emerald-500/15 text-emerald-400' : 'bg-rose-500/15 text-rose-400'"
-                              x-text="(data.change_24h >= 0 ? '+' : '') + data.change_24h + '%'"></span>
+                        <span class="font-extrabold text-sm text-slate-300"
+                              x-text="brokerQuoteFresh(data) ? formatNumber(data.bid, data.symbol) + ' / ' + formatNumber(data.ask, data.symbol) : (data.bid ? formatNumber(data.bid, data.symbol) + ' / ' + formatNumber(data.ask, data.symbol) + ' (stale)' : '-- / --')"></span>
+                        <template x-if="data.change_24h != null && data.change_24h !== undefined">
+                            <span class="text-[10px] px-1.5 py-0.5 rounded font-bold"
+                                  :class="data.change_24h >= 0 ? 'bg-emerald-500/15 text-emerald-400' : 'bg-rose-500/15 text-rose-400'"
+                                  x-text="(data.change_24h >= 0 ? '+' : '') + Number(data.change_24h).toFixed(2) + '%'"></span>
+                        </template>
                     </div>
 
                     <div class="text-[10px] text-slate-400 hidden sm:flex items-center space-x-2 pl-2 border-l border-slate-800">
-                        <span>Spread: <strong class="text-slate-200" x-text="'$' + (data.spread ? data.spread.toFixed(2) : '0.35')"></strong></span>
-                        <span>RSI: <strong :class="data.indicators && data.indicators.rsi > 70 ? 'text-rose-400' : (data.indicators && data.indicators.rsi < 30 ? 'text-emerald-400' : 'text-indigo-300')" x-text="data.indicators ? data.indicators.rsi : '54.0'"></strong></span>
+                        <span>Spread: <strong class="text-slate-200" x-text="data.spread ? ('$' + data.spread.toFixed(2)) : '--'"></strong></span>
+                        <span>RSI: <strong :class="data.indicators?.rsi > 70 ? 'text-rose-400' : (data.indicators?.rsi < 30 ? 'text-emerald-400' : 'text-indigo-300')" x-text="data.indicators?.rsi != null ? Number(data.indicators.rsi).toFixed(1) : '--'"></strong></span>
                     </div>
                 </div>
             </template>
@@ -675,9 +676,9 @@
 
 
         <div class="px-4 py-2 text-sm text-amber-300 bg-slate-950" role="status">
-            <span x-text="brokerQuoteFresh(marketPrices.XAUUSD) ? 'Broker telemetry verified' : 'Broker telemetry unavailable, stale or mismatched — Auto-Trade blocked'"></span>
+            <span x-text="brokerQuoteFresh(marketPrices.XAUUSD) ? 'Broker telemetry verified' : (!brokerAccountFresh() ? 'Bridge offline or account unverified — Auto-Trade blocked' : (marketPrices.XAUUSD?.stale ? 'Broker quote stale — Auto-Trade blocked' : 'Broker telemetry unavailable — Auto-Trade blocked'))"></span>
             <span class="ml-3" x-text="cbotStatus.telemetry?.account_snapshot_at ? 'Account observed: ' + new Date(cbotStatus.telemetry.account_snapshot_at * 1000).toISOString() : 'No verified account snapshot'"></span>
-            <span class="ml-3" x-text="marketPrices.XAUUSD?.quote_at ? 'XAUUSD tick: ' + new Date(marketPrices.XAUUSD.quote_at * 1000).toISOString() : 'No fresh broker quote'"></span>
+            <span class="ml-3" x-text="marketPrices.XAUUSD?.quote_at ? 'XAUUSD tick: ' + new Date(marketPrices.XAUUSD.quote_at * 1000).toISOString() : 'No broker quote'"></span>
         </div>
 
         <!-- TOP STATS METRIC SUMMARY (5 CARDS) -->
@@ -2243,7 +2244,7 @@
                         </div>
                         <div class="text-center bg-slate-900 px-3 py-2 rounded-lg border border-slate-800">
                             <div class="text-[10px] text-slate-400">Entry Target</div>
-                            <div class="font-bold text-sm text-white font-mono" x-text="'$' + (activeSignal ? formatNumber(activeSignal.entry_price, selectedSymbol) : '2750.00')"></div>
+                            <div class="font-bold text-sm text-white font-mono" x-text="activeSignal ? ('$' + formatNumber(activeSignal.entry_price, selectedSymbol)) : '--'"></div>
                         </div>
                         <div class="text-center bg-slate-900 px-3 py-2 rounded-lg border border-slate-800">
                             <div class="text-[10px] text-slate-400">Symbol</div>
@@ -2350,7 +2351,7 @@
                         <span class="px-2 py-0.5 bg-slate-900 text-slate-400 rounded font-mono">H4</span>
                         <span class="px-2 py-0.5 bg-slate-900 text-slate-400 rounded font-mono">D1</span>
                     </div>
-                    <div class="font-mono text-xs font-bold text-emerald-400" x-text="'Live Price: $' + (marketPrices[selectedSymbol] ? formatNumber(marketPrices[selectedSymbol].price, selectedSymbol) : '2750.00')"></div>
+                    <div class="font-mono text-xs font-bold text-emerald-400" x-text="marketPrices[selectedSymbol]?.price ? ('Live Price: $' + formatNumber(marketPrices[selectedSymbol].price, selectedSymbol)) : 'Live Price: --'"></div>
                 </div>
 
                 <!-- SMC & INDICATOR OVERLAY BADGES -->

@@ -14,13 +14,14 @@ async def get_live_prices():
     symbols = ["XAUUSD", "XAGUSD", "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCHF"]
     prices = {}
     for s in symbols:
-        quote = gateway.get_live_price(s)
+        quote = gateway.get_live_price(s, allow_stale=True)
         telemetry = health(gateway.GATEWAY_STATE, s)
         prices[s] = {"symbol": s, "price": None, "bid": None, "ask": None,
                      "source": "CTRADER_CBOT", "executable": False, "stale": True,
                      "telemetry": telemetry, **(quote or {})}
-        prices[s]["executable"] = bool(quote)
-        prices[s]["stale"] = not bool(quote)
+        if quote:
+            prices[s]["executable"] = telemetry["execution_ready"]
+            prices[s]["stale"] = not telemetry["execution_ready"]
     return prices
 
 @router.get("/market/macro")

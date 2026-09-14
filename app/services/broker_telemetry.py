@@ -72,14 +72,16 @@ def validate_snapshot(data, expected_account, now=None):
             symbol = symbol_name(alias)
             bid, ask = number(raw["bid"]), number(raw["ask"])
             quote_at = number(raw["quote_at"])
-            if bid <= 0 or ask < bid or not fresh(quote_at, QUOTE_MAX_AGE, now):
+            if bid <= 0 or ask < bid:
                 continue
             if raw.get("account_id", account) != account or raw.get("source", SOURCE) != SOURCE:
                 continue
+            quote_is_fresh = fresh(quote_at, QUOTE_MAX_AGE, now)
             quote = {"symbol": symbol, "broker_symbol": raw.get("broker_symbol", alias),
                      "bid": bid, "ask": ask, "price": (bid + ask) / 2, "spread": ask - bid,
                      "quote_at": quote_at, "updated_at": quote_at, "received_at": now,
-                     "source": SOURCE, "account_id": account}
+                     "source": SOURCE, "account_id": account, "executable": quote_is_fresh,
+                     "stale": not quote_is_fresh}
             if symbol in quotes and (quotes[symbol]["bid"], quotes[symbol]["ask"]) != (bid, ask):
                 raise ValueError("BROKER_SYMBOL_ALIAS_MISMATCH")
             quotes[symbol] = quote
@@ -110,13 +112,15 @@ def health(state, symbol="XAUUSD", now=None):
         reason = "BROKER_ACCOUNT_STALE"
     account_fresh = not reason
     quote = state.get("broker_prices", {}).get(symbol_name(symbol), {})
-    if not reason and (quote.get("source") != SOURCE or quote.get("account_id") != state.get("account_id")):
+    quote_exists = bool(quote) and quote.get("source") == SOURCE and quote.get("account_id") == state.get("account_id")
+    if not reason and not quote_exists:
         reason = "BROKER_QUOTE_UNVERIFIED"
-    if not reason and not fresh(quote.get("quote_at"), QUOTE_MAX_AGE, now):
+    if not reason and quote_exists and not fresh(quote.get("quote_at"), QUOTE_MAX_AGE, now):
         reason = "BROKER_QUOTE_STALE"
     if not reason and (state.get("is_live", True) or state.get("account_type") != "DEMO"):
         reason = "BROKER_DEMO_ONLY"
     return {"account_fresh": account_fresh, "execution_ready": not reason,
             "reason": reason, "account_snapshot_at": state.get("broker_snapshot_at"),
             "quote_at": quote.get("quote_at"), "received_at": state.get("broker_received_at"),
-            "account_max_age_seconds": ACCOUNT_MAX_AGE, "quote_max_age_seconds": QUOTE_MAX_AGE}
+            "account_max_age_seconds": ACCOUNT_MAX_AGE, "quote_max_age_seconds": QUOTE_MAX_AGE,
+            "quote_stale": reason == "BROKER_QUOTE_STALE"}

@@ -26,7 +26,7 @@ def get_cbot_status() -> Dict[str, Any]:
 
 def get_cbot_live_price(symbol: str = "XAUUSD") -> Optional[Dict[str, Any]]:
     """Returns latest live price from cloud gateway."""
-    return ctrader_cloud_gateway.get_live_price(symbol)
+    return ctrader_cloud_gateway.get_live_price(symbol, allow_stale=True)
 
 def dispatch_local_bridge_order(symbol: str, side: str, volume: float = 0.01, sl_pips: Optional[float] = None, tp_pips: Optional[float] = None, sl_price: Optional[float] = None, tp_price: Optional[float] = None, comment: str = "TradeTalk AI") -> Dict[str, Any]:
     """Dispatches order directly to Local cBot Webhook Bridge (port 5001)."""

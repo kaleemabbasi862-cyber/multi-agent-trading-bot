@@ -1072,8 +1072,22 @@ def update_heartbeat(data: dict) -> dict:
     return state
 
 
-def get_live_price(symbol: str = "XAUUSD") -> Optional[Dict[str, Any]]:
-    """Return only a fresh broker quote bound to the active account snapshot."""
-    if not broker_telemetry.health(GATEWAY_STATE, symbol)["execution_ready"]:
+def get_live_price(symbol: str = "XAUUSD", allow_stale: bool = False) -> Optional[Dict[str, Any]]:
+    """Return a broker quote bound to the active account snapshot.
+    
+    allow_stale=False (default): Only return fresh, executable quotes. Used for execution.
+    allow_stale=True: Return any quote including stale. Used for display purposes.
+    """
+    sym = broker_telemetry.symbol_name(symbol)
+    quote = GATEWAY_STATE.get("broker_prices", {}).get(sym)
+    if not quote:
         return None
-    return dict(GATEWAY_STATE["broker_prices"][broker_telemetry.symbol_name(symbol)])
+    if not allow_stale:
+        if not quote.get("executable", False):
+            return None
+        if not broker_telemetry.fresh(quote.get("quote_at"), broker_telemetry.QUOTE_MAX_AGE):
+            return None
+        h = broker_telemetry.health(GATEWAY_STATE)
+        if not h["execution_ready"]:
+            return None
+    return dict(quote)

@@ -109,8 +109,8 @@ class TestBrokerTelemetry(BrokerDatabaseFixture):
         with patch.object(broker_telemetry.time, "time", return_value=data["snapshot_at"] + 11):
             self.assertTrue(gateway.get_gateway_status()["telemetry_stale"])
             expired = asyncio.run(get_live_prices())["XAUUSD"]
-            self.assertIsNone(expired["price"])
             self.assertFalse(expired["executable"])
+            self.assertTrue(expired["stale"])
 
     def test_safety_bypass_cannot_use_missing_broker_quote(self):
         gateway.update_heartbeat(snapshot(prices={}))
