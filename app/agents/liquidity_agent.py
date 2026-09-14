@@ -10,7 +10,7 @@ from app.database.models import (
 
 class LiquiditySmartMoneyAgent:
     name: str = "Liquidity & SMC Agent"
-    weight: float = 0.15
+    weight: float = 3 / 17
     criticality: str = AgentOperationalCriticality.DECISION_CRITICAL
 
     def evaluate(self, signal: SignalPayload, market_data: Dict[str, Any]) -> AgentDecisionOutput:

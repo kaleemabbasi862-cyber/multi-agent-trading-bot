@@ -15,7 +15,7 @@ import settings_manager
 
 class RiskManagementAgent:
     name: str = "Risk Management Agent"
-    weight: float = 0.20
+    weight: float = 4 / 17
     has_veto_power: bool = True
     criticality: str = AgentOperationalCriticality.SAFETY_CRITICAL
 

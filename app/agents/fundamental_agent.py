@@ -11,7 +11,7 @@ from app.database.models import (
 
 class FundamentalSentimentAgent:
     name: str = "Fundamental & Sentiment Agent"
-    weight: float = 0.15
+    weight: float = 3 / 17
     criticality: str = AgentOperationalCriticality.SAFETY_CRITICAL
 
     def evaluate(self, signal: SignalPayload, macro_data: Dict[str, Any]) -> AgentDecisionOutput:

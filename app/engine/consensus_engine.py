@@ -165,7 +165,7 @@ class MultiAgentConsensusEngine:
             risk_decision
         ]
 
-        # 3. Arbitrate Final Decision via Head Desk Manager (Agent 7)
+        # 3. Arbitrate Final Decision via Head Desk Manager (The General, sixth participant)
         status, score, explanation = head_desk_agent.arbitrate(
             signal=signal,
             agent_decisions=all_agent_decisions,

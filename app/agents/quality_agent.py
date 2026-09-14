@@ -10,7 +10,7 @@ from app.database.models import (
 
 class TradeQualityAgent:
     name: str = "Trade Quality Agent"
-    weight: float = 0.15
+    weight: float = 3 / 17
     criticality: str = AgentOperationalCriticality.DECISION_CRITICAL
     min_sample_size: int = 20
 

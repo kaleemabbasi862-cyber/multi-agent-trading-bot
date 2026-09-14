@@ -12,7 +12,7 @@ from app.database.models import (
 
 class TechnicalAnalystAgent:
     name: str = "Technical Analyst Agent"
-    weight: float = 0.20
+    weight: float = 4 / 17
     criticality: str = AgentOperationalCriticality.DECISION_CRITICAL
 
     def _classify_regime(self, rsi, ema_20, ema_50, ema_200, support, resistance, entry_price):
