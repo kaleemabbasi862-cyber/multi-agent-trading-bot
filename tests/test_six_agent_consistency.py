@@ -46,6 +46,11 @@ class TestSixAgentConsistency(unittest.TestCase):
         self.assertEqual(definition.value, 4)
         self.assertEqual(definition.max_value, 6)
 
+    def test_dashboard_has_no_stale_seven_agent_labels(self):
+        text = (ROOT / "templates" / "dashboard.html").read_text(encoding="utf-8")
+        for token in ("7-agent", "7-Agent", "7-AGENT", "7 agents"):
+            self.assertNotIn(token, text)
+
 
 if __name__ == "__main__":
     unittest.main()
