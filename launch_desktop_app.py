@@ -5,6 +5,8 @@ import shutil
 import urllib.request
 import subprocess
 import argparse
+import socket
+import json
 from pathlib import Path
 
 # Base Paths
@@ -27,14 +29,19 @@ def is_server_healthy(url: str, timeout: float = 1.0) -> bool:
         health_url = url.rstrip("/") + "/api/health"
         req = urllib.request.Request(health_url, headers={"User-Agent": "TradeTalk-Launcher"})
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return resp.status == 200
+            if resp.status != 200:
+                return False
+            payload = json.loads(resp.read().decode("utf-8"))
+            return isinstance(payload, dict) and ("account_id" in payload or "broker" in payload)
     except Exception:
-        try:
-            req = urllib.request.Request(url, headers={"User-Agent": "TradeTalk-Launcher"})
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                return resp.status == 200
-        except Exception:
-            return False
+        return False
+
+def is_port_open(host: str = "127.0.0.1", port: int = 8000, timeout: float = 0.4) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
 
 def ensure_backend_running(url: str):
     if not ("127.0.0.1" in url or "localhost" in url):
@@ -42,6 +49,10 @@ def ensure_backend_running(url: str):
     
     if is_server_healthy(url):
         print(f"[+] Local TradeTalk Backend is already running healthy at {url}")
+        return
+
+    if is_port_open():
+        print("[!] Port 8000 is occupied but TradeTalk health verification failed. Refusing to spawn a duplicate backend.")
         return
 
     print(f"[*] Local backend not detected. Auto-spawning uvicorn server on port 8000...")
@@ -131,7 +142,7 @@ $sc.Save()
 
 def launch_app(browser_path: str, url: str, wait: bool = False):
     print(f"\n========================================================")
-    print(f"  TRADETALK AI - AUTONOMOUS DESKTOP APP LAUNCHER")
+    print(f"  TRADETALK AI - 6-AGENT DESKTOP APP LAUNCHER")
     print(f"========================================================")
     print(f"  Target URL      : {url}")
     print(f"  Engine Mode     : {'LOCAL ENGINE (localhost:8000)' if '8000' in url else 'RENDER CLOUD'}")
@@ -171,8 +182,11 @@ def main():
     # 2. Kill stale instances
     terminate_stale_desktop_processes()
 
-    # 3. Always purge cache for fresh launch
-    purge_desktop_cache()
+    # 3. Preserve the desktop profile by default; purge only when explicitly requested.
+    if args.purge:
+        purge_desktop_cache()
+    else:
+        PROFILE_DIR.mkdir(parents=True, exist_ok=True)
 
     # 4. Update shortcut
     update_desktop_shortcut(browser, args.url)
