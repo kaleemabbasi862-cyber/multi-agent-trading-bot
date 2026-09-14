@@ -275,9 +275,10 @@ class DatabaseManager:
                 pips = round((exit_p - entry_p) * 10, 1) if direction == "BUY" else round((entry_p - exit_p) * 10, 1)
         
         with _lock, get_db_connection() as conn:
+            stripped = ticket_id.removeprefix("CT_").removeprefix("TRD_")
             existing = conn.execute(
-                "SELECT id, entry_price, volume FROM trades WHERE ticket_id = ? OR id = ? OR id = ? OR ticket_id = ?",
-                (ticket_id, f"TRD_{ticket_id}", f"CT_{ticket_id}", f"CT_{ticket_id}")
+                "SELECT id, entry_price, volume FROM trades WHERE ticket_id = ? OR ticket_id = ? OR ticket_id = ? OR id = ? OR id = ?",
+                (ticket_id, stripped, f"CT_{stripped}", f"TRD_{stripped}", f"CT_{stripped}")
             ).fetchall()
             
             if existing:

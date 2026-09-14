@@ -926,6 +926,7 @@ def update_live_market_prices(prices_map: Dict[str, Dict[str, Any]]) -> None:
 
 
 def _ingest_broker_snapshot(data, transport):
+    global LAST_TRADE_CLOSE_TIMESTAMP
     expected = str(GATEWAY_STATE.get("account_id") or DEFAULT_ACCOUNT_ID)
     try:
         snapshot = broker_telemetry.validate_snapshot(data, expected)
@@ -936,6 +937,7 @@ def _ingest_broker_snapshot(data, transport):
         GATEWAY_STATE["positions_snapshot_valid"] = False
         return {"status": "REJECTED_TELEMETRY", "reason": str(exc)}
 
+    prev_positions_by_id = {str(p["id"]): p for p in GATEWAY_STATE.get("open_positions", [])}
     GATEWAY_STATE.update(snapshot)
     GATEWAY_STATE["live_prices"] = dict(snapshot["broker_prices"])
     GATEWAY_STATE["last_broker_snapshot"] = copy.deepcopy(data)
@@ -952,23 +954,50 @@ def _ingest_broker_snapshot(data, transport):
     LINKED_ACCOUNTS[acc_id]["last_seen"] = snapshot["broker_snapshot_at"]
 
     # A complete, validated account snapshot is authoritative even when flat.
+    now_close_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    broker_closed_any = False
     try:
         from app.database.db import get_db_connection, _lock
         with _lock, get_db_connection() as conn:
             trades = conn.execute(
-                "SELECT id, ticket_id FROM trades WHERE status = 'OPEN' AND mode = ? AND broker_account_id = ?",
+                "SELECT id, ticket_id, symbol, direction, entry_price FROM trades WHERE status = 'OPEN' AND mode = ? AND (broker_account_id = ? OR broker_account_id IS NULL OR broker_account_id = '')",
                 (snapshot["account_type"], acc_id),
             ).fetchall()
             ids = {str(p["id"]) for p in snapshot["open_positions"]}
             for trade in trades:
                 ticket = str(trade["ticket_id"] or trade["id"]).removeprefix("TRD_").removeprefix("CT_")
                 if ticket and ticket not in ids:
-                    conn.execute("UPDATE trades SET status = 'CLOSED', closed_at = COALESCE(closed_at, ?) WHERE id = ?",
-                                 (datetime.datetime.now(datetime.timezone.utc).isoformat(), trade["id"]))
+                    prev_pos = prev_positions_by_id.get(ticket) or prev_positions_by_id.get(str(trade["id"]))
+                    exit_price = 0.0
+                    close_reason = "Broker-Side Close"
+                    if prev_pos:
+                        exit_price = float(prev_pos.get("current_price", 0.0) or prev_pos.get("entry_price", 0.0))
+                        entry_p = float(trade["entry_price"] or 0.0)
+                        sl_p = float(prev_pos.get("sl_price", 0.0) or prev_pos.get("sl", 0.0))
+                        tp_p = float(prev_pos.get("tp_price", 0.0) or prev_pos.get("tp", 0.0))
+                        if sl_p > 0 and exit_price > 0 and abs(exit_price - sl_p) < 1.0:
+                            close_reason = "Stop Loss Hit"
+                        elif tp_p > 0 and exit_price > 0 and abs(exit_price - tp_p) < 1.0:
+                            close_reason = "Take Profit Hit"
+                    pnl = 0.0
+                    if exit_price > 0 and float(trade["entry_price"] or 0) > 0:
+                        direction = str(trade["direction"] or "BUY").upper()
+                        entry_p = float(trade["entry_price"])
+                        if direction == "BUY":
+                            pnl = round(exit_price - entry_p, 2)
+                        else:
+                            pnl = round(entry_p - exit_price, 2)
+                    conn.execute(
+                        "UPDATE trades SET status = 'CLOSED', closed_at = COALESCE(closed_at, ?), exit_price = COALESCE(NULLIF(?, 0.0), exit_price), profit_loss = COALESCE(NULLIF(?, 0.0), profit_loss), close_reason = COALESCE(NULLIF(?, ''), close_reason), is_broker_verified = 1, provenance = 'BROKER_DEMO_VERIFIED' WHERE id = ?",
+                        (now_close_iso, exit_price, pnl, close_reason, trade["id"]),
+                    )
+                    broker_closed_any = True
             conn.commit()
     except Exception as exc:
         logger.error("Broker reconciliation failed: %s", exc)
         GATEWAY_STATE["broker_telemetry_error"] = "BROKER_RECONCILIATION_FAILED"
+    if broker_closed_any:
+        LAST_TRADE_CLOSE_TIMESTAMP = time.time()
 
     # History is not a quote. Never synthesize an executable bid/ask from it.
     history = data.get("closed_trades") or data.get("history", [])

@@ -57,6 +57,7 @@ class ExecutionEngine:
         inserted, existing_intent = db.record_execution_intent(
             intent_id=intent_id,
             signal_id=consensus_res.signal_id,
+            action=signal.action,
             status="DISPATCHING",
             provenance=DataProvenance.BROKER_DEMO
         )
