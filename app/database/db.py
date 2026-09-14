@@ -241,67 +241,78 @@ class DatabaseManager:
             conn.commit()
 
     @staticmethod
-    def sync_cbot_closed_trade(item: Dict[str, Any]):
+    def sync_cbot_closed_trade(item: Dict[str, Any], account_id: str = ""):
         ticket_id = str(item.get("position_id") or item.get("id") or item.get("ticket_id") or "").strip()
         if not ticket_id:
             return
-        
+
         sym = str(item.get("symbol") or "XAUUSD").upper()
         direction = str(item.get("trade_type") or item.get("side") or item.get("direction") or item.get("action") or "BUY").upper()
-        
+
         entry_p = float(item.get("entry_price") or item.get("entry") or 0.0)
         exit_p = float(item.get("closing_price") or item.get("close") or item.get("exit_price") or 0.0)
-        
-        # PnL extraction
+
         raw_pnl = item.get("net_profit")
         if raw_pnl is None:
             raw_pnl = item.get("pnl")
         if raw_pnl is None:
             raw_pnl = item.get("profit_loss")
         pnl = float(raw_pnl) if raw_pnl is not None else 0.0
-        
+
         comm = float(item.get("commission", 0.0))
         swap = float(item.get("swap", 0.0))
-        
+
         raw_vol = float(item.get("volume") or item.get("lots") or item.get("lot_size") or 0.01)
         vol = round(raw_vol / 100.0 if raw_vol >= 10.0 else raw_vol, 2)
-        
+
         closed_at = item.get("closing_time") or item.get("closed_at") or item.get("timestamp")
         opened_at = item.get("entry_time") or item.get("opened_at") or closed_at
-        
+
         pips = float(item.get("pips", 0.0))
         if pips == 0.0 and exit_p > 0 and entry_p > 0:
             if "XAU" in sym or "GOLD" in sym:
                 pips = round((exit_p - entry_p) * 10, 1) if direction == "BUY" else round((entry_p - exit_p) * 10, 1)
-        
+
+        acc = account_id or getattr(settings, "CTRADER_ACCOUNT_ID", "") or "5908018"
+
         with _lock, get_db_connection() as conn:
             stripped = ticket_id.removeprefix("CT_").removeprefix("TRD_")
             existing = conn.execute(
-                "SELECT id, entry_price, volume FROM trades WHERE ticket_id = ? OR ticket_id = ? OR ticket_id = ? OR id = ? OR id = ?",
+                "SELECT id, entry_price, volume, stop_loss, take_profit, close_reason FROM trades WHERE ticket_id = ? OR ticket_id = ? OR ticket_id = ? OR id = ? OR id = ?",
                 (ticket_id, stripped, f"CT_{stripped}", f"TRD_{stripped}", f"CT_{stripped}")
             ).fetchall()
-            
+
             if existing:
                 for ex_row in existing:
                     row_entry = float(ex_row["entry_price"] or 0.0)
                     final_entry = entry_p if (entry_p > 0 or row_entry == 0.0) else row_entry
                     row_vol = float(ex_row["volume"] or 0.0)
                     final_vol = vol if (vol > 0 or row_vol == 0.0) else row_vol
-                    
+
+                    close_reason = item.get("close_reason") or item.get("comment") or ex_row["close_reason"] or ""
+                    if not close_reason or close_reason == "Broker-Side Close":
+                        sl_p = float(ex_row["stop_loss"] or 0.0)
+                        tp_p = float(ex_row["take_profit"] or 0.0)
+                        if sl_p > 0 and exit_p > 0 and abs(exit_p - sl_p) < 1.0:
+                            close_reason = "Stop Loss Hit"
+                        elif tp_p > 0 and exit_p > 0 and abs(exit_p - tp_p) < 1.0:
+                            close_reason = "Take Profit Hit"
+                        elif exit_p > 0:
+                            close_reason = "Broker-Side Close"
+
                     conn.execute(
                         """
                         UPDATE trades
                         SET status = 'CLOSED',
-                            direction = ?,
-                            entry_price = ?,
-                            exit_price = ?,
-                            profit_loss = ?,
-                            pips = ?,
-                            commission = ?,
-                            swap = ?,
+                            exit_price = COALESCE(NULLIF(?, 0.0), exit_price),
+                            profit_loss = COALESCE(NULLIF(?, 0.0), profit_loss),
+                            pips = COALESCE(NULLIF(?, 0.0), pips),
+                            commission = COALESCE(NULLIF(?, 0.0), commission),
+                            swap = COALESCE(NULLIF(?, 0.0), swap),
                             volume = ?,
                             closed_at = COALESCE(?, closed_at),
                             opened_at = COALESCE(opened_at, ?),
+                            close_reason = COALESCE(NULLIF(?, ''), close_reason, 'Broker-Side Close'),
                             is_broker_verified = 1,
                             provenance = 'BROKER_DEMO_VERIFIED',
                             broker_account_id = ?,
@@ -309,10 +320,11 @@ class DatabaseManager:
                             data_source = 'cTrader Open API'
                         WHERE id = ?
                         """,
-                        (direction, final_entry, exit_p, pnl, pips, comm, swap, final_vol, closed_at, opened_at, getattr(settings, "CTRADER_ACCOUNT_ID", "5908018"), ex_row["id"])
+                        (exit_p, pnl, pips, comm, swap, final_vol, closed_at, opened_at, close_reason, acc, ex_row["id"])
                     )
             else:
                 trade_id = f"CT_{ticket_id}"
+                close_reason = item.get("close_reason") or item.get("comment") or "Broker History Sync"
                 conn.execute(
                     """
                     INSERT INTO trades
@@ -337,12 +349,12 @@ class DatabaseManager:
                         comm,
                         swap,
                         "CLOSED",
-                        "Broker History Sync",
+                        close_reason,
                         opened_at,
                         closed_at,
                         1,
                         "BROKER_DEMO_VERIFIED",
-                        getattr(settings, "CTRADER_ACCOUNT_ID", "5908018"),
+                        acc,
                         "DEMO",
                         "cTrader Open API"
                     )

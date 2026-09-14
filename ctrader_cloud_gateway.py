@@ -1001,10 +1001,11 @@ def _ingest_broker_snapshot(data, transport):
 
     # History is not a quote. Never synthesize an executable bid/ask from it.
     history = data.get("closed_trades") or data.get("history", [])
-    if isinstance(history, list) and not snapshot["is_live"] and acc_id == str(settings.CTRADER_ACCOUNT_ID):
+    linked_ids = {str(k) for k in LINKED_ACCOUNTS}
+    if isinstance(history, list) and not snapshot["is_live"] and acc_id in linked_ids:
         for trade in history:
             try:
-                db.sync_cbot_closed_trade(trade)
+                db.sync_cbot_closed_trade(trade, account_id=acc_id)
             except Exception as exc:
                 logger.debug("Closed trade sync error: %s", exc)
     return {"status": "ACCEPTED", "snapshot_at": snapshot["broker_snapshot_at"]}

@@ -230,6 +230,225 @@ class TestDuplicateRowPrevention(BrokerCloseFixture):
             self.assertEqual(total, 1)
 
 
+class TestBrokerClosedHistoryIngestion(BrokerCloseFixture):
+    """Tests for broker-authoritative closed-history path (restart recovery, idempotency, etc.)."""
+
+    def _ingest_with_history(self, trade_items, positions=None):
+        data = self.snapshot(positions=positions or [])
+        data["history"] = trade_items
+        self.sync(data)
+
+    def test_restart_recovery_empty_prev_positions(self):
+        self.seed_trade("T_REST1", "50001", direction="SELL", entry=4300.0, sl=4310.0, tp=4280.0)
+        self._ingest_with_history([{
+            "position_id": 50001,
+            "symbol": "XAUUSD",
+            "trade_type": "SELL",
+            "volume": 0.01,
+            "entry_price": 4300.0,
+            "closing_price": 4309.5,
+            "net_profit": -9.5,
+            "closing_time": "2026-09-14T17:33:02Z",
+            "entry_time": "2026-09-14T16:32:00Z",
+        }])
+        with self.connection() as conn:
+            row = dict(conn.execute("SELECT * FROM trades WHERE id='T_REST1'").fetchone())
+        self.assertEqual(row["status"], "CLOSED")
+        self.assertEqual(row["exit_price"], 4309.5)
+        self.assertAlmostEqual(row["profit_loss"], -9.5, places=2)
+        self.assertEqual(row["is_broker_verified"], 1)
+
+    def test_empty_prev_positions_by_id_still_persists_broker_financials(self):
+        self.seed_trade("T_EMPTY", "50002", direction="BUY", entry=4300.0, sl=4290.0, tp=4315.0)
+        self._ingest_with_history([{
+            "position_id": 50002,
+            "symbol": "XAUUSD",
+            "trade_type": "BUY",
+            "volume": 0.01,
+            "entry_price": 4300.0,
+            "closing_price": 4315.2,
+            "net_profit": 15.2,
+            "closing_time": "2026-09-14T17:40:00Z",
+        }])
+        with self.connection() as conn:
+            row = dict(conn.execute("SELECT * FROM trades WHERE id='T_EMPTY'").fetchone())
+        self.assertEqual(row["exit_price"], 4315.2)
+        self.assertAlmostEqual(row["profit_loss"], 15.2, places=2)
+
+    def test_broker_sl_close_history_ingestion(self):
+        self.seed_trade("T_SL", "50003", direction="SELL", entry=4300.0, sl=4310.0, tp=4280.0)
+        self._ingest_with_history([{
+            "position_id": 50003,
+            "symbol": "XAUUSD",
+            "trade_type": "SELL",
+            "volume": 0.01,
+            "entry_price": 4300.0,
+            "closing_price": 4310.0,
+            "net_profit": -10.0,
+            "closing_time": "2026-09-14T17:35:00Z",
+            "close_reason": "Stop Loss Hit",
+        }])
+        with self.connection() as conn:
+            row = dict(conn.execute("SELECT * FROM trades WHERE id='T_SL'").fetchone())
+        self.assertEqual(row["exit_price"], 4310.0)
+        self.assertAlmostEqual(row["profit_loss"], -10.0, places=2)
+        self.assertIn("Stop Loss", row["close_reason"])
+
+    def test_broker_tp_close_history_ingestion(self):
+        self.seed_trade("T_TP", "50004", direction="BUY", entry=4300.0, sl=4290.0, tp=4310.0)
+        self._ingest_with_history([{
+            "position_id": 50004,
+            "symbol": "XAUUSD",
+            "trade_type": "BUY",
+            "volume": 0.01,
+            "entry_price": 4300.0,
+            "closing_price": 4310.0,
+            "net_profit": 10.0,
+            "closing_time": "2026-09-14T17:45:00Z",
+            "close_reason": "Take Profit Hit",
+        }])
+        with self.connection() as conn:
+            row = dict(conn.execute("SELECT * FROM trades WHERE id='T_TP'").fetchone())
+        self.assertEqual(row["exit_price"], 4310.0)
+        self.assertAlmostEqual(row["profit_loss"], 10.0, places=2)
+        self.assertIn("Take Profit", row["close_reason"])
+
+    def test_exact_exit_price_from_broker_history(self):
+        self.seed_trade("T_EP", "50005", direction="SELL", entry=4302.88, sl=4308.8, tp=4290.8)
+        self._ingest_with_history([{
+            "position_id": 50005,
+            "symbol": "XAUUSD",
+            "trade_type": "SELL",
+            "volume": 0.01,
+            "entry_price": 4302.88,
+            "closing_price": 4310.36,
+            "net_profit": -7.48,
+            "pips": -74.8,
+            "closing_time": "2026-09-14T17:33:02.611298+00:00",
+        }])
+        with self.connection() as conn:
+            row = dict(conn.execute("SELECT * FROM trades WHERE id='T_EP'").fetchone())
+        self.assertEqual(row["exit_price"], 4310.36)
+        self.assertAlmostEqual(row["profit_loss"], -7.48, places=2)
+        self.assertAlmostEqual(row["pips"], -74.8, places=1)
+
+    def test_commission_and_swap_from_broker_history(self):
+        self.seed_trade("T_CS", "50006", direction="BUY", entry=4300.0, sl=4290.0, tp=4315.0)
+        self._ingest_with_history([{
+            "position_id": 50006,
+            "symbol": "XAUUSD",
+            "trade_type": "BUY",
+            "volume": 0.01,
+            "entry_price": 4300.0,
+            "closing_price": 4310.0,
+            "net_profit": 10.0,
+            "commission": -0.72,
+            "swap": -0.35,
+            "closing_time": "2026-09-14T18:00:00Z",
+        }])
+        with self.connection() as conn:
+            row = dict(conn.execute("SELECT * FROM trades WHERE id='T_CS'").fetchone())
+        self.assertEqual(row["commission"], -0.72)
+        self.assertEqual(row["swap"], -0.35)
+
+    def test_canonical_row_matching_by_ticket_id(self):
+        with self.connection() as conn:
+            conn.execute(
+                f"INSERT INTO trades ({TRADE_COLS}) VALUES (?, '', 'DEMO', 'cTrader Cloud Fill (#60001)', '60001', 'XAUUSD', 'SELL', 4300, 4310, 4280, 0.01, 0.0, 0.0, 0.0, 0.0, 'OPEN', NULL, '2026-09-14', NULL)",
+                ("TRD_CANON1",),
+            )
+            conn.commit()
+        db.sync_cbot_closed_trade({
+            "position_id": 60001,
+            "trade_type": "SELL",
+            "closing_price": 4308.0,
+            "net_profit": -8.0,
+            "closing_time": "2026-09-14T17:30:00Z",
+        }, account_id="5908018")
+        with self.connection() as conn:
+            rows = conn.execute("SELECT * FROM trades WHERE ticket_id='60001' OR id='TRD_CANON1'").fetchall()
+        self.assertEqual(len(rows), 1)
+        row = dict(rows[0])
+        self.assertEqual(row["id"], "TRD_CANON1")
+        self.assertEqual(row["exit_price"], 4308.0)
+        self.assertEqual(row["broker_account_id"], "5908018")
+
+    def test_idempotent_repeated_reconciliation(self):
+        self.seed_trade("T_IDEM", "70001", direction="SELL", entry=4300.0, sl=4310.0, tp=4280.0)
+        history_item = {
+            "position_id": 70001,
+            "symbol": "XAUUSD",
+            "trade_type": "SELL",
+            "volume": 0.01,
+            "entry_price": 4300.0,
+            "closing_price": 4309.0,
+            "net_profit": -9.0,
+            "closing_time": "2026-09-14T17:33:02Z",
+        }
+        db.sync_cbot_closed_trade(dict(history_item), account_id="5908018")
+        db.sync_cbot_closed_trade(dict(history_item), account_id="5908018")
+        db.sync_cbot_closed_trade(dict(history_item), account_id="5908018")
+        with self.connection() as conn:
+            rows = conn.execute("SELECT * FROM trades WHERE id='T_IDEM'").fetchall()
+        self.assertEqual(len(rows), 1)
+        row = dict(rows[0])
+        self.assertEqual(row["exit_price"], 4309.0)
+        self.assertEqual(row["profit_loss"], -9.0)
+
+    def test_no_duplicate_row_from_history_sync(self):
+        with self.connection() as conn:
+            conn.execute(
+                f"INSERT INTO trades ({TRADE_COLS}) VALUES (?, '', 'DEMO', '', '80001', 'XAUUSD', 'SELL', 4300, 4310, 4280, 0.01, 0.0, 0.0, 0.0, 0.0, 'OPEN', NULL, '2026-01-01', NULL)",
+                ("TRD_DUP1",),
+            )
+            conn.commit()
+        for _ in range(5):
+            db.sync_cbot_closed_trade({
+                "position_id": 80001,
+                "trade_type": "SELL",
+                "closing_price": 4305.0,
+                "net_profit": -5.0,
+            }, account_id="5908018")
+        with self.connection() as conn:
+            total = conn.execute("SELECT COUNT(*) as cnt FROM trades WHERE ticket_id='80001'").fetchone()["cnt"]
+            self.assertEqual(total, 1)
+
+    def test_account_isolation_history_sync(self):
+        with self.connection() as conn:
+            conn.execute(
+                f"INSERT INTO trades ({TRADE_COLS}) VALUES (?, '', 'DEMO', '', '90001', 'XAUUSD', 'SELL', 4300, 4310, 4280, 0.01, 0.0, 0.0, 0.0, 0.0, 'OPEN', NULL, '2026-01-01', NULL)",
+                ("TRD_ACCT1",),
+            )
+            conn.commit()
+        db.sync_cbot_closed_trade({
+            "position_id": 90001,
+            "trade_type": "SELL",
+            "closing_price": 4306.0,
+            "net_profit": -6.0,
+        }, account_id="5908018")
+        with self.connection() as conn:
+            row = dict(conn.execute("SELECT broker_account_id FROM trades WHERE id='TRD_ACCT1'").fetchone())
+        self.assertEqual(row["broker_account_id"], "5908018")
+
+    def test_unavailable_broker_financials_not_fabricated(self):
+        self.seed_trade("T_UNAVAIL", "95001", direction="BUY", entry=4300.0, sl=4290.0, tp=4315.0)
+        self._ingest_with_history([{
+            "position_id": 95001,
+            "symbol": "XAUUSD",
+            "trade_type": "BUY",
+            "volume": 0.01,
+            "entry_price": 4300.0,
+            "closing_price": 0.0,
+            "net_profit": 0.0,
+            "closing_time": "2026-09-14T18:00:00Z",
+        }])
+        with self.connection() as conn:
+            row = dict(conn.execute("SELECT * FROM trades WHERE id='T_UNAVAIL'").fetchone())
+        self.assertEqual(row["status"], "CLOSED")
+        self.assertIsNone(row["exit_price"])
+        self.assertEqual(row["profit_loss"], 0.0)
+
+
 class TestExecutionIntentDirection(BrokerCloseFixture):
     def test_execution_intent_records_actual_sell_action(self):
         db.record_execution_intent(
