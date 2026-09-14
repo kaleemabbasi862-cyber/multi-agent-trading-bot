@@ -18,6 +18,11 @@ class TestBridgeResponseSafety(unittest.TestCase):
         self.assertIn("catch (IOException ex)", self.source)
         self.assertIn("request abandoned safely", self.source)
 
+    def test_disposed_response_catch_precedes_invalid_operation(self):
+        disposed = self.source.index("catch (ObjectDisposedException ex)")
+        invalid = self.source.index("catch (InvalidOperationException ex)")
+        self.assertLess(disposed, invalid)
+
     def test_error_response_failure_is_contained(self):
         self.assertIn("catch (Exception responseEx)", self.source)
         self.assertIn("Bridge error response could not be sent", self.source)

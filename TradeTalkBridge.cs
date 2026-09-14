@@ -753,13 +753,13 @@ namespace cAlgo.Robots
                     output.Write(buffer, 0, buffer.Length);
                 }
             }
-            catch (InvalidOperationException ex)
-            {
-                Print("Bridge response already submitted; request abandoned safely: " + ex.Message);
-            }
             catch (ObjectDisposedException ex)
             {
                 Print("Bridge response was already closed; request abandoned safely: " + ex.Message);
+            }
+            catch (InvalidOperationException ex)
+            {
+                Print("Bridge response already submitted; request abandoned safely: " + ex.Message);
             }
             catch (HttpListenerException ex)
             {
