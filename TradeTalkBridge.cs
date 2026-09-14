@@ -236,8 +236,15 @@ namespace cAlgo.Robots
             catch (Exception ex)
             {
                 Print("Request processing error: " + ex.Message);
-                response.StatusCode = 500;
-                SendJsonResponse(response, string.Format("{{\"status\":\"ERROR\",\"message\":\"{0}\"}}", EscapeJson(ex.Message)));
+                try
+                {
+                    response.StatusCode = 500;
+                    SendJsonResponse(response, string.Format("{{\"status\":\"ERROR\",\"message\":\"{0}\"}}", EscapeJson(ex.Message)));
+                }
+                catch (Exception responseEx)
+                {
+                    Print("Bridge error response could not be sent: " + responseEx.Message);
+                }
             }
         }
 
@@ -737,11 +744,30 @@ namespace cAlgo.Robots
 
         private void SendJsonResponse(HttpListenerResponse response, string json)
         {
-            byte[] buffer = Encoding.UTF8.GetBytes(json);
-            response.ContentLength64 = buffer.Length;
-            using (var output = response.OutputStream)
+            try
             {
-                output.Write(buffer, 0, buffer.Length);
+                byte[] buffer = Encoding.UTF8.GetBytes(json ?? "{}");
+                response.ContentLength64 = buffer.Length;
+                using (var output = response.OutputStream)
+                {
+                    output.Write(buffer, 0, buffer.Length);
+                }
+            }
+            catch (InvalidOperationException ex)
+            {
+                Print("Bridge response already submitted; request abandoned safely: " + ex.Message);
+            }
+            catch (ObjectDisposedException ex)
+            {
+                Print("Bridge response was already closed; request abandoned safely: " + ex.Message);
+            }
+            catch (HttpListenerException ex)
+            {
+                Print("Bridge client disconnected before response completed: " + ex.Message);
+            }
+            catch (IOException ex)
+            {
+                Print("Bridge response I/O ended before completion: " + ex.Message);
             }
         }
 
