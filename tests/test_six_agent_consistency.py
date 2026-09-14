@@ -24,6 +24,22 @@ class TestSixAgentConsistency(unittest.TestCase):
         self.assertEqual(len(HeadDeskManagerAgent.WEIGHTS), 5)
         self.assertAlmostEqual(sum(HeadDeskManagerAgent.WEIGHTS.values()), 1.0, places=12)
 
+    def test_specialist_metadata_matches_head_desk_weights(self):
+        from app.agents.head_desk_agent import HeadDeskManagerAgent
+        from app.agents.technical_agent import technical_agent
+        from app.agents.fundamental_agent import fundamental_agent
+        from app.agents.liquidity_agent import liquidity_agent
+        from app.agents.quality_agent import quality_agent
+        from app.agents.risk_agent import risk_agent
+        agents = [technical_agent, fundamental_agent, liquidity_agent, quality_agent, risk_agent]
+        for agent in agents:
+            self.assertAlmostEqual(agent.weight, HeadDeskManagerAgent.WEIGHTS[agent.name], places=12)
+
+    def test_consensus_engine_does_not_import_legacy_regime_agent(self):
+        text = (ROOT / "app" / "engine" / "consensus_engine.py").read_text(encoding="utf-8")
+        self.assertNotIn("regime_agent", text)
+        self.assertIn("all_agent_decisions = [", text)
+
     def test_consensus_registry_is_four_of_six(self):
         from app.config import trading_config
         definition = trading_config.get_definition("MIN_CONSENSUS_AGENTS")
