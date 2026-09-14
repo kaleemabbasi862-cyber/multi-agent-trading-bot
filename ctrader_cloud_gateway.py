@@ -108,6 +108,14 @@ def get_active_account() -> Dict[str, Any]:
         }
     return LINKED_ACCOUNTS[acc_id]
 
+
+def get_active_account_id() -> Optional[str]:
+    """Returns the currently validated broker account ID, or None if gateway has not yet received telemetry."""
+    return GATEWAY_STATE.get("account_id") or None
+
+
+
+
 _initial_acc = LINKED_ACCOUNTS.get(DEFAULT_ACCOUNT_ID, LINKED_ACCOUNTS["5908018"])
 
 # Spotware cTrader Open API Configuration
@@ -960,7 +968,7 @@ def _ingest_broker_snapshot(data, transport):
         from app.database.db import get_db_connection, _lock
         with _lock, get_db_connection() as conn:
             trades = conn.execute(
-                "SELECT id, ticket_id, symbol, direction, entry_price FROM trades WHERE status = 'OPEN' AND mode = ? AND (broker_account_id = ? OR broker_account_id IS NULL OR broker_account_id = '')",
+                "SELECT id, ticket_id, symbol, direction, entry_price FROM trades WHERE status = 'OPEN' AND mode = ? AND (broker_account_id = ? OR broker_account_id IS NULL)",
                 (snapshot["account_type"], acc_id),
             ).fetchall()
             ids = {str(p["id"]) for p in snapshot["open_positions"]}

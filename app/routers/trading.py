@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from app.engine.execution_engine import execution_engine
 from app.database.db import db
+import ctrader_cloud_gateway
 import settings_manager
 
 router = APIRouter(prefix="/api", tags=["Trading"])
@@ -46,5 +47,8 @@ async def toggle_auto_trade():
 @router.get("/ledger")
 async def get_trades(limit: int = 100):
     """Returns persistent broker and agent trades history from database."""
-    return db.get_recent_trades(limit=limit)
+    acc_id = ctrader_cloud_gateway.get_active_account_id()
+    if not acc_id:
+        return []
+    return db.get_recent_trades(limit=limit, broker_account_id=acc_id)
 

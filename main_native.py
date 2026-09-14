@@ -346,7 +346,10 @@ app.include_router(execution.router)
 @app.get("/api/ledger")
 async def get_trades_direct(limit: int = 100):
     """Returns persistent broker and agent trades history directly."""
-    return db.get_recent_trades(limit=limit)
+    acc_id = ctrader_cloud_gateway.get_active_account_id()
+    if not acc_id:
+        return []
+    return db.get_recent_trades(limit=limit, broker_account_id=acc_id)
 
 @app.get("/api/status")
 @app.get("/status")

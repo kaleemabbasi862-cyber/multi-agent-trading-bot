@@ -13,6 +13,7 @@ from app.database.models import (
     SystemDecisionState
 )
 from app.database.db import db
+import ctrader_cloud_gateway
 
 from app.agents.technical_agent import technical_agent
 from app.agents.fundamental_agent import fundamental_agent
@@ -141,7 +142,8 @@ class MultiAgentConsensusEngine:
             )
 
         try:
-            hist_stats = db.get_performance_stats()
+            acc_id = ctrader_cloud_gateway.get_active_account_id()
+            hist_stats = db.get_performance_stats(broker_account_id=acc_id) if acc_id else {"closed_trades": 0, "win_rate": 0.0, "net_pnl": 0.0, "gross_profit": 0.0, "gross_loss": 0.0, "profit_factor": 1.0, "avg_trade_pnl": 0.0}
             quality_decision = quality_agent.evaluate(signal, hist_stats, market_data)
         except Exception as e:
             critical_failures.append(f"Quant Brain: ERROR ({e})")

@@ -485,5 +485,65 @@ class TestExecutionIntentDirection(BrokerCloseFixture):
         self.assertEqual(intent["action"], "BUY")
 
 
+class TestAccountIsolation(BrokerCloseFixture):
+    """Account A must never see account B trades in any query."""
+
+    def _seed_verified_trade(self, ident, ticket, account, entry, exit_p, pnl, closed_at):
+        with self.connection() as conn:
+            conn.execute(
+                "INSERT INTO trades "
+                "(id, signal_id, mode, broker_order_id, ticket_id, symbol, direction, "
+                "entry_price, exit_price, stop_loss, take_profit, volume, profit_loss, pips, "
+                "commission, swap, status, close_reason, opened_at, closed_at, "
+                "is_broker_verified, provenance, broker_account_id) "
+                "VALUES (?, '', 'DEMO', '', ?, 'XAUUSD', 'BUY', ?, ?, 0, 0, 0.01, ?, 0.0, 0.0, 0.0, 'CLOSED', 'Broker-Side Close', '2026-01-01', ?, 1, 'BROKER_DEMO_VERIFIED', ?)",
+                (ident, ticket, entry, exit_p, pnl, closed_at, account),
+            )
+            conn.commit()
+
+    def test_account_a_does_not_see_account_b_trades(self):
+        self._seed_verified_trade("T_A1", "100001", "5908018", 4300.0, 4310.0, 10.0, "2026-09-14T10:00:00Z")
+        self._seed_verified_trade("T_B1", "200001", "9999999", 4400.0, 4410.0, 10.0, "2026-09-14T11:00:00Z")
+
+        trades_a = db.get_recent_trades(limit=50, broker_account_id="5908018")
+        tickets_a = [t["ticket_id"] for t in trades_a]
+        self.assertIn("100001", tickets_a)
+        self.assertNotIn("200001", tickets_a)
+
+        trades_b = db.get_recent_trades(limit=50, broker_account_id="9999999")
+        tickets_b = [t["ticket_id"] for t in trades_b]
+        self.assertIn("200001", tickets_b)
+        self.assertNotIn("100001", tickets_b)
+
+    def test_no_account_id_returns_empty(self):
+        self._seed_verified_trade("T_C1", "300001", "5908018", 4300.0, 4310.0, 10.0, "2026-09-14T10:00:00Z")
+        trades = db.get_recent_trades(limit=50, broker_account_id=None)
+        self.assertEqual(trades, [])
+        trades2 = db.get_recent_trades(limit=50)
+        self.assertEqual(trades2, [])
+
+    def test_performance_stats_isolated_by_account(self):
+        self._seed_verified_trade("T_PA1", "400001", "5908018", 4300.0, 4310.0, 10.0, "2026-09-14T10:00:00Z")
+        self._seed_verified_trade("T_PB1", "500001", "9999999", 4400.0, 4410.0, 10.0, "2026-09-14T11:00:00Z")
+
+        stats_a = db.get_performance_stats(broker_account_id="5908018")
+        self.assertEqual(stats_a["closed_trades"], 1)
+        self.assertAlmostEqual(stats_a["net_pnl"], 10.0)
+
+        stats_b = db.get_performance_stats(broker_account_id="9999999")
+        self.assertEqual(stats_b["closed_trades"], 1)
+        self.assertAlmostEqual(stats_b["net_pnl"], 10.0)
+
+    def test_performance_stats_no_account_returns_zeros(self):
+        stats = db.get_performance_stats(broker_account_id=None)
+        self.assertEqual(stats["closed_trades"], 0)
+        self.assertEqual(stats["net_pnl"], 0.0)
+
+    def test_empty_account_string_returns_empty(self):
+        self._seed_verified_trade("T_E1", "600001", "5908018", 4300.0, 4310.0, 10.0, "2026-09-14T10:00:00Z")
+        trades = db.get_recent_trades(limit=50, broker_account_id="")
+        self.assertEqual(trades, [])
+
+
 if __name__ == "__main__":
     unittest.main()

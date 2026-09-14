@@ -430,9 +430,12 @@ class DatabaseManager:
     def get_recent_trades(limit: int = 50, broker_account_id: Optional[str] = None, is_broker_verified_only: bool = True) -> List[Dict[str, Any]]:
         """
         Returns recent trades. Fail-closed: by default returns ONLY authentic, verified broker trades
-        for the active broker account.
+        for the specified broker account. If no account_id is provided, returns no broker-scoped rows
+        to prevent cross-account leakage.
         """
-        acc_id = broker_account_id or getattr(settings, "CTRADER_ACCOUNT_ID", "5908018")
+        if not broker_account_id:
+            return []
+        acc_id = broker_account_id
         with get_db_connection() as conn:
             if is_broker_verified_only:
                 rows = conn.execute(
@@ -445,7 +448,7 @@ class DatabaseManager:
                         FROM trades
                         WHERE is_broker_verified = 1 
                           AND provenance IN ('BROKER_DEMO_VERIFIED', 'BROKER_LIVE_VERIFIED')
-                          AND (broker_account_id = ? OR broker_account_id IS NULL OR broker_account_id = '')
+                          AND (broker_account_id = ? OR broker_account_id IS NULL)
                     ) WHERE rn = 1
                     ORDER BY COALESCE(closed_at, opened_at) DESC LIMIT ?
                     """, (acc_id, limit)
@@ -475,10 +478,13 @@ class DatabaseManager:
     @staticmethod
     def get_performance_stats(broker_account_id: Optional[str] = None) -> Dict[str, Any]:
         """
-        Calculates performance statistics ONLY from authentic broker-verified closed trades.
-        Excludes TEST, PAPER, SIMULATED, BACKTEST, and UNKNOWN provenance.
+        Calculates performance statistics ONLY from authentic broker-verified closed trades
+        for the specified broker account. If no account_id is provided, returns zeroed stats
+        to prevent cross-account leakage.
         """
-        acc_id = broker_account_id or getattr(settings, "CTRADER_ACCOUNT_ID", "5908018")
+        if not broker_account_id:
+            return {"closed_trades": 0, "win_rate": 0.0, "net_pnl": 0.0, "gross_profit": 0.0, "gross_loss": 0.0, "profit_factor": 1.0, "avg_trade_pnl": 0.0}
+        acc_id = broker_account_id
         with get_db_connection() as conn:
             total_signals = conn.execute("SELECT COUNT(*) as c FROM signals").fetchone()["c"]
             approved_signals = conn.execute("SELECT COUNT(*) as c FROM signals WHERE status = 'APPROVED'").fetchone()["c"]
@@ -495,7 +501,7 @@ class DatabaseManager:
                     WHERE status = 'CLOSED'
                       AND is_broker_verified = 1
                       AND provenance IN ('BROKER_DEMO_VERIFIED', 'BROKER_LIVE_VERIFIED')
-                      AND (broker_account_id = ? OR broker_account_id IS NULL OR broker_account_id = '')
+                      AND (broker_account_id = ? OR broker_account_id IS NULL)
                 )
                 SELECT 
                     COUNT(*) as total_trades,

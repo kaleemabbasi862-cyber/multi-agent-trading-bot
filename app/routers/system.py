@@ -37,7 +37,8 @@ class JournalEntryRequest(BaseModel):
 @router.get("/system/health")
 async def get_system_health():
     cbot_stat = cbot_bridge.get_cbot_status()
-    perf_stat = db.get_performance_stats()
+    acc_id = ctrader_cloud_gateway.get_active_account_id()
+    perf_stat = db.get_performance_stats(broker_account_id=acc_id) if acc_id else {"closed_trades": 0, "win_rate": 0.0, "net_pnl": 0.0, "gross_profit": 0.0, "gross_loss": 0.0, "profit_factor": 1.0, "avg_trade_pnl": 0.0}
     gw_stat = ctrader_cloud_gateway.get_gateway_status()
     
     return {
