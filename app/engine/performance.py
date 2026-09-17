@@ -10,7 +10,17 @@ class PerformanceAnalyticsEngine:
             # 1. Trade Metrics & Quantitative Analytics
             quant_metrics = quant_engine.calculate_full_performance()
             
-            trade_rows = conn.execute("SELECT * FROM trades WHERE status = 'CLOSED' ORDER BY closed_at ASC").fetchall()
+            trade_rows = conn.execute("""
+            WITH dedup_trades AS (
+                SELECT *, ROW_NUMBER() OVER (
+                    PARTITION BY CASE WHEN ticket_id IS NOT NULL AND ticket_id != '' THEN ticket_id ELSE id END 
+                    ORDER BY CASE WHEN id LIKE 'TRD_%' THEN 1 ELSE 2 END, rowid DESC
+                ) as rn
+                FROM trades 
+                WHERE status = 'CLOSED'
+            )
+            SELECT * FROM dedup_trades WHERE rn = 1 ORDER BY closed_at ASC
+            """).fetchall()
             trades = [dict(r) for r in trade_rows]
             
             # 2. Confidence Calibration Buckets

@@ -19,6 +19,7 @@ class SetupClassifier:
         "FVG_RETRACEMENT",
         "BREAKOUT_RETEST",
         "STRUCTURE_REVERSAL",
+        "PROVISIONAL_INTRADAY_EXPANSION",
         "NO_VALID_SETUP"
     ]
 
@@ -52,11 +53,18 @@ class SetupClassifier:
         macro = mtf_data.get("consensus_trend", "NEUTRAL")
         bullish_structure = trend == "BULLISH" or structure == "BULLISH_TREND" or "BULLISH" in latest_event
         bearish_structure = trend == "BEARISH" or structure == "BEARISH_TREND" or "BEARISH" in latest_event
-        if macro == "BULLISH" and bullish_structure:
+        intraday = mtf_data.get("intraday_trend", "NO_TRADE_CONFLICT")
+        intraday_aligned = bool(mtf_data.get("intraday_aligned", False))
+
+        if intraday_aligned and intraday == "BULLISH" and (bullish_structure or structure in ("RANGE", "TRANSITION", "NORMAL")):
+            regime, allowed_direction = "INTRADAY_BULL_TREND", "BUY"
+        elif intraday_aligned and intraday == "BEARISH" and (bearish_structure or structure in ("RANGE", "TRANSITION", "NORMAL")):
+            regime, allowed_direction = "INTRADAY_BEAR_TREND", "SELL"
+        elif macro == "BULLISH" and bullish_structure:
             regime, allowed_direction = "BULL_TREND", "BUY"
         elif macro == "BEARISH" and bearish_structure:
             regime, allowed_direction = "BEAR_TREND", "SELL"
-        elif macro == "NO_TRADE_CONFLICT":
+        elif macro == "NO_TRADE_CONFLICT" and not intraday_aligned:
             regime, allowed_direction = "NO_TRADE", "FLAT"
         elif structure == "RANGE":
             regime, allowed_direction = "RANGE", "BOTH"
@@ -66,13 +74,13 @@ class SetupClassifier:
         # 1. Liquidity reversal is eligible only when it does not fight a confirmed trend.
         if sweeps and regime != "NO_TRADE":
             recent_sweep = sweeps[-1]
-            if recent_sweep["type"] == "BULLISH_LIQUIDITY_SWEEP" and allowed_direction in ("BUY", "BOTH") and zone in ("DISCOUNT", "DEEP_DISCOUNT"):
+            if recent_sweep["type"] == "BULLISH_LIQUIDITY_SWEEP" and allowed_direction in ("BUY", "BOTH") and zone in ("DISCOUNT", "DEEP_DISCOUNT", "EQUILIBRIUM"):
                 setup_type = "LIQUIDITY_SWEEP_REVERSAL"
                 direction = "BUY"
                 confidence = 88.0
                 reasons.append(recent_sweep["description"])
                 reasons.append(f"Favorable buying location in {zone} zone.")
-            elif recent_sweep["type"] == "BEARISH_LIQUIDITY_SWEEP" and allowed_direction in ("SELL", "BOTH") and zone in ("PREMIUM", "EXTREME_PREMIUM"):
+            elif recent_sweep["type"] == "BEARISH_LIQUIDITY_SWEEP" and allowed_direction in ("SELL", "BOTH") and zone in ("PREMIUM", "EXTREME_PREMIUM", "EQUILIBRIUM"):
                 setup_type = "LIQUIDITY_SWEEP_REVERSAL"
                 direction = "SELL"
                 confidence = 88.0
@@ -86,13 +94,13 @@ class SetupClassifier:
                 ob_low = ob["low"]
                 ob_type = ob["type"]
 
-                if ob_type == "BULLISH_ORDER_BLOCK" and (ob_low <= current_price <= ob_high * 1.002):
+                if ob_type == "BULLISH_ORDER_BLOCK" and allowed_direction in ("BUY", "BOTH") and (ob_low <= current_price <= ob_high * 1.002):
                     setup_type = "OB_REACTION"
                     direction = "BUY"
                     confidence = 82.0
                     reasons.append(f"Tapping Bullish Order Block at ${ob_low:.2f}-${ob_high:.2f} (Displacement: ${ob.get('displacement', 0):.2f})")
                     break
-                elif ob_type == "BEARISH_ORDER_BLOCK" and (ob_low * 0.998 <= current_price <= ob_high):
+                elif ob_type == "BEARISH_ORDER_BLOCK" and allowed_direction in ("SELL", "BOTH") and (ob_low * 0.998 <= current_price <= ob_high):
                     setup_type = "OB_REACTION"
                     direction = "SELL"
                     confidence = 82.0
@@ -106,13 +114,13 @@ class SetupClassifier:
                 bottom = fvg["bottom"]
                 fvg_type = fvg["type"]
 
-                if fvg_type == "BULLISH_FVG" and bottom <= current_price <= top and zone in ("DISCOUNT", "DEEP_DISCOUNT", "EQUILIBRIUM"):
+                if fvg_type == "BULLISH_FVG" and allowed_direction in ("BUY", "BOTH") and bottom <= current_price <= top and zone in ("DISCOUNT", "DEEP_DISCOUNT", "EQUILIBRIUM"):
                     setup_type = "FVG_RETRACEMENT"
                     direction = "BUY"
                     confidence = 78.0
                     reasons.append(f"Retracing into Bullish Fair Value Gap [${bottom:.2f} - ${top:.2f}] (Fill: {fvg.get('fill_pct', 0)}%)")
                     break
-                elif fvg_type == "BEARISH_FVG" and bottom <= current_price <= top and zone in ("PREMIUM", "EXTREME_PREMIUM", "EQUILIBRIUM"):
+                elif fvg_type == "BEARISH_FVG" and allowed_direction in ("SELL", "BOTH") and bottom <= current_price <= top and zone in ("PREMIUM", "EXTREME_PREMIUM", "EQUILIBRIUM"):
                     setup_type = "FVG_RETRACEMENT"
                     direction = "SELL"
                     confidence = 78.0
@@ -121,33 +129,45 @@ class SetupClassifier:
 
         # 4. Check STRUCTURE_REVERSAL (CHoCH)
         if setup_type == "NO_VALID_SETUP" and "CHOCH" in latest_event:
-            if latest_event == "BULLISH_CHOCH" and zone in ("DISCOUNT", "DEEP_DISCOUNT"):
+            if latest_event == "BULLISH_CHOCH" and allowed_direction in ("BUY", "BOTH") and zone in ("DISCOUNT", "DEEP_DISCOUNT", "EQUILIBRIUM"):
                 setup_type = "STRUCTURE_REVERSAL"
                 direction = "BUY"
                 confidence = 80.0
                 reasons.append("Bullish Change of Character (CHOCH) confirmed on swing structure.")
-            elif latest_event == "BEARISH_CHOCH" and zone in ("PREMIUM", "EXTREME_PREMIUM"):
+            elif latest_event == "BEARISH_CHOCH" and allowed_direction in ("SELL", "BOTH") and zone in ("PREMIUM", "EXTREME_PREMIUM", "EQUILIBRIUM"):
                 setup_type = "STRUCTURE_REVERSAL"
                 direction = "SELL"
                 confidence = 80.0
                 reasons.append("Bearish Change of Character (CHOCH) confirmed on swing structure.")
 
-        # 5. Check TREND_CONTINUATION (BOS + Trend)
+        # 5. Check TREND_CONTINUATION (BOS + Trend / Intraday Alignment)
         if setup_type == "NO_VALID_SETUP":
-            if trend == "BULLISH" and structure == "BULLISH_TREND" and zone in ("DISCOUNT", "EQUILIBRIUM"):
+            if ((trend == "BULLISH" and structure == "BULLISH_TREND") or (intraday == "BULLISH" and intraday_aligned)) and allowed_direction in ("BUY", "BOTH") and zone in ("DISCOUNT", "EQUILIBRIUM", "DEEP_DISCOUNT"):
                 setup_type = "TREND_CONTINUATION"
                 direction = "BUY"
-                confidence = 75.0
-                reasons.append("Bullish Trend Continuation (Higher Highs & Higher Lows) in discount/equilibrium.")
-            elif trend == "BEARISH" and structure == "BEARISH_TREND" and zone in ("PREMIUM", "EQUILIBRIUM"):
+                confidence = 78.0 if intraday_aligned else 75.0
+                reasons.append("Bullish Trend Continuation (Intraday Alignment & Discount/Equilibrium zone).")
+            elif ((trend == "BEARISH" and structure == "BEARISH_TREND") or (intraday == "BEARISH" and intraday_aligned)) and allowed_direction in ("SELL", "BOTH") and zone in ("PREMIUM", "EQUILIBRIUM", "EXTREME_PREMIUM"):
                 setup_type = "TREND_CONTINUATION"
                 direction = "SELL"
-                confidence = 75.0
-                reasons.append("Bearish Trend Continuation (Lower Highs & Lower Lows) in premium/equilibrium.")
+                confidence = 78.0 if intraday_aligned else 75.0
+                reasons.append("Bearish Trend Continuation (Intraday Alignment & Premium/Equilibrium zone).")
 
+        # 6. Provisional Intraday Candidate
         if setup_type == "NO_VALID_SETUP":
-            reasons.append("Market is consolidating or lacking high-probability institutional displacement.")
-            confidence = 35.0
+            if intraday_aligned and intraday == "BULLISH" and allowed_direction in ("BUY", "BOTH"):
+                setup_type = "PROVISIONAL_INTRADAY_EXPANSION"
+                direction = "BUY"
+                confidence = 72.0
+                reasons.append("Provisional Bullish candidate formed by 2/3 intraday timeframe alignment (M5/M15/H1).")
+            elif intraday_aligned and intraday == "BEARISH" and allowed_direction in ("SELL", "BOTH"):
+                setup_type = "PROVISIONAL_INTRADAY_EXPANSION"
+                direction = "SELL"
+                confidence = 72.0
+                reasons.append("Provisional Bearish candidate formed by 2/3 intraday timeframe alignment (M5/M15/H1).")
+            else:
+                reasons.append("Market is consolidating or lacking high-probability institutional displacement.")
+                confidence = 35.0
 
         # Final fail-closed direction guard. A setup may never oppose a confirmed regime.
         if allowed_direction not in ("BOTH", direction) and direction in ("BUY", "SELL"):

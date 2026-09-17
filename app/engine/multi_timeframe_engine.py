@@ -117,10 +117,57 @@ class MultiTimeframeEngine:
             consensus_trend = "NO_TRADE_CONFLICT"
             confluence_score = round(max(final_bull, final_bear), 1)
 
+        # Intraday hierarchy: H1 defines primary trend/bias, M15 defines setup, M5 confirms entry-trigger.
+        # D1/H4 serve as macro context/filters that apply confidence penalties rather than hard-freezing setups.
+        h1_trend = str(breakdown.get("H1", {}).get("trend", "NEUTRAL"))
+        m15_trend = str(breakdown.get("M15", {}).get("trend", "NEUTRAL"))
+        m5_trend = str(breakdown.get("M5", {}).get("trend", "NEUTRAL"))
+        directional = ("BULLISH", "BEARISH")
+
+        intraday_tfs = [h1_trend, m15_trend, m5_trend]
+        bull_count = sum(1 for t in intraday_tfs if t == "BULLISH")
+        bear_count = sum(1 for t in intraday_tfs if t == "BEARISH")
+
+        intraday_trend = "NO_TRADE_CONFLICT"
+        intraday_aligned = False
+        is_strong_alignment = False
+
+        if bull_count >= 2:
+            intraday_trend = "BULLISH"
+            intraday_aligned = True
+            is_strong_alignment = (h1_trend == "BULLISH" and m15_trend == "BULLISH" and m5_trend == "BULLISH")
+        elif bear_count >= 2:
+            intraday_trend = "BEARISH"
+            intraday_aligned = True
+            is_strong_alignment = (h1_trend == "BEARISH" and m15_trend == "BEARISH" and m5_trend == "BEARISH")
+        elif h1_trend in directional and m15_trend in (h1_trend, "NEUTRAL") and m5_trend in (h1_trend, "NEUTRAL"):
+            intraday_trend = h1_trend
+            intraday_aligned = True
+            is_strong_alignment = False
+
+        intraday_weights = {"H1": 0.50, "M15": 0.35, "M5": 0.15}
+        intraday_score = round(sum(
+            float(breakdown.get(tf, {}).get("score", 0.0)) * weight
+            for tf, weight in intraday_weights.items()
+        ), 1)
+
+        macro_opposition = sum(
+            1 for tf in ("D1", "H4")
+            if intraday_trend in directional
+            and breakdown.get(tf, {}).get("trend") in directional
+            and breakdown.get(tf, {}).get("trend") != intraday_trend
+        )
+
         return {
             "consensus_trend": consensus_trend,
             "confluence_score": confluence_score,
-            "is_aligned": consensus_trend in ("BULLISH", "BEARISH") and confluence_score >= 70.0,
+            "is_aligned": (consensus_trend in ("BULLISH", "BEARISH") or intraday_aligned) and (confluence_score >= 65.0 or intraday_score >= 65.0),
+            "intraday_trend": intraday_trend,
+            "intraday_score": intraday_score,
+            "intraday_aligned": intraday_aligned,
+            "is_strong_alignment": is_strong_alignment,
+            "intraday_alignment_count": max(bull_count, bear_count),
+            "macro_opposition_count": macro_opposition,
             "timeframe_breakdown": breakdown
         }
 

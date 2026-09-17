@@ -7,7 +7,17 @@ class QuantitativePerformanceEngine:
     @staticmethod
     def calculate_full_performance(trades_filter_mode: Optional[str] = None) -> Dict[str, Any]:
         with get_db_connection() as conn:
-            query = "SELECT * FROM trades WHERE status = 'CLOSED'"
+            query = """
+            WITH dedup_trades AS (
+                SELECT *, ROW_NUMBER() OVER (
+                    PARTITION BY CASE WHEN ticket_id IS NOT NULL AND ticket_id != '' THEN ticket_id ELSE id END 
+                    ORDER BY CASE WHEN id LIKE 'TRD_%' THEN 1 ELSE 2 END, rowid DESC
+                ) as rn
+                FROM trades 
+                WHERE status = 'CLOSED'
+            )
+            SELECT * FROM dedup_trades WHERE rn = 1
+            """
             params = []
             if trades_filter_mode and trades_filter_mode.upper() != "ALL":
                 query += " AND mode = ?"
@@ -172,7 +182,17 @@ class QuantitativePerformanceEngine:
     @staticmethod
     def generate_equity_curve(initial_balance: float = 1000.0) -> List[Dict[str, Any]]:
         with get_db_connection() as conn:
-            rows = conn.execute("SELECT id, profit_loss, closed_at FROM trades WHERE status = 'CLOSED' ORDER BY closed_at ASC").fetchall()
+            rows = conn.execute("""
+            WITH dedup_trades AS (
+                SELECT *, ROW_NUMBER() OVER (
+                    PARTITION BY CASE WHEN ticket_id IS NOT NULL AND ticket_id != '' THEN ticket_id ELSE id END 
+                    ORDER BY CASE WHEN id LIKE 'TRD_%' THEN 1 ELSE 2 END, rowid DESC
+                ) as rn
+                FROM trades 
+                WHERE status = 'CLOSED'
+            )
+            SELECT id, profit_loss, closed_at FROM dedup_trades WHERE rn = 1 ORDER BY closed_at ASC
+            """).fetchall()
             trades = [dict(r) for r in rows]
 
         curve = [{
@@ -214,7 +234,17 @@ class QuantitativePerformanceEngine:
     @staticmethod
     def get_breakdown_analytics() -> Dict[str, Any]:
         with get_db_connection() as conn:
-            trade_rows = conn.execute("SELECT * FROM trades WHERE status = 'CLOSED'").fetchall()
+            trade_rows = conn.execute("""
+            WITH dedup_trades AS (
+                SELECT *, ROW_NUMBER() OVER (
+                    PARTITION BY CASE WHEN ticket_id IS NOT NULL AND ticket_id != '' THEN ticket_id ELSE id END 
+                    ORDER BY CASE WHEN id LIKE 'TRD_%' THEN 1 ELSE 2 END, rowid DESC
+                ) as rn
+                FROM trades 
+                WHERE status = 'CLOSED'
+            )
+            SELECT * FROM dedup_trades WHERE rn = 1
+            """).fetchall()
             trades = [dict(r) for r in trade_rows]
 
             # Journal mapping for Market Regime

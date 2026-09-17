@@ -26,6 +26,8 @@ def get_cbot_status() -> Dict[str, Any]:
 
 def get_cbot_live_price(symbol: str = "XAUUSD") -> Optional[Dict[str, Any]]:
     """Returns latest live price from cloud gateway."""
+    if time.time() - ctrader_cloud_gateway.GATEWAY_STATE.get("last_bridge_sync_timestamp", 0) > 2.0:
+        ctrader_cloud_gateway.sync_local_cbot_telemetry(timeout_sec=1.5)
     return ctrader_cloud_gateway.get_live_price(symbol, allow_stale=True)
 
 def dispatch_local_bridge_order(symbol: str, side: str, volume: float = 0.01, sl_pips: Optional[float] = None, tp_pips: Optional[float] = None, sl_price: Optional[float] = None, tp_price: Optional[float] = None, comment: str = "TradeTalk AI") -> Dict[str, Any]:

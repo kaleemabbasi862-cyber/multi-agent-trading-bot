@@ -597,9 +597,9 @@ async def get_pretrade_status(symbol: Optional[str] = None):
 
     # Compute on-demand if not cached or expired
     market_data = get_market_snapshot(cur_sym, force_refresh=False)
-    p = float(market_data.get("price", 2850.0))
-    bid = float(market_data.get("bid", p))
-    ask = float(market_data.get("ask", p))
+    p = float(market_data.get("price") or 0.0)
+    bid = float(market_data.get("bid") or p)
+    ask = float(market_data.get("ask") or p)
     spread = float(market_data.get("spread", 0.35))
     pip_size = float(market_data.get("pip_size", 0.01))
     spread_pips = round(spread / (pip_size * 10.0 if "XAU" in cur_sym else pip_size), 2)
@@ -619,9 +619,9 @@ async def trigger_pretrade_scan(symbol: Optional[str] = None):
     """Forces an immediate fresh Pre-Trade Intelligence scan."""
     cur_sym = symbol or settings_manager.get_active_symbol() or "XAUUSD"
     market_data = get_market_snapshot(cur_sym, force_refresh=True)
-    p = float(market_data.get("price", 2850.0))
-    bid = float(market_data.get("bid", p))
-    ask = float(market_data.get("ask", p))
+    p = float(market_data.get("price") or 0.0)
+    bid = float(market_data.get("bid") or p)
+    ask = float(market_data.get("ask") or p)
     spread = float(market_data.get("spread", 0.35))
     pip_size = float(market_data.get("pip_size", 0.01))
     spread_pips = round(spread / (pip_size * 10.0 if "XAU" in cur_sym else pip_size), 2)
