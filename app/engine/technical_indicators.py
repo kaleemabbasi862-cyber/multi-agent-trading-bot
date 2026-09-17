@@ -159,48 +159,58 @@ class TechnicalIndicators:
 
     @staticmethod
     def calculate_adx(candles: List[Dict[str, Any]], period: int = 14) -> Dict[str, float]:
-        """Calculates Average Directional Index (ADX), +DI, and -DI."""
-        if len(candles) < period + 1:
-            return {"adx": 25.0, "plus_di": 25.0, "minus_di": 25.0, "trend_strength": "MODERATE"}
+        """Calculate Wilder's ADX, +DI and -DI from chronological candles."""
+        # A first Wilder ADX needs 2 * period candles (period TR/DM values to
+        # seed smoothing, then period DX values to seed ADX). Return an explicit
+        # insufficient-data state so the pre-trade caller can fail closed.
+        if len(candles) < (period * 2):
+            return {"adx": 0.0, "plus_di": 0.0, "minus_di": 0.0, "trend_strength": "INSUFFICIENT_DATA"}
 
-        tr_list, plus_dm_list, minus_dm_list = [], [], []
+        tr_values, plus_dm_values, minus_dm_values = [], [], []
         for i in range(1, len(candles)):
-            h = float(candles[i]["high"])
-            l = float(candles[i]["low"])
-            ph = float(candles[i - 1]["high"])
-            pl = float(candles[i - 1]["low"])
-            pc = float(candles[i - 1]["close"])
+            high = float(candles[i]["high"])
+            low = float(candles[i]["low"])
+            prev_high = float(candles[i - 1]["high"])
+            prev_low = float(candles[i - 1]["low"])
+            prev_close = float(candles[i - 1]["close"])
 
-            tr = max(h - l, abs(h - pc), abs(l - pc))
-            tr_list.append(tr)
+            tr_values.append(max(high - low, abs(high - prev_close), abs(low - prev_close)))
+            up_move = high - prev_high
+            down_move = prev_low - low
+            plus_dm_values.append(up_move if up_move > down_move and up_move > 0.0 else 0.0)
+            minus_dm_values.append(down_move if down_move > up_move and down_move > 0.0 else 0.0)
 
-            up_move = h - ph
-            down_move = pl - l
+        smooth_tr = sum(tr_values[:period])
+        smooth_plus = sum(plus_dm_values[:period])
+        smooth_minus = sum(minus_dm_values[:period])
+        dx_values = []
+        plus_di = minus_di = 0.0
 
-            plus_dm = up_move if (up_move > down_move and up_move > 0) else 0.0
-            minus_dm = down_move if (down_move > up_move and down_move > 0) else 0.0
+        # Wilder smoothing: previous smoothed sum - 1/period + current value.
+        for idx in range(period - 1, len(tr_values)):
+            if idx >= period:
+                smooth_tr = smooth_tr - (smooth_tr / period) + tr_values[idx]
+                smooth_plus = smooth_plus - (smooth_plus / period) + plus_dm_values[idx]
+                smooth_minus = smooth_minus - (smooth_minus / period) + minus_dm_values[idx]
 
-            plus_dm_list.append(plus_dm)
-            minus_dm_list.append(minus_dm)
+            if smooth_tr <= 0.0:
+                plus_di = minus_di = 0.0
+            else:
+                plus_di = (smooth_plus / smooth_tr) * 100.0
+                minus_di = (smooth_minus / smooth_tr) * 100.0
+            di_sum = plus_di + minus_di
+            dx_values.append((abs(plus_di - minus_di) / di_sum) * 100.0 if di_sum > 0.0 else 0.0)
 
-        smooth_tr = sum(tr_list[-period:]) + 1e-6
-        smooth_plus = sum(plus_dm_list[-period:])
-        smooth_minus = sum(minus_dm_list[-period:])
+        if len(dx_values) < period:
+            return {"adx": 0.0, "plus_di": round(plus_di, 2), "minus_di": round(minus_di, 2), "trend_strength": "INSUFFICIENT_DATA"}
 
-        plus_di = (smooth_plus / smooth_tr) * 100.0
-        minus_di = (smooth_minus / smooth_tr) * 100.0
+        adx = sum(dx_values[:period]) / period
+        for dx in dx_values[period:]:
+            adx = ((adx * (period - 1)) + dx) / period
+        adx = round(adx, 2)
 
-        dx = (abs(plus_di - minus_di) / (plus_di + minus_di + 1e-6)) * 100.0
-        adx = round(dx, 2)
-
-        strength = "STRONG" if adx >= 25.0 else ("VERY_STRONG" if adx >= 40.0 else "WEAK")
-
-        return {
-            "adx": adx,
-            "plus_di": round(plus_di, 2),
-            "minus_di": round(minus_di, 2),
-            "trend_strength": strength
-        }
+        strength = "VERY_STRONG" if adx >= 40.0 else ("STRONG" if adx >= 25.0 else "WEAK")
+        return {"adx": adx, "plus_di": round(plus_di, 2), "minus_di": round(minus_di, 2), "trend_strength": strength}
 
     @staticmethod
     def calculate_vwap(candles: List[Dict[str, Any]]) -> float:

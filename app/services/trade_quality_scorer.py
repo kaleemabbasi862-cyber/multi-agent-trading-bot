@@ -81,7 +81,12 @@ class TradeQualityScorer:
             smc_score = 14.0
         else:
             smc_score = 0.0
-        breakdown["smc_confluence"] = {"score": smc_score, "max": 20.0, "details": f"Setup model: {setup_type}"}
+        # SMC model points must respect current structure/event direction.
+        smc_direction = "BULLISH" if structure == "BULLISH_TREND" or "BULLISH" in latest_event else ("BEARISH" if structure == "BEARISH_TREND" or "BEARISH" in latest_event else "NEUTRAL")
+        direction_conflict = (direction == "BUY" and smc_direction == "BEARISH") or (direction == "SELL" and smc_direction == "BULLISH")
+        if direction_conflict:
+            smc_score = min(smc_score, 6.0)
+        breakdown["smc_confluence"] = {"score": smc_score, "max": 20.0, "details": f"Setup model: {setup_type}; SMC direction: {smc_direction}"}
         total_score += smc_score
 
         # 4. Dealing Range / Premium-Discount Location (15 pts max)

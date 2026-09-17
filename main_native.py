@@ -35,7 +35,8 @@ from app.database.models import SignalPayload
 from app.database.db import db
 from app.engine.consensus_engine import consensus_engine
 from app.engine.execution_engine import execution_engine
-from app.services.market_feed_v2 import get_market_snapshot, get_gold_market_snapshot, get_multi_timeframe_candles
+from app.services.market_feed_v2 import get_market_snapshot, get_gold_market_snapshot
+from app.services.broker_candle_feed import get_broker_multi_timeframe_candles
 from app.services.pretrade_intelligence_engine import pretrade_intelligence_engine
 from app.services.economic_calendar import economic_calendar
 from app.services.webhook_security import webhook_security
@@ -45,6 +46,14 @@ import settings_manager
 import copilot_agent
 
 PRETRADE_LATEST_STATE: Dict[str, Any] = {}
+
+def get_multi_timeframe_candles(symbol: str = "XAUUSD") -> Dict[str, Any]:
+    """Broker-authoritative MTF feed. Missing broker candles fail closed."""
+    try:
+        return get_broker_multi_timeframe_candles(symbol)
+    except Exception as exc:
+        logger.warning("Broker candle feed unavailable; pre-trade scan will fail closed: %s", exc)
+        return {}
 
 
 # Initialize FastAPI App
@@ -767,6 +776,16 @@ async def serve_dashboard():
         with open(html_path, "r", encoding="utf-8") as f:
             return HTMLResponse(content=f.read(), headers=headers)
     return HTMLResponse(content="<h1>TradeTalk AI Dashboard</h1>", headers=headers)
+
+@app.get("/api/desktop-health")
+async def desktop_health_check():
+    """Fast process identity check; never waits for broker telemetry."""
+    return {
+        "status": "healthy",
+        "service": settings.PROJECT_NAME,
+        "version": settings.VERSION,
+        "desktop_api": True,
+    }
 
 @app.get("/health")
 async def health_check():

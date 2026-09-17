@@ -3,6 +3,11 @@ from fastapi.testclient import TestClient
 from main_native import app
 from app.services.ctrader_execution_service import ctrader_execution_service
 import ctrader_cloud_gateway
+from unittest.mock import patch, Mock
+import os
+from tests.broker_fixtures import install_state
+
+BROKER_QUOTE = {"bid": 2749.9, "ask": 2750.0, "price": 2749.95, "spread": 0.1, "quote_at": "2026-09-16T12:00:00+00:00"}
 
 class TestPhase9CTraderExecution(unittest.TestCase):
     """
@@ -16,16 +21,23 @@ class TestPhase9CTraderExecution(unittest.TestCase):
         ctrader_cloud_gateway.switch_active_account("5908018")
 
     def setUp(self):
+        self._testing_prev = os.environ.get("TESTING")
+        os.environ["TESTING"] = "0"
         # Reset open positions, cooldown state, and circuit breaker before each test
         ctrader_cloud_gateway.reset_cooldown()
         ctrader_cloud_gateway.GATEWAY_STATE["open_positions"] = []
-        ctrader_cloud_gateway.GATEWAY_STATE["local_bridge_online"] = False
+        install_state(ctrader_cloud_gateway, bid=2749.9, ask=2750.0)
         ctrader_cloud_gateway.get_active_account()["open_positions"] = []
         ctrader_execution_service._positions_cache.clear()
         from app.services.risk_engine import risk_engine
         risk_engine.reset_circuit_breaker()
 
-    def test_01_market_order_execution(self):
+    def tearDown(self):
+        if self._testing_prev is None: os.environ.pop("TESTING", None)
+        else: os.environ["TESTING"] = self._testing_prev
+
+    @patch("ctrader_cloud_gateway.get_live_price", return_value=BROKER_QUOTE)
+    def test_01_market_order_execution(self, _quote):
         """Test submitting market order through cTrader Open API execution service."""
         orig_dispatch = ctrader_cloud_gateway.dispatch_local_bridge_order
         ctrader_cloud_gateway.dispatch_local_bridge_order = lambda *args, **kwargs: {
@@ -49,8 +61,12 @@ class TestPhase9CTraderExecution(unittest.TestCase):
         finally:
             ctrader_cloud_gateway.dispatch_local_bridge_order = orig_dispatch
 
-    def test_02_modify_sltp_and_move_to_break_even(self):
+    @patch("ctrader_cloud_gateway.get_live_price", return_value=BROKER_QUOTE)
+    @patch("app.services.ctrader_execution_service.requests.post")
+    def test_02_modify_sltp_and_move_to_break_even(self, mock_post, _quote):
         """Test modifying stop-loss / take-profit and moving to break-even."""
+        mock_post.return_value = Mock(status_code=200)
+        mock_post.return_value.json.return_value = {"status": "SUCCESS"}
         # Seed an open position
         pos = {
             "id": "POS_91002",
@@ -106,16 +122,15 @@ class TestPhase9CTraderExecution(unittest.TestCase):
             position_id="POS_91003",
             close_volume=0.01
         )
-        self.assertEqual(part_res["status"], "SUCCESS")
-        self.assertEqual(part_res["closed_volume"], 0.01)
-        self.assertEqual(part_res["remaining_volume"], 0.01)
-        self.assertGreater(part_res["realized_pnl"], 0)
-        # Position should still be open with 0.01 lots
-        self.assertEqual(len(ctrader_execution_service.get_open_positions()), 1)
-        self.assertEqual(ctrader_execution_service.get_open_positions()[0]["volume"], 0.01)
+        self.assertEqual(part_res["status"], "REJECTED_UNSUPPORTED_BROKER_OPERATION")
+        self.assertEqual(ctrader_cloud_gateway.GATEWAY_STATE["open_positions"][0]["volume"], 0.02)
 
-    def test_04_execution_rest_api_endpoints(self):
+    @patch("ctrader_cloud_gateway.get_live_price", return_value=BROKER_QUOTE)
+    @patch("app.services.ctrader_execution_service.requests.post")
+    def test_04_execution_rest_api_endpoints(self, mock_post, _quote):
         """Test FastAPI REST endpoints for execution, SL/TP modify, break-even, and partial close."""
+        mock_post.return_value = Mock(status_code=200)
+        mock_post.return_value.json.return_value = {"status": "SUCCESS"}
         # 1. Market Order API
         ctrader_cloud_gateway.reset_cooldown()
         ctrader_cloud_gateway.GATEWAY_STATE["open_positions"] = []

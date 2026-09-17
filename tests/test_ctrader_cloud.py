@@ -1,9 +1,12 @@
 import ctrader_cloud_gateway
 import cbot_bridge
+from unittest.mock import patch, Mock
+from tests.broker_fixtures import install_state
 
 def test_ctrader_cloud_order_execution():
     # Ensure baseline active account is 5908018
     ctrader_cloud_gateway.switch_active_account("5908018")
+    install_state(ctrader_cloud_gateway, bid=2749.90, ask=2750.00)
     
     # 1. Test Gateway Status
     status = ctrader_cloud_gateway.get_gateway_status()
@@ -16,11 +19,13 @@ def test_ctrader_cloud_order_execution():
 
     # 2. Test Server-Side Execution of Gold Order (with unit test bridge mock)
     orig_dispatch = ctrader_cloud_gateway.dispatch_local_bridge_order
+    orig_price = ctrader_cloud_gateway.get_live_price
     orig_telemetry = ctrader_cloud_gateway.sync_local_cbot_telemetry
     ctrader_cloud_gateway.dispatch_local_bridge_order = lambda *args, **kwargs: {
-        "status": "SUCCESS", "position_id": 99999, "entry_price": 2750.00, "symbol": "XAUUSD"
+        "status": "SUCCESS", "position_id": 99999, "entry_price": 2750.00, "symbol": "XAUUSD", "sl": 2744.00, "tp": 2762.00
     }
     ctrader_cloud_gateway.sync_local_cbot_telemetry = lambda *args, **kwargs: ctrader_cloud_gateway.GATEWAY_STATE
+    ctrader_cloud_gateway.get_live_price = lambda *args, **kwargs: {"bid": 2749.90, "ask": 2750.00, "price": 2749.95, "spread": 0.10, "source": "CTRADER_CBOT", "executable": True, "stale": False, "quote_at": "2026-09-16T12:00:00+00:00"}
 
     try:
         res = ctrader_cloud_gateway.execute_market_order(
@@ -63,11 +68,15 @@ def test_ctrader_cloud_order_execution():
             "XAUUSD": {"symbol": "XAUUSD", "price": 2755.00, "bid": 2755.00, "ask": 2755.35}
         })
         updated_pos = ctrader_cloud_gateway.get_gateway_status()["open_positions"][0]
-        assert updated_pos["current_price"] == 2755.00
-        assert updated_pos["net_profit"] > 0
+        # Broker-authoritative state ignores synthetic local price mutation.
+        assert updated_pos["current_price"] == 2750.00
+        assert updated_pos.get("net_profit", 0) == 0
 
-        # 6. Test Position Close (Forced for unit test)
-        close_res = ctrader_cloud_gateway.close_position(pos["id"], force=True)
+        # 6. Test broker-confirmed Position Close (Forced for unit test)
+        with patch.dict("os.environ", {"TESTING": "0"}), patch("ctrader_cloud_gateway.requests.post") as mock_post:
+            mock_post.return_value = Mock(status_code=200)
+            mock_post.return_value.json.return_value = {"status": "SUCCESS"}
+            close_res = ctrader_cloud_gateway.close_position(pos["id"], force=True)
         assert close_res["status"] == "SUCCESS"
         assert len(ctrader_cloud_gateway.get_gateway_status()["open_positions"]) == 0
 
@@ -102,5 +111,6 @@ def test_ctrader_cloud_order_execution():
         assert ctrader_cloud_gateway.get_gateway_status()["account_id"] == "5908018"
     finally:
         ctrader_cloud_gateway.dispatch_local_bridge_order = orig_dispatch
+        ctrader_cloud_gateway.get_live_price = orig_price
         ctrader_cloud_gateway.sync_local_cbot_telemetry = orig_telemetry
 

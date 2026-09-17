@@ -6,8 +6,18 @@ sys.path.insert(0, r"d:\Users\AL RAZZAQ\Desktop\Trade Talk")
 from app.services.live_safety_gate import live_safety_gate
 from app.services.position_sentinel import position_sentinel
 from app.services.ctrader_execution_service import ctrader_execution_service
+from unittest.mock import patch
+import ctrader_cloud_gateway
+from tests.broker_fixtures import install_state
 
-def test_strict_sltp_geometry_buy_inverted():
+def setup_function():
+    ctrader_cloud_gateway.switch_active_account("5908018")
+    install_state(ctrader_cloud_gateway, bid=2749.9, ask=2750.0)
+
+BROKER_QUOTE = {"bid": 2749.9, "ask": 2750.0, "spread": 0.1}
+
+@patch("app.services.live_safety_gate.ctrader_cloud_gateway.get_live_price", return_value=BROKER_QUOTE)
+def test_strict_sltp_geometry_buy_inverted(_quote):
     """Test that BUY with inverted SL (SL >= Entry or TP <= Entry) is strictly VETOED."""
     is_safe, reason, telemetry = live_safety_gate.evaluate_order_safety(
         symbol="XAUUSD",
@@ -21,7 +31,8 @@ def test_strict_sltp_geometry_buy_inverted():
     assert is_safe is False
     assert "VETO_INVALID_SLTP_GEOMETRY" in reason
 
-def test_strict_sltp_geometry_sell_inverted():
+@patch("app.services.live_safety_gate.ctrader_cloud_gateway.get_live_price", return_value=BROKER_QUOTE)
+def test_strict_sltp_geometry_sell_inverted(_quote):
     """Test that SELL with inverted SL (SL <= Entry or TP >= Entry) is strictly VETOED."""
     is_safe, reason, telemetry = live_safety_gate.evaluate_order_safety(
         symbol="XAUUSD",
@@ -35,7 +46,8 @@ def test_strict_sltp_geometry_sell_inverted():
     assert is_safe is False
     assert "VETO_INVALID_SLTP_GEOMETRY" in reason
 
-def test_strict_sltp_minimum_buffer_too_tight():
+@patch("app.services.live_safety_gate.ctrader_cloud_gateway.get_live_price", return_value=BROKER_QUOTE)
+def test_strict_sltp_minimum_buffer_too_tight(_quote):
     """Test that SL too close to entry (< $3.50 on Gold) is strictly VETOED."""
     is_safe, reason, telemetry = live_safety_gate.evaluate_order_safety(
         symbol="XAUUSD",
@@ -49,7 +61,8 @@ def test_strict_sltp_minimum_buffer_too_tight():
     assert is_safe is False
     assert "VETO_STOP_LOSS_TOO_TIGHT" in reason
 
-def test_strict_sltp_valid_order_passes():
+@patch("app.services.live_safety_gate.ctrader_cloud_gateway.get_live_price", return_value=BROKER_QUOTE)
+def test_strict_sltp_valid_order_passes(_quote):
     """Test that valid BUY (SL $6.00 below entry, TP $12.00 above entry) PASSES."""
     is_safe, reason, telemetry = live_safety_gate.evaluate_order_safety(
         symbol="XAUUSD",

@@ -43,7 +43,21 @@ class PreTradeIntelligenceEngine:
                 "reason": "Invalid or missing live broker price feed."
             }
 
-        # 2. Multi-Timeframe Analysis
+        # 2. Broker candle validation (hard fail-closed; never synthesize indicators)
+        required_timeframes = ("M5", "M15", "H1", "H4", "D1")
+        missing_timeframes = [tf for tf in required_timeframes if len(timeframe_candles.get(tf, [])) < 30]
+        if missing_timeframes:
+            return {
+                "symbol": symbol,
+                "timestamp": timestamp,
+                "status": "FAIL_CLOSED_BROKER_CANDLES",
+                "trade_allowed": False,
+                "decision_reason": "BROKER_CANDLES_UNAVAILABLE: " + ",".join(missing_timeframes),
+                "reason": "Broker-authoritative candle history is missing or insufficient.",
+                "missing_timeframes": missing_timeframes,
+            }
+
+        # 3. Multi-Timeframe Analysis
         mtf_result = multi_timeframe_engine.evaluate_multi_timeframe(timeframe_candles)
 
         # 3. M15 / Execution Structure Analysis
@@ -107,10 +121,19 @@ class PreTradeIntelligenceEngine:
         adx_minimum = float(trading_config.get("REGIME_ADX_MINIMUM"))
         structure = str(smc_result.get("structure", "RANGE")).upper()
         setup_type = str(setup.get("setup_type", "NO_VALID_SETUP")).upper()
+        regime = str(setup.get("regime", "TRANSITION")).upper()
+        allowed_direction = str(setup.get("allowed_direction", "BOTH")).upper()
+        setup_direction = str(setup.get("direction", "FLAT")).upper()
         consolidation_detected = (structure in ("RANGE", "CONSOLIDATION", "CONSOLIDATING") and setup_type not in ("STRUCTURE_REVERSAL",)) or setup_type == "NO_VALID_SETUP"
         disallow_consolidation = bool(trading_config.get("DISALLOW_CONSOLIDATION_ENTRIES"))
 
-        if adx_value < adx_minimum:
+        if regime == "NO_TRADE":
+            trade_allowed = False
+            decision_reason = "NO_TRADE_REGIME_CONFLICT: higher-timeframe direction is conflicted."
+        elif allowed_direction not in ("BOTH", setup_direction) and setup_direction in ("BUY", "SELL"):
+            trade_allowed = False
+            decision_reason = f"NO_TRADE_DIRECTION_CONFLICT: regime={regime} permits {allowed_direction}, setup requested {setup_direction}."
+        elif adx_value < adx_minimum:
             trade_allowed = False
             decision_reason = f"NO_TRADE_REGIME_ADX: ADX {adx_value:.1f} is below required minimum {adx_minimum:.1f}."
         elif disallow_consolidation and consolidation_detected:

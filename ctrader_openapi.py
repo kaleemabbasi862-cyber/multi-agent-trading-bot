@@ -491,9 +491,18 @@ class SpotwareOpenAPIClient:
         to_timestamp: Optional[int] = None
     ) -> List[Dict[str, Any]]:
         """Sends ProtoOAGetTrendbarsReq (payloadType 2118)."""
-        period_val = TRENDBAR_PERIOD_MAP.get(timeframe.upper().replace(" ", ""), 7) # Default M15
+        tf_key = timeframe.upper().replace(" ", "")
+        period_val = TRENDBAR_PERIOD_MAP.get(tf_key, 7)  # Default M15
+        period_minutes = {
+            "M1": 1, "M2": 2, "M3": 3, "M4": 4, "M5": 5,
+            "M10": 10, "M15": 15, "M30": 30, "H1": 60,
+            "H4": 240, "H12": 720, "D1": 1440, "W1": 10080,
+            "MN1": 43200,
+        }.get(tf_key, 15)
         to_ts = to_timestamp or int(time.time() * 1000)
-        from_ts = to_ts - (count * 60 * 15 * 1000)
+        # Request a timeframe-correct history window with a small cushion for
+        # weekends/session gaps; the broker still caps the result by count.
+        from_ts = to_ts - (count * period_minutes * 60 * 1000 * 3)
 
         payload = bytearray()
         payload.extend(enc_field_int(1, PAYLOAD_PROTO_OA_GET_TRENDBARS_REQ))

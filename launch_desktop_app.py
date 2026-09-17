@@ -26,13 +26,17 @@ TARGET_URL = os.getenv("DESKTOP_APP_URL", DEFAULT_LOCAL_URL if USE_LOCAL_ENGINE 
 
 def is_server_healthy(url: str, timeout: float = 1.0) -> bool:
     try:
-        health_url = url.rstrip("/") + "/api/health"
+        health_url = url.rstrip("/") + "/api/desktop-health"
         req = urllib.request.Request(health_url, headers={"User-Agent": "TradeTalk-Launcher"})
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with urllib.request.urlopen(req, timeout=max(timeout, 2.0)) as resp:
             if resp.status != 200:
                 return False
             payload = json.loads(resp.read().decode("utf-8"))
-            return isinstance(payload, dict) and ("account_id" in payload or "broker" in payload)
+            return (
+                isinstance(payload, dict)
+                and payload.get("status") == "healthy"
+                and payload.get("desktop_api") is True
+            )
     except Exception:
         return False
 

@@ -514,6 +514,23 @@ def dispatch_local_bridge_order(
             print(f"[Local cBot Bridge] 🟢 Trade Dispatched & Executed on cTrader: Pos #{data.get('position_id')} @ ${data.get('entry_price')}")
             return data
         else:
+            # A fast-moving market can advance between the telemetry snapshot and
+            # the bridge validation.  On the bridge's explicit stale/mismatch
+            # veto, refresh broker-authoritative telemetry and retry exactly once.
+            if res.status_code == 409 and "BROKER_TELEMETRY_STALE_OR_MISMATCHED" in res.text:
+                sync_local_cbot_telemetry()
+                retry_quote = get_live_price(symbol)
+                retry_health = broker_telemetry.health(GATEWAY_STATE, symbol)
+                if retry_health["execution_ready"] and retry_quote and not GATEWAY_STATE.get("is_live", True):
+                    payload["account_id"] = GATEWAY_STATE["account_id"]
+                    payload["snapshot_at"] = GATEWAY_STATE["broker_snapshot_at"]
+                    payload["quote_at"] = retry_quote["quote_at"]
+                    payload["expected_bid"] = retry_quote["bid"]
+                    payload["expected_ask"] = retry_quote["ask"]
+                    retry_res = requests.post(bridge_url, json=payload, timeout=3)
+                    if retry_res.status_code == 200:
+                        return retry_res.json()
+                    return {"status": "ERROR", "message": retry_res.text}
             print(f"[Local cBot Bridge] [!] Bridge returned HTTP {res.status_code}: {res.text}")
             return {"status": "ERROR", "message": res.text}
     except Exception as e:

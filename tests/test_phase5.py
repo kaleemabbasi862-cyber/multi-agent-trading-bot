@@ -6,6 +6,12 @@ from app.engine.consensus_engine import consensus_engine
 from app.engine.explainability_engine import explainability_engine
 from fastapi.testclient import TestClient
 from main_native import app
+import ctrader_cloud_gateway
+from tests.broker_fixtures import install_state
+
+def setup_function():
+    ctrader_cloud_gateway.switch_active_account("5908018")
+    install_state(ctrader_cloud_gateway, bid=2349.9, ask=2350.0)
 
 client = TestClient(app)
 
@@ -173,6 +179,8 @@ def test_bilingual_explainability_synthesis():
 
 class TestPhase5Consensus(unittest.TestCase):
     def test_01_consensus(self):
+        from app.engine import consensus_engine as consensus_module
+        consensus_module._PROCESSED_SIGNAL_IDS.clear()
         test_7_agents_weighted_consensus_approval()
 
     def test_02_risk_veto(self):

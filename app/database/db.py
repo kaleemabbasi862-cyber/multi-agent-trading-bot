@@ -185,6 +185,20 @@ class DatabaseManager:
         src = str(trade_data.get("data_source") or "cTrader Open API")
 
         with _lock, get_db_connection() as conn:
+            ticket = str(trade_data.get("ticket_id") or "").strip()
+            if is_verified and ticket:
+                existing = conn.execute(
+                    "SELECT * FROM trades WHERE ticket_id = ? AND broker_account_id = ? AND execution_environment = ? ORDER BY is_broker_verified DESC, rowid ASC LIMIT 1",
+                    (ticket, acc_id, env),
+                ).fetchone()
+                if existing:
+                    trade_data = dict(trade_data)
+                    trade_data["id"] = existing["id"]
+                    if str(existing["status"] or "").upper() == "CLOSED":
+                        trade_data["status"] = "CLOSED"
+                        for field in ("exit_price", "profit_loss", "pips", "commission", "swap", "close_reason", "closed_at"):
+                            trade_data[field] = existing[field]
+
             conn.execute(
                 """
                 INSERT OR REPLACE INTO trades

@@ -47,16 +47,32 @@ class SetupClassifier:
         reasons = []
         confidence = 0.0
 
-        # 1. Check LIQUIDITY_SWEEP_REVERSAL (Highest priority institutional entry)
-        if sweeps:
+        # Regime/direction gate: higher-timeframe consensus and current SMC structure
+        # decide which side is eligible before a lower-priority setup can fire.
+        macro = mtf_data.get("consensus_trend", "NEUTRAL")
+        bullish_structure = trend == "BULLISH" or structure == "BULLISH_TREND" or "BULLISH" in latest_event
+        bearish_structure = trend == "BEARISH" or structure == "BEARISH_TREND" or "BEARISH" in latest_event
+        if macro == "BULLISH" and bullish_structure:
+            regime, allowed_direction = "BULL_TREND", "BUY"
+        elif macro == "BEARISH" and bearish_structure:
+            regime, allowed_direction = "BEAR_TREND", "SELL"
+        elif macro == "NO_TRADE_CONFLICT":
+            regime, allowed_direction = "NO_TRADE", "FLAT"
+        elif structure == "RANGE":
+            regime, allowed_direction = "RANGE", "BOTH"
+        else:
+            regime, allowed_direction = "TRANSITION", "BOTH"
+
+        # 1. Liquidity reversal is eligible only when it does not fight a confirmed trend.
+        if sweeps and regime != "NO_TRADE":
             recent_sweep = sweeps[-1]
-            if recent_sweep["type"] == "BULLISH_LIQUIDITY_SWEEP" and zone in ("DISCOUNT", "DEEP_DISCOUNT"):
+            if recent_sweep["type"] == "BULLISH_LIQUIDITY_SWEEP" and allowed_direction in ("BUY", "BOTH") and zone in ("DISCOUNT", "DEEP_DISCOUNT"):
                 setup_type = "LIQUIDITY_SWEEP_REVERSAL"
                 direction = "BUY"
                 confidence = 88.0
                 reasons.append(recent_sweep["description"])
                 reasons.append(f"Favorable buying location in {zone} zone.")
-            elif recent_sweep["type"] == "BEARISH_LIQUIDITY_SWEEP" and zone in ("PREMIUM", "EXTREME_PREMIUM"):
+            elif recent_sweep["type"] == "BEARISH_LIQUIDITY_SWEEP" and allowed_direction in ("SELL", "BOTH") and zone in ("PREMIUM", "EXTREME_PREMIUM"):
                 setup_type = "LIQUIDITY_SWEEP_REVERSAL"
                 direction = "SELL"
                 confidence = 88.0
@@ -133,7 +149,14 @@ class SetupClassifier:
             reasons.append("Market is consolidating or lacking high-probability institutional displacement.")
             confidence = 35.0
 
+        # Final fail-closed direction guard. A setup may never oppose a confirmed regime.
+        if allowed_direction not in ("BOTH", direction) and direction in ("BUY", "SELL"):
+            reasons = [f"Blocked {direction}: confirmed {regime} regime permits {allowed_direction} only."]
+            setup_type, direction, confidence = "NO_VALID_SETUP", "FLAT", 35.0
+
         return {
+            "regime": regime,
+            "allowed_direction": allowed_direction,
             "setup_type": setup_type,
             "direction": direction,
             "confidence": round(confidence, 1),

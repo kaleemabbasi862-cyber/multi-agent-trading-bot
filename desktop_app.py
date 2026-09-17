@@ -37,21 +37,30 @@ def is_port_open(host: str = "127.0.0.1", port: int = PORT, timeout: float = 0.4
 def is_server_running(url: str = LOCAL_URL, timeout: float = 1.0) -> bool:
     """Verify port 8000 is serving TradeTalk, not merely any HTTP process."""
     try:
-        req = urllib.request.Request(url.rstrip("/") + "/api/health", headers={"User-Agent": "TradeTalk-Desktop"})
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        req = urllib.request.Request(url.rstrip("/") + "/api/desktop-health", headers={"User-Agent": "TradeTalk-Desktop"})
+        with urllib.request.urlopen(req, timeout=max(timeout, 2.0)) as resp:
             if resp.status != 200:
                 return False
             import json
             payload = json.loads(resp.read().decode("utf-8"))
-            return isinstance(payload, dict) and ("account_id" in payload or "broker" in payload)
+            return (
+                isinstance(payload, dict)
+                and payload.get("status") == "healthy"
+                and payload.get("desktop_api") is True
+            )
     except Exception:
         return False
 
-def start_backend_server():
-    """Runs uvicorn FastAPI backend in background thread without creating duplicates."""
+def start_backend_server() -> bool:
+    """Start the backend and return True only when this process owns it."""
     if is_server_running():
-        return
+        return False
     if is_port_open():
+        # Another click may have started the backend milliseconds earlier.
+        for _ in range(20):
+            time.sleep(0.25)
+            if is_server_running():
+                return False
         raise RuntimeError("Port 8000 is occupied but is not responding as TradeTalk. Refusing to start a duplicate backend.")
 
     from main_native import app
@@ -70,7 +79,7 @@ def start_backend_server():
     for _ in range(60):
         time.sleep(0.25)
         if is_server_running():
-            return
+            return True
     raise RuntimeError("TradeTalk backend failed health verification after startup.")
 
 class DesktopAPI:
@@ -96,8 +105,8 @@ class DesktopAPI:
         except Exception:
             sys.exit(0)
 
-def launch_app_window():
-    """Launches high-performance desktop window using Microsoft Edge / Chrome in App Mode or default browser."""
+def launch_app_window(keep_backend_alive: bool):
+    """Launch the desktop window and keep alive only when this process owns the backend."""
     import subprocess
     import webbrowser
 
@@ -129,16 +138,17 @@ def launch_app_window():
     if not launched:
         webbrowser.open(LOCAL_URL)
 
-    # Keep Python backend process alive while serving requests
-    while True:
-        time.sleep(1.0)
+    # Only the process that started uvicorn must remain alive.
+    if keep_backend_alive:
+        while True:
+            time.sleep(1.0)
 
 def main():
     # 1. Start or verify backend server
-    start_backend_server()
+    owns_backend = start_backend_server()
 
     # 2. Launch Desktop App Window
-    launch_app_window()
+    launch_app_window(keep_backend_alive=owns_backend)
 
 if __name__ == "__main__":
     try:

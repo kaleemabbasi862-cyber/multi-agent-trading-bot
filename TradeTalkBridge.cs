@@ -199,6 +199,18 @@ namespace cAlgo.Robots
                         SendJsonResponse(response, histJson);
                         return;
                     }
+                    else if (rawPath == "/candles")
+                    {
+                        string symbol = request.QueryString["symbol"] ?? "XAUUSD";
+                        string timeframe = request.QueryString["timeframe"] ?? "M15";
+                        int count;
+                        if (!int.TryParse(request.QueryString["count"], out count)) count = 60;
+                        count = Math.Max(30, Math.Min(count, 500));
+                        string candleJson = RunOnMainThread(() => GetCandlesJson(symbol, timeframe, count));
+                        response.StatusCode = 200;
+                        SendJsonResponse(response, candleJson);
+                        return;
+                    }
                     else
                     {
                         string statusJson = GetOverviewJsonCoalesced();
@@ -246,6 +258,35 @@ namespace cAlgo.Robots
                     Print("Bridge error response could not be sent: " + responseEx.Message);
                 }
             }
+        }
+
+        private string GetCandlesJson(string symbolName, string timeframe, int count)
+        {
+            Symbol symbol = Symbols.GetSymbol(symbolName);
+            if (symbol == null) throw new InvalidOperationException("Unknown broker symbol: " + symbolName);
+
+            TimeFrame tf;
+            switch ((timeframe ?? "").ToUpperInvariant())
+            {
+                case "M5": tf = TimeFrame.Minute5; break;
+                case "M15": tf = TimeFrame.Minute15; break;
+                case "H1": tf = TimeFrame.Hour; break;
+                case "H4": tf = TimeFrame.Hour4; break;
+                case "D1": tf = TimeFrame.Daily; break;
+                default: throw new InvalidOperationException("Unsupported timeframe: " + timeframe);
+            }
+
+            Bars bars = MarketData.GetBars(tf, symbolName);
+            while (bars.Count < count && bars.LoadMoreHistory() > 0) { }
+            int start = Math.Max(0, bars.Count - count);
+            var rows = new List<string>();
+            for (int i = start; i < bars.Count; i++)
+            {
+                rows.Add(string.Format(CultureInfo.InvariantCulture,
+                    "{{\"timestamp\":{0:F3},\"open\":{1},\"high\":{2},\"low\":{3},\"close\":{4},\"volume\":{5}}}",
+                    UnixSeconds(bars.OpenTimes[i]), bars.OpenPrices[i], bars.HighPrices[i], bars.LowPrices[i], bars.ClosePrices[i], bars.TickVolumes[i]));
+            }
+            return "[" + string.Join(",", rows) + "]";
         }
 
         private string GetPositionsJson()

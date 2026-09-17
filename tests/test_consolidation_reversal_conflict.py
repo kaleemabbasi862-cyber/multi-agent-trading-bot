@@ -86,7 +86,8 @@ def _run_scan(smc_result, setup_result, quality_result, indicators,
     }.get(name, 0)
 
     tick = {"bid": 2730.0, "ask": 2731.0, "spread": 1.0}
-    candles = {"M15": [{"open": 2730, "high": 2735, "low": 2728, "close": 2732, "timestamp": "2026-09-11T12:00:00Z"}]}
+    bar = {"open": 2730, "high": 2735, "low": 2728, "close": 2732, "timestamp": "2026-09-11T12:00:00Z"}
+    candles = {tf: [dict(bar) for _ in range(30)] for tf in ("M5", "M15", "H1", "H4", "D1")}
 
     with patch(f"{_MOD}.smart_money_engine", smc_mock), \
          patch(f"{_MOD}.multi_timeframe_engine", mtf_mock), \
@@ -217,7 +218,8 @@ class TestConsolidationReversalConflict(unittest.TestCase):
         }.get(name, 0)
 
         wide_tick = {"bid": 2730.0, "ask": 2736.0, "spread": 6.0}
-        candles = {"M15": [{"open": 2730, "high": 2735, "low": 2728, "close": 2732, "timestamp": "2026-09-11T12:00:00Z"}]}
+        bar = {"open": 2730, "high": 2735, "low": 2728, "close": 2732, "timestamp": "2026-09-11T12:00:00Z"}
+        candles = {tf: [dict(bar) for _ in range(30)] for tf in ("M5", "M15", "H1", "H4", "D1")}
 
         smc_mock = MagicMock()
         smc_mock.analyze_market_structure.return_value = smc_result
