@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any, List
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request, Header
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
@@ -69,6 +69,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    icon_path = Path(__file__).resolve().parent / "app_icon.ico"
+    if not icon_path.is_file():
+        raise HTTPException(status_code=404, detail="TradeTalk icon not found")
+    return FileResponse(icon_path, media_type="image/x-icon")
 
 # -------------------------------------------------------------
 # Background Autonomous Cloud Gateway Worker

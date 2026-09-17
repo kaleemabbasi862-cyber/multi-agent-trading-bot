@@ -180,10 +180,19 @@ class TestPhase9CTraderExecution(unittest.TestCase):
         self.assertEqual(res_be.json()["status"], "SUCCESS")
 
         # 5. Close Position API
-        res_close = self.client.post("/api/execution/close", json={
-            "position_id": open_pos_id,
-            "force": True
-        })
+        broker_history = Mock(status_code=200)
+        broker_history.json.return_value = [{
+            "id": 91004,
+            "position_id": 91004,
+            "symbol": "XAUUSD",
+            "closing_price": 2751.0,
+            "net_profit": 0.75,
+        }]
+        with patch("ctrader_cloud_gateway.requests.get", return_value=broker_history):
+            res_close = self.client.post("/api/execution/close", json={
+                "position_id": open_pos_id,
+                "force": True
+            })
         self.assertEqual(res_close.status_code, 200)
         self.assertEqual(res_close.json()["status"], "SUCCESS")
 

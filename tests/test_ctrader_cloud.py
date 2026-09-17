@@ -73,41 +73,25 @@ def test_ctrader_cloud_order_execution():
         assert updated_pos.get("net_profit", 0) == 0
 
         # 6. Test broker-confirmed Position Close (Forced for unit test)
-        with patch.dict("os.environ", {"TESTING": "0"}), patch("ctrader_cloud_gateway.requests.post") as mock_post:
+        with patch.dict("os.environ", {"TESTING": "0"}),              patch("ctrader_cloud_gateway.requests.post") as mock_post,              patch("ctrader_cloud_gateway.requests.get") as mock_get:
             mock_post.return_value = Mock(status_code=200)
-            mock_post.return_value.json.return_value = {"status": "SUCCESS"}
+            mock_post.return_value.json.return_value = {"status": "SUCCESS", "position_id": 99999}
+            mock_get.return_value = Mock(status_code=200)
+            mock_get.return_value.json.return_value = [{
+                "id": 99999, "position_id": 99999, "symbol": "XAUUSD",
+                "closing_price": 2751.0, "net_profit": 0.75,
+            }]
             close_res = ctrader_cloud_gateway.close_position(pos["id"], force=True)
         assert close_res["status"] == "SUCCESS"
         assert len(ctrader_cloud_gateway.get_gateway_status()["open_positions"]) == 0
 
-        # 7. Test Multi-Account Listing and Switching
+        # 7. Only broker-discovered accounts may be listed or selected.
         acc_data = ctrader_cloud_gateway.get_all_accounts()
         assert acc_data["status"] == "success"
-        accounts = acc_data["accounts"]
-        assert len(accounts) >= 3
-        acc_ids = [str(a["account_id"]) for a in accounts]
+        acc_ids = [str(a["account_id"]) for a in acc_data["accounts"]]
         assert "5908018" in acc_ids
-        assert "1005621" in acc_ids
-        assert "abu_sarim" in acc_ids
-
-        # Switch to 1005621
-        switch_res = ctrader_cloud_gateway.switch_active_account("1005621")
-        assert switch_res["status"] == "SUCCESS"
-        assert switch_res["active_account_id"] == "1005621"
-        assert switch_res["gateway_state"]["balance"] == 21.19
-        assert ctrader_cloud_gateway.get_gateway_status()["account_id"] == "1005621"
-
-        # Switch to abu_sarim
-        switch_sarim = ctrader_cloud_gateway.switch_active_account("abu_sarim")
-        assert switch_sarim["status"] == "SUCCESS"
-        assert switch_sarim["active_account_id"] == "abu_sarim"
-        assert switch_sarim["gateway_state"]["balance"] == 0.72
-
-        # Switch back to 5908018
-        switch_back = ctrader_cloud_gateway.switch_active_account("5908018")
-        assert switch_back["status"] == "SUCCESS"
-        assert switch_back["active_account_id"] == "5908018"
-        assert switch_back["gateway_state"]["balance"] > 900.0
+        switch_res = ctrader_cloud_gateway.switch_active_account("UNVERIFIED_TEST_ACCOUNT")
+        assert switch_res["status"] == "REJECTED_UNVERIFIED_ACCOUNT"
         assert ctrader_cloud_gateway.get_gateway_status()["account_id"] == "5908018"
     finally:
         ctrader_cloud_gateway.dispatch_local_bridge_order = orig_dispatch

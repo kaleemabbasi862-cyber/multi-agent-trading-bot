@@ -32,6 +32,8 @@ def test_7_agents_weighted_consensus_approval():
     
     market_data = {
         "symbol": "XAUUSD",
+        "source": "CTRADER_CBOT",
+        "candle_source": "CTRADER_CBOT",
         "price": 2350.00,
         "spread": 0.25,
         "high_24h": 2368.00,
@@ -98,6 +100,8 @@ def test_hard_risk_veto_overrides_consensus():
     
     market_data = {
         "symbol": "XAUUSD",
+        "source": "CTRADER_CBOT",
+        "candle_source": "CTRADER_CBOT",
         "price": 2350.00,
         "spread": 0.25,
         "updated_at": now.timestamp(),
@@ -135,7 +139,7 @@ def test_decision_dna_persistence_and_retrieval():
         volume=0.01,
         account_id="5908018"
     )
-    market_data = {"symbol": "XAUUSD", "price": 2350.00, "spread": 0.25, "updated_at": now.timestamp(), "indicators": {}}
+    market_data = {"symbol": "XAUUSD", "source": "CTRADER_CBOT", "candle_source": "CTRADER_CBOT", "price": 2350.00, "spread": 0.25, "updated_at": now.timestamp(), "indicators": {}}
     macro_data = {"minutes_to_next_high_impact_news": 180, "minutes_since_last_event": 120}
     account_status = {"balance": 1000.0, "equity": 1000.0, "open_positions": [], "is_connected": True}
 

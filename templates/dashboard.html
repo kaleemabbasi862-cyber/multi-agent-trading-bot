@@ -7,6 +7,8 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <title>TradeTalk AI - Autonomous 6-Agent Quantitative Trading System (XAUUSD)</title>
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico">
     <script>
         (function() {
             try {
@@ -2932,9 +2934,9 @@
                 simForm: {
                     symbol: 'XAUUSD',
                     action: 'BUY',
-                    entry_price: 4400.00,
-                    stop_loss: 4394.00,
-                    take_profit: 4412.00,
+                    entry_price: null,
+                    stop_loss: null,
+                    take_profit: null,
                     timeframe: '15m'
                 },
                 btForm: {
@@ -3137,7 +3139,8 @@
                             const data = await res.json();
                             if (data.consensus) {
                                 const c = data.consensus;
-                                const liveP = (data.market && data.market.price) ? data.market.price : (c.entry_price || 4400.0);
+                                const liveP = Number(data.market && data.market.price);
+                                if (!Number.isFinite(liveP) || liveP <= 0) return;
                                 this.activeSignal = {
                                     id: c.signal_id,
                                     symbol: c.symbol || this.selectedSymbol,
@@ -3253,8 +3256,12 @@
                         } catch (e) {}
                     }
                     
-                    if (!price) {
-                        price = (sym.includes('XAU') || sym.includes('GOLD')) ? 4400.00 : (sym.includes('XAG') ? 32.50 : (sym.includes('EUR') ? 1.0850 : (sym.includes('GBP') ? 1.2950 : 153.50)));
+                    if (!Number.isFinite(price) || price <= 0) {
+                        this.simForm.entry_price = null;
+                        this.simForm.stop_loss = null;
+                        this.simForm.take_profit = null;
+                        alert('Broker price unavailable. Simulation is blocked.');
+                        return;
                     }
                     
                     const isForex = (sym.includes('EUR') || sym.includes('GBP') || sym.includes('AUD') || (sym.includes('USD') && !sym.includes('JPY') && !sym.includes('XAU') && !sym.includes('XAG')));
@@ -3266,7 +3273,8 @@
 
                 recalcSimulatorSLTP() {
                     const sym = (this.simForm.symbol || 'XAUUSD').toUpperCase();
-                    const p = parseFloat(this.simForm.entry_price) || 4400.00;
+                    const p = parseFloat(this.simForm.entry_price);
+                    if (!Number.isFinite(p) || p <= 0) return;
                     const act = (this.simForm.action || 'BUY').toUpperCase();
                     
                     let slDist = 6.0, tpDist = 12.0;
@@ -3294,7 +3302,7 @@
                 async submitTestSignal() {
                     this.loading = true;
                     try {
-                        const res = await fetch('/api/signals/execute', {
+                        const res = await fetch('/api/signals/simulate', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify(this.simForm)

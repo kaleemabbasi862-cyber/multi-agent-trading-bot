@@ -1,5 +1,6 @@
 import sqlite3
 import json
+import os
 import threading
 import datetime
 from typing import List, Dict, Any, Optional, Tuple
@@ -420,9 +421,19 @@ class DatabaseManager:
     @staticmethod
     def get_recent_signals(limit: int = 50) -> List[Dict[str, Any]]:
         with get_db_connection() as conn:
-            rows = conn.execute(
-                "SELECT * FROM signals ORDER BY timestamp DESC LIMIT ?", (limit,)
-            ).fetchall()
+            if os.getenv("TESTING") == "1":
+                rows = conn.execute(
+                    "SELECT * FROM signals ORDER BY timestamp DESC LIMIT ?", (limit,)
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT * FROM signals
+                    WHERE source IN ('BROKER_AUTHORITATIVE', 'BROKER_AUTHORITATIVE_AUTONOMOUS_SCANNER')
+                    ORDER BY timestamp DESC LIMIT ?
+                    """,
+                    (limit,),
+                ).fetchall()
             signals = []
             for r in rows:
                 item = dict(r)

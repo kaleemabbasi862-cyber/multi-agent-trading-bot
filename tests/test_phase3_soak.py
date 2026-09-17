@@ -55,6 +55,8 @@ class TestPhase3DemoSoakValidation(unittest.TestCase):
         now_ts = time.time()
         self.gold_market_data = {
             "symbol": "XAUUSD",
+            "source": "CTRADER_CBOT",
+            "candle_source": "CTRADER_CBOT",
             "bid": 2750.00,
             "ask": 2750.30,
             "spread": 0.30,
@@ -65,6 +67,8 @@ class TestPhase3DemoSoakValidation(unittest.TestCase):
                 "ema_20": 2748.5,
                 "ema_50": 2743.0,
                 "ema_200": 2730.0,
+                "ema_20_1h": 2747.0,
+                "ema_50_1h": 2742.0,
                 "atr": 4.5,
                 "trend_1h": "BULLISH",
                 "support": 2742.0,
@@ -105,9 +109,11 @@ class TestPhase3DemoSoakValidation(unittest.TestCase):
         self.assertFalse(active_acc.get("is_live", False))
         
         # 2. Attempt execution on live account (#abu_sarim) must be intercepted / blocked
-        live_acc = ctrader_cloud_gateway.LINKED_ACCOUNTS.get("abu_sarim")
+        live_acc = {"account_id": "TEST_LIVE", "is_live": True, "account_type": "LIVE"}
         self.assertTrue(live_acc.get("is_live", False))
         self.assertEqual(live_acc.get("account_type"), "LIVE")
+        switch_res = ctrader_cloud_gateway.switch_active_account("TEST_LIVE")
+        self.assertEqual(switch_res.get("status"), "REJECTED_UNVERIFIED_ACCOUNT")
 
         # Verify Live Safety Gate blocks live execution without explicit authorization
         res = self.execution_engine.set_trading_mode("LIVE", confirmed=False)

@@ -19,6 +19,7 @@ BROKER_QUOTE = {"bid": 2749.9, "ask": 2750.0, "spread": 0.1}
 @patch("app.services.live_safety_gate.ctrader_cloud_gateway.get_live_price", return_value=BROKER_QUOTE)
 def test_strict_sltp_geometry_buy_inverted(_quote):
     """Test that BUY with inverted SL (SL >= Entry or TP <= Entry) is strictly VETOED."""
+    setup_function()
     is_safe, reason, telemetry = live_safety_gate.evaluate_order_safety(
         symbol="XAUUSD",
         action="BUY",
@@ -34,6 +35,7 @@ def test_strict_sltp_geometry_buy_inverted(_quote):
 @patch("app.services.live_safety_gate.ctrader_cloud_gateway.get_live_price", return_value=BROKER_QUOTE)
 def test_strict_sltp_geometry_sell_inverted(_quote):
     """Test that SELL with inverted SL (SL <= Entry or TP >= Entry) is strictly VETOED."""
+    setup_function()
     is_safe, reason, telemetry = live_safety_gate.evaluate_order_safety(
         symbol="XAUUSD",
         action="SELL",
@@ -49,6 +51,7 @@ def test_strict_sltp_geometry_sell_inverted(_quote):
 @patch("app.services.live_safety_gate.ctrader_cloud_gateway.get_live_price", return_value=BROKER_QUOTE)
 def test_strict_sltp_minimum_buffer_too_tight(_quote):
     """Test that SL too close to entry (< $3.50 on Gold) is strictly VETOED."""
+    setup_function()
     is_safe, reason, telemetry = live_safety_gate.evaluate_order_safety(
         symbol="XAUUSD",
         action="BUY",
@@ -64,6 +67,7 @@ def test_strict_sltp_minimum_buffer_too_tight(_quote):
 @patch("app.services.live_safety_gate.ctrader_cloud_gateway.get_live_price", return_value=BROKER_QUOTE)
 def test_strict_sltp_valid_order_passes(_quote):
     """Test that valid BUY (SL $6.00 below entry, TP $12.00 above entry) PASSES."""
+    setup_function()
     is_safe, reason, telemetry = live_safety_gate.evaluate_order_safety(
         symbol="XAUUSD",
         action="BUY",

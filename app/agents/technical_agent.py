@@ -59,15 +59,58 @@ class TechnicalAnalystAgent:
                 error="Non-positive entry price"
             )
 
-        rsi_15m = float(ind.get("rsi", 50.0))
-        ema_20_15m = float(ind.get("ema_20", p))
-        ema_50_15m = float(ind.get("ema_50", p))
-        ema_200_15m = float(ind.get("ema_200", p))
-        ema_20_1h = float(ind.get("ema_20_1h", p))
-        ema_50_1h = float(ind.get("ema_50_1h", p))
-        trend_1h = ind.get("trend_1h", "BULLISH")
-        support = float(ind.get("support", p - 8.0))
-        resistance = float(ind.get("resistance", p + 8.0))
+        required = (
+            "rsi", "ema_20", "ema_50", "ema_200",
+            "ema_20_1h", "ema_50_1h", "trend_1h", "support", "resistance",
+        )
+        source = str(market_data.get("source") or "").upper()
+        candle_source = str(market_data.get("candle_source") or "").upper()
+        missing = [key for key in required if ind.get(key) is None]
+        quote_time = market_data.get("updated_at")
+        try:
+            quote_age = time.time() - float(quote_time)
+        except (TypeError, ValueError):
+            quote_age = None
+        if quote_age is not None and quote_age > float(trading_config.get("MAX_DATA_AGE_SECONDS")):
+            end_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            return AgentDecisionOutput(
+                agent_name=self.name, direction="NEUTRAL", score=0.0, decision="FAIL",
+                reasoning_summary=f"STALE_DATA: broker data age {quote_age:.2f}s.",
+                operational_criticality=self.criticality,
+                health_status=AgentHealthStatus.STALE_DATA,
+                execution_started_at=start_iso, execution_completed_at=end_iso,
+                execution_latency_ms=round((time.time() - t_start) * 1000, 2),
+                data_age_seconds=round(quote_age, 2), data_source=source or "UNVERIFIED",
+                confidence=0.0, stale=True, fallback_used=False,
+            )
+        if source != "CTRADER_CBOT" or candle_source != "CTRADER_CBOT" or missing:
+            end_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            return AgentDecisionOutput(
+                agent_name=self.name,
+                direction="NEUTRAL",
+                score=0.0,
+                decision="FAIL",
+                reasoning_summary=f"UNVERIFIED_BROKER_INDICATORS: missing={missing}",
+                operational_criticality=self.criticality,
+                health_status=AgentHealthStatus.INVALID_INPUT,
+                execution_started_at=start_iso,
+                execution_completed_at=end_iso,
+                execution_latency_ms=round((time.time() - t_start) * 1000, 2),
+                data_source="UNVERIFIED",
+                confidence=0.0,
+                error="Broker tick and broker candles are required.",
+                fallback_used=False,
+            )
+
+        rsi_15m = float(ind["rsi"])
+        ema_20_15m = float(ind["ema_20"])
+        ema_50_15m = float(ind["ema_50"])
+        ema_200_15m = float(ind["ema_200"])
+        ema_20_1h = float(ind["ema_20_1h"])
+        ema_50_1h = float(ind["ema_50_1h"])
+        trend_1h = str(ind["trend_1h"]).upper()
+        support = float(ind["support"])
+        resistance = float(ind["resistance"])
         
         quote_time = market_data.get("updated_at") or market_data.get("timestamp")
         data_age = None
@@ -193,7 +236,7 @@ class TechnicalAnalystAgent:
             execution_completed_at=end_iso,
             execution_latency_ms=round((t_end - t_start) * 1000, 2),
             data_age_seconds=data_age,
-            data_source="cTrader / Yahoo Multi-Timeframe M15/H1 Candles",
+            data_source="CTRADER_CBOT_M15_H1_CANDLES",
             confidence=round(score / 100.0, 2),
             stale=is_stale,
             decision_id=signal.id,

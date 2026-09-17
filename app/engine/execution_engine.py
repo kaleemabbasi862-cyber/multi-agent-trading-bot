@@ -87,15 +87,24 @@ class ExecutionEngine:
             signal_id=cbot_sig_id
         )
 
-        if exec_res.get("status", "").startswith("REJECTED"):
-            logger.warning(f"Trade dispatch rejected by gateway: {exec_res}")
-            db.update_execution_intent_status(intent_id, "FAILED", error=str(exec_res.get("reason") or exec_res.get("message")))
+        if exec_res.get("status") != "SUCCESS":
+            logger.warning(f"Trade dispatch was not broker-confirmed: {exec_res}")
+            db.update_execution_intent_status(
+                intent_id,
+                "FAILED",
+                error=str(exec_res.get("reason") or exec_res.get("message") or exec_res.get("status")),
+            )
             return exec_res
 
-        ticket_num = exec_res.get("ticket") or exec_res.get("ticket_id") or cbot_sig_id
-        fill_p = float(exec_res.get("fill_price") or signal.entry_price or 0.0)
-        final_sl = float(exec_res.get("sl") if exec_res.get("sl") is not None else (signal.stop_loss or 0.0))
-        final_tp = float(exec_res.get("tp") if exec_res.get("tp") is not None else (signal.take_profit or 0.0))
+        ticket_num = exec_res.get("ticket") or exec_res.get("ticket_id")
+        fill_raw = exec_res.get("fill_price")
+        if not ticket_num or fill_raw is None:
+            failed = {"status": "REJECTED_BROKER_EXECUTION_UNCONFIRMED", "broker_response": exec_res}
+            db.update_execution_intent_status(intent_id, "FAILED", error=str(failed))
+            return failed
+        fill_p = float(fill_raw)
+        final_sl = float(exec_res.get("sl") if exec_res.get("sl") is not None else signal.stop_loss)
+        final_tp = float(exec_res.get("tp") if exec_res.get("tp") is not None else signal.take_profit)
         
         # Calculate Canonical Immutable 1R (Absolute initial stop distance)
         initial_r = abs(fill_p - final_sl)
@@ -120,10 +129,10 @@ class ExecutionEngine:
             "initial_r": initial_r,
             "provenance": DataProvenance.BROKER_DEMO_VERIFIED if self.mode == "DEMO" else (DataProvenance.BROKER_LIVE_VERIFIED if self.mode == "LIVE" else DataProvenance.PAPER),
             "is_broker_verified": 1 if self.mode in ("DEMO", "LIVE") else 0,
-            "broker_account_id": getattr(settings, "CTRADER_ACCOUNT_ID", "5908018"),
+            "broker_account_id": str(exec_res["account_id"]),
             "strategy_version": "Gold_Sniper_SMC_v2.0",
             "execution_environment": self.mode,
-            "data_source": "cTrader Open API"
+            "data_source": "CTRADER_CBOT_BROKER_CONFIRMED"
         }
         db.save_trade(executed_trade)
         

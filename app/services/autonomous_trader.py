@@ -78,9 +78,33 @@ class AutonomousTrader:
         acc_summary = ctrader_cloud_gateway.get_gateway_status()
         if not ctrader_cloud_gateway.broker_telemetry.health(ctrader_cloud_gateway.GATEWAY_STATE, sym)["execution_ready"]:
             return {"status": "BLOCKED_BROKER_TELEMETRY", "telemetry": acc_summary.get("telemetry")}
-        bal = float(acc_summary.get("balance", 1000.0))
+        bal = float(acc_summary.get("balance") or 0.0)
+        if bal <= 0:
+            return {"status": "BLOCKED_BROKER_TELEMETRY", "reason": "BROKER_BALANCE_UNAVAILABLE"}
 
-        # Build SignalPayload
+        from app.services.market_feed_v2 import get_market_snapshot
+        try:
+            market_data = get_market_snapshot(sym, force_refresh=True)
+        except Exception as exc:
+            return {
+                "status": "VETOED_BY_DATA_INTEGRITY",
+                "reason": f"VETO_UNVERIFIED_MARKET_DATA:{exc}",
+            }
+
+        requested_entry = float(entry_price)
+        broker_entry = float(market_data["price"])
+        pip_size = float(market_data["pip_size"])
+        max_deviation = pip_size * 20.0
+        if abs(requested_entry - broker_entry) > max_deviation:
+            return {
+                "status": "VETOED_BY_PRICE_DEVIATION",
+                "reason": (
+                    f"VETO_CANDIDATE_PRICE_DEVIATION: proposed={requested_entry}, "
+                    f"broker={broker_entry}, max={max_deviation}"
+                ),
+            }
+        entry_price = broker_entry
+
         signal = SignalPayload(
             id=sig_id,
             symbol=sym,
@@ -90,43 +114,40 @@ class AutonomousTrader:
             take_profit=take_profit,
             timeframe=timeframe,
             volume=0.01,
-            account_id=str(acc_summary.get("account_id", "5908018")),
-            source="AUTONOMOUS_SCANNER"
+            account_id=str(acc_summary.get("account_id") or ""),
+            source="BROKER_AUTHORITATIVE_AUTONOMOUS_SCANNER",
         )
-
-        market_data = market_context or {
-            "symbol": sym,
-            "price": entry_price,
-            "spread": 0.25,
-            "high_24h": entry_price * 1.01,
-            "low_24h": entry_price * 0.99,
-            "updated_at": now.timestamp(),
-            "indicators": {
-                "rsi": 58.0,
-                "ema_20": entry_price * 0.998,
-                "ema_50": entry_price * 0.995,
-                "ema_200": entry_price * 0.985,
-                "trend_1h": "BULLISH" if act == "BUY" else "BEARISH"
-            }
-        }
 
         macro_data = economic_calendar_service.get_current_news_feed_bias()
 
-        # 1. LIVE MARKET DATA INTEGRITY & FRESHNESS CHECK
-        from app.services.market_data_integrity_monitor import market_data_integrity_monitor
-        is_fresh, fresh_msg, live_tick = market_data_integrity_monitor.evaluate_price_freshness(sym, max_age=5.0)
-        if not is_fresh or not live_tick:
+        from app.services.broker_candle_feed import get_broker_multi_timeframe_candles
+        from app.services.pretrade_intelligence_engine import pretrade_intelligence_engine
+        try:
+            candles = get_broker_multi_timeframe_candles(sym, count=60)
+            spread_divisor = pip_size * 10.0 if "XAU" in sym else pip_size
+            pretrade = pretrade_intelligence_engine.scan_market(
+                symbol=sym,
+                live_tick={
+                    "bid": float(market_data["bid"]),
+                    "ask": float(market_data["ask"]),
+                    "spread": round(float(market_data["spread"]) / spread_divisor, 2),
+                },
+                timeframe_candles=candles,
+            )
+        except Exception as exc:
+            return {"status": "VETOED_BY_DATA_INTEGRITY", "reason": f"BROKER_CANDLES_UNAVAILABLE:{exc}"}
+        if not pretrade.get("trade_allowed", False):
             return {
-                "status": "VETOED_BY_DATA_INTEGRITY",
-                "reason": f"VETO_UNVERIFIED_MARKET_DATA: Cannot execute autonomous setup: {fresh_msg}"
+                "status": "REJECTED_BY_PRETRADE",
+                "reason": pretrade.get("decision_reason") or pretrade.get("reason"),
+                "pretrade": pretrade,
             }
-
-        # Validate proposed entry against live broker tick (max 20 pips deviation)
-        is_price_valid, dev_msg = market_data_integrity_monitor.validate_candidate_price_against_feed(sym, entry_price, max_allowed_deviation_pips=20.0)
-        if not is_price_valid:
+        required_action = str((pretrade.get("setup") or {}).get("direction", "")).upper()
+        if required_action != act:
             return {
-                "status": "VETOED_BY_PRICE_DEVIATION",
-                "reason": dev_msg
+                "status": "REJECTED_BY_PRETRADE",
+                "reason": "SIGNAL_DIRECTION_CONFLICT_WITH_PRETRADE",
+                "pretrade": pretrade,
             }
 
         # 2. 6-AGENT CONSENSUS EVALUATION

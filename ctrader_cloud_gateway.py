@@ -2,7 +2,6 @@ import os
 import sys
 import time
 import datetime
-import random
 import logging
 import copy
 from app.services import broker_telemetry
@@ -39,74 +38,40 @@ def _resolve_initial_account_id() -> str:
 
 DEFAULT_ACCOUNT_ID = _resolve_initial_account_id()
 
-# Linked cTrader Accounts Registry (Live & Demo)
+# Registry entries are created from verified broker telemetry only.
 LINKED_ACCOUNTS: Dict[str, Dict[str, Any]] = {
-    "5908018": {
-        "account_id": "5908018",
-        "name": "Spotware • Demo • #5908018",
+    DEFAULT_ACCOUNT_ID: {
+        "account_id": DEFAULT_ACCOUNT_ID,
+        "name": f"cTrader • #{DEFAULT_ACCOUNT_ID} (telemetry unavailable)",
         "account_type": "DEMO",
         "environment": "Demo",
-        "balance": 1018.96,
-        "equity": 1018.96,
+        "balance": 0.0,
+        "equity": 0.0,
         "margin": 0.0,
-        "free_margin": 1018.96,
-        "currency": "USD",
-        "broker": "Spotware",
+        "free_margin": 0.0,
+        "currency": "",
+        "broker": "",
         "is_live": False,
         "open_positions": [],
-        "last_seen": time.time()
-    },
-    "abu_sarim": {
-        "account_id": "abu_sarim",
-        "name": "Qartal Markets • Live • Abu sarim",
-        "account_type": "LIVE",
-        "environment": "Live",
-        "balance": 0.72,
-        "equity": 0.72,
-        "margin": 0.0,
-        "free_margin": 0.72,
-        "currency": "USD",
-        "broker": "Qartal Markets",
-        "is_live": True,
-        "open_positions": [],
-        "last_seen": time.time()
-    },
-    "1005621": {
-        "account_id": "1005621",
-        "name": "Qartal Markets • Live • #1005621",
-        "account_type": "LIVE",
-        "environment": "Live",
-        "balance": 21.19,
-        "equity": 21.19,
-        "margin": 0.0,
-        "free_margin": 21.19,
-        "currency": "USD",
-        "broker": "Qartal Markets",
-        "is_live": True,
-        "open_positions": [],
-        "last_seen": time.time()
+        "last_seen": 0.0,
+        "telemetry_verified": False,
     }
 }
 
+
 def get_active_account() -> Dict[str, Any]:
     acc_id = GATEWAY_STATE.get("account_id", DEFAULT_ACCOUNT_ID) if "GATEWAY_STATE" in globals() else DEFAULT_ACCOUNT_ID
-    if acc_id not in LINKED_ACCOUNTS:
-        LINKED_ACCOUNTS[acc_id] = {
-            "account_id": acc_id,
-            "name": f"cTrader • #{acc_id}",
-            "account_type": "DEMO",
-            "environment": "Demo",
-            "balance": 1000.0,
-            "equity": 1000.0,
-            "margin": 0.0,
-            "free_margin": 1000.0,
-            "currency": "USD",
-            "broker": "Spotware",
-            "is_live": False,
+    account = LINKED_ACCOUNTS.get(str(acc_id))
+    if account is None:
+        return {
+            "account_id": str(acc_id),
+            "account_type": "UNKNOWN",
+            "balance": 0.0,
+            "equity": 0.0,
             "open_positions": [],
-            "last_seen": time.time()
+            "telemetry_verified": False,
         }
-    return LINKED_ACCOUNTS[acc_id]
+    return account
 
 
 def get_active_account_id() -> Optional[str]:
@@ -116,12 +81,12 @@ def get_active_account_id() -> Optional[str]:
 
 
 
-_initial_acc = LINKED_ACCOUNTS.get(DEFAULT_ACCOUNT_ID, LINKED_ACCOUNTS["5908018"])
+_initial_acc = LINKED_ACCOUNTS[DEFAULT_ACCOUNT_ID]
 
 # Spotware cTrader Open API Configuration
 CTRADER_CONFIG = {
-    "client_id": os.getenv("CTRADER_CLIENT_ID", "38205_uwQq76FzYirpd9qMjJrPqc07VcT1CqFHkDx8GXwzMBxratuPNT").strip('"').strip(),
-    "client_secret": os.getenv("CTRADER_CLIENT_SECRET", "aI5kdBjwDuPX6CCgrJ0o3AholHFhCGAPuN2lj75UUV3NxEHFTm").strip('"').strip(),
+    "client_id": os.getenv("CTRADER_CLIENT_ID", "").strip('"').strip(),
+    "client_secret": os.getenv("CTRADER_CLIENT_SECRET", "").strip('"').strip(),
     "account_id": DEFAULT_ACCOUNT_ID,
     "environment": _initial_acc.get("environment", "Demo"),
     "access_token": os.getenv("CTRADER_ACCESS_TOKEN", "").strip('"').strip(),
@@ -229,29 +194,11 @@ def switch_active_account(account_id: str) -> Dict[str, Any]:
                 "gateway_state": get_gateway_status(), "accounts": get_all_accounts()["accounts"]}
 
     if clean_id not in LINKED_ACCOUNTS:
-        if "sarim" in clean_id.lower() or clean_id == "abu_sarim":
-            clean_id = "abu_sarim"
-        elif "1005" in clean_id:
-            clean_id = "1005621"
-        elif "5908" in clean_id:
-            clean_id = "5908018"
-        else:
-            is_live = "live" in clean_id.lower()
-            LINKED_ACCOUNTS[clean_id] = {
-                "account_id": clean_id,
-                "name": f"cTrader #{clean_id}",
-                "account_type": "LIVE" if is_live else "DEMO",
-                "environment": "Live" if is_live else "Demo",
-                "balance": 21.19 if is_live else 1018.96,
-                "equity": 21.19 if is_live else 1018.96,
-                "margin": 0.0,
-                "free_margin": 21.19 if is_live else 1018.96,
-                "currency": "USD",
-                "broker": "Qartal Markets" if is_live else "Spotware",
-                "is_live": is_live,
-                "open_positions": [],
-                "last_seen": time.time()
-            }
+        return {
+            "status": "REJECTED_UNVERIFIED_ACCOUNT",
+            "active_account_id": str(GATEWAY_STATE.get("account_id") or ""),
+            "error": "Account must be discovered through verified broker telemetry before selection.",
+        }
 
     acc_data = LINKED_ACCOUNTS[clean_id]
     GATEWAY_STATE["positions_snapshot_valid"] = False
@@ -262,10 +209,10 @@ def switch_active_account(account_id: str) -> Dict[str, Any]:
     GATEWAY_STATE["account_id"] = clean_id
     GATEWAY_STATE["account_type"] = acc_data.get("account_type", "LIVE")
     GATEWAY_STATE["is_live"] = acc_data.get("is_live", True)
-    GATEWAY_STATE["balance"] = round(float(acc_data.get("balance", 1018.96)), 2)
-    GATEWAY_STATE["equity"] = round(float(acc_data.get("equity", 1018.96)), 2)
+    GATEWAY_STATE["balance"] = round(float(acc_data.get("balance") or 0.0), 2)
+    GATEWAY_STATE["equity"] = round(float(acc_data.get("equity") or 0.0), 2)
     GATEWAY_STATE["margin"] = round(float(acc_data.get("margin", 0.0)), 2)
-    GATEWAY_STATE["free_margin"] = round(float(acc_data.get("free_margin", GATEWAY_STATE["equity"])), 2)
+    GATEWAY_STATE["free_margin"] = round(float(acc_data.get("free_margin") or 0.0), 2)
     GATEWAY_STATE["currency"] = acc_data.get("currency", "USD")
     GATEWAY_STATE["broker"] = acc_data.get("broker", "Spotware")
     GATEWAY_STATE["open_positions"] = acc_data.get("open_positions", [])
@@ -308,10 +255,10 @@ def exchange_oauth_code(code: str, redirect_uri: str) -> Dict[str, Any]:
     global CTRADER_CONFIG, GATEWAY_STATE
     clean_code = str(code).strip()
     
+    if not CTRADER_CONFIG["client_id"] or not CTRADER_CONFIG["client_secret"]:
+        return {"status": "ERROR", "message": "CTRADER_OAUTH_CREDENTIALS_NOT_CONFIGURED"}
     app_pairs = [
         (CTRADER_CONFIG["client_id"], CTRADER_CONFIG["client_secret"]),
-        ("38205_uwQq76FzYirpd9qMjjrPqcO7VcT1CqFHkDx8GXwzMBxratuPNT", "al5kdBjwDuPX6CCgrj0o3AholHFhCGAPuN2lj75UUV3NxEHFTm"),
-        ("39195_4Gr4AwHTdQX7XVxMccP1mfzwU9RE99BDPQCiF6Y5vGotQpwdtC", "2hV6fK7gHwQcdNkmLyazI1xA84Xmps5GezuCh3xJo9FMD9yqpF"),
     ]
 
     last_err = "No response"
@@ -698,9 +645,6 @@ def execute_market_order(
             "tp_price": tp_price
         }
 
-    ticket_num = random.randint(710000, 999999)
-    ticket_id = f"CT_{ticket_num}"
-
     # Calculate pips for cBot bridge
     pip_size = 0.01 if (is_gold or is_silver) else 0.0001
     sl_pips = abs(fill_price - sl_price) / pip_size if sl_price > 0 else (600.0 if is_gold else 40.0)
@@ -717,15 +661,6 @@ def execute_market_order(
         tp_price=tp_price,
         comment=comment
     )
-
-    if bridge_res.get("status") == "SUCCESS":
-        real_pos_id = bridge_res.get("position_id") or bridge_res.get("order_id")
-        if real_pos_id:
-            ticket_num = real_pos_id
-            ticket_id = f"CT_{real_pos_id}"
-        if bridge_res.get("entry_price"):
-            fill_price = float(bridge_res["entry_price"])
-        print(f"[Local Bridge Execution] 🟢 Live cTrader Fill: Ticket #{ticket_num} @ ${fill_price}")
 
     # Broker/cBot acknowledgement is authoritative. Never create a local position
     # or SUCCESS receipt when the execution transport did not confirm a fill.
@@ -745,6 +680,11 @@ def execute_market_order(
             "status": "REJECTED_BROKER_RECEIPT_INCOMPLETE",
             "error": "Broker/cBot returned SUCCESS without an entry price; local position creation aborted."
         }
+
+    ticket_num = bridge_res.get("position_id") or bridge_res.get("order_id")
+    ticket_id = f"CT_{ticket_num}"
+    fill_price = float(bridge_res["entry_price"])
+    print(f"[Local Bridge Execution] 🟢 Broker-confirmed cTrader fill: Ticket #{ticket_num} @ ${fill_price}")
 
     # Set last execution timestamp
     LAST_EXECUTION_TIMESTAMP = now_ts
@@ -862,16 +802,11 @@ def close_position(position_id: Any, close_price: Optional[float] = None, force:
                 break
 
     if not target_pos:
-        if force:
-            return {
-                "status": "SUCCESS",
-                "closed_position_id": position_id,
-                "symbol": "XAUUSD",
-                "realized_pnl": 0.0,
-                "new_balance": GATEWAY_STATE.get("balance", 10000.0),
-                "note": f"Position {position_id} resolved/closed successfully"
-            }
-        return {"status": "ERROR", "message": f"Position {position_id} not found"}
+        return {
+            "status": "REJECTED_POSITION_NOT_FOUND",
+            "closed_position_id": position_id,
+            "message": f"Position {position_id} is not present in broker-verified open positions.",
+        }
 
     # Minimum Trade Hold Time (5 minutes / 300 seconds) Guard
     open_ts = target_pos.get("open_timestamp", 0)
@@ -900,15 +835,54 @@ def close_position(position_id: Any, close_price: Optional[float] = None, force:
         return {"status": "REJECTED_BROKER_TELEMETRY"}
     bridge_url = os.getenv("CBOT_BRIDGE_URL", "http://127.0.0.1:5001/trade/").strip()
     try:
-        response = requests.post(bridge_url, json={"action": "CLOSE", "position_id": str(target_pos.get("id")), "force": str(force).lower(),
-                                "account_id": GATEWAY_STATE["account_id"], "snapshot_at": GATEWAY_STATE["broker_snapshot_at"],
-                                "quote_at": get_live_price(target_pos.get("symbol", "XAUUSD"))["quote_at"]}, timeout=2)
-        if response.status_code != 200 or response.json().get("status") != "SUCCESS":
-            return {"status": "REJECTED_BROKER_EXECUTION_UNCONFIRMED"}
+        response = requests.post(bridge_url, json={
+            "action": "CLOSE",
+            "position_id": str(target_pos.get("id")),
+            "force": str(force).lower(),
+            "account_id": GATEWAY_STATE["account_id"],
+            "snapshot_at": GATEWAY_STATE["broker_snapshot_at"],
+            "quote_at": get_live_price(target_pos.get("symbol", "XAUUSD"))["quote_at"],
+        }, timeout=2)
+        close_ack = response.json()
+        if response.status_code != 200 or close_ack.get("status") != "SUCCESS":
+            return {"status": "REJECTED_BROKER_EXECUTION_UNCONFIRMED", "broker_response": close_ack}
     except Exception as exc:
         return {"status": "REJECTED_BROKER_EXECUTION_UNCONFIRMED", "message": str(exc)}
 
-    realized_pnl = float(target_pos.get("net_profit", 0.0))
+    bridge_root = bridge_url.split("/trade", 1)[0].rstrip("/")
+    broker_close = None
+    try:
+        for _ in range(3):
+            history_response = requests.get(f"{bridge_root}/history?count=200", timeout=2)
+            if history_response.status_code == 200:
+                history_rows = history_response.json()
+                broker_close = next((
+                    row for row in history_rows
+                    if str(row.get("position_id") or row.get("id")) == str(target_pos.get("id"))
+                ), None)
+                if broker_close:
+                    break
+            time.sleep(0.2)
+    except Exception:
+        broker_close = None
+
+    GATEWAY_STATE["positions_snapshot_valid"] = False
+    if not broker_close:
+        return {
+            "status": "CLOSE_ACCEPTED_AWAITING_BROKER_HISTORY",
+            "closed_position_id": target_pos.get("id"),
+            "broker_response": close_ack,
+        }
+
+    try:
+        snapshot_response = requests.get(f"{bridge_root}/", timeout=2)
+        if snapshot_response.status_code == 200:
+            _ingest_broker_snapshot(snapshot_response.json(), "local_close_confirmation")
+    except Exception:
+        GATEWAY_STATE["positions_snapshot_valid"] = False
+
+    realized_pnl = float(broker_close["net_profit"])
+    close_price = float(broker_close["closing_price"])
     GATEWAY_STATE["open_positions"] = [p for p in GATEWAY_STATE["open_positions"] if str(p.get("id")) != str(target_pos.get("id"))]
     GATEWAY_STATE["positions_snapshot_valid"] = False
     GATEWAY_STATE["total_unrealized_pnl"] = 0.0

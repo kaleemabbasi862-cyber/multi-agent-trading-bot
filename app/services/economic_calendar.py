@@ -385,6 +385,12 @@ class EconomicCalendarService:
                             f"safe threshold (${max_acceptable_post_news_spread:.2f}) following '{ev.get('event_name')}'."
                         )
 
+        calendar_available = bool(events)
+        if not calendar_available:
+            is_locked_out = True
+            lockout_type = "CALENDAR_UNAVAILABLE"
+            lockout_reason = "Economic calendar data is unavailable; trading is blocked."
+
         # Log risk event on new lockout transition
         if is_locked_out and self._last_logged_lockout != lockout_reason:
             self._last_logged_lockout = lockout_reason
@@ -416,7 +422,8 @@ class EconomicCalendarService:
             "baseline_spread": baseline_spread,
             "max_acceptable_spread": max_acceptable_post_news_spread,
             "spread_status": spread_status,
-            "timestamp_utc": now.strftime("%Y-%m-%d %H:%M:%S UTC")
+            "timestamp_utc": now.strftime("%Y-%m-%d %H:%M:%S UTC"),
+            "calendar_available": calendar_available
         }
 
     def get_macro_status(self, symbol: str = "XAUUSD", current_spread: Optional[float] = None) -> Dict[str, Any]:
@@ -440,7 +447,8 @@ class EconomicCalendarService:
             "usd_sentiment": sentiment_info.get("usd_bias", "NEUTRAL"),
             "gold_macro_bias": sentiment_info.get("gold_bias", "NEUTRAL"),
             "sentiment_score": sentiment_info.get("sentiment_score", 0.0),
-            "calendar_source": "LIVE_ECONOMIC_CALENDAR_ENGINE",
+            "calendar_source": "LIVE_ECONOMIC_CALENDAR_ENGINE" if lockout_info["calendar_available"] else "UNAVAILABLE",
+            "calendar_available": lockout_info["calendar_available"],
             "last_checked_utc": now.strftime("%Y-%m-%d %H:%M:%S UTC")
         }
 

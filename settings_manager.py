@@ -7,13 +7,13 @@ _IN_MEMORY_SETTINGS = None
 
 # Full Whitelist: Metals & Major FX Pairs
 ALL_SUPPORTED_PAIRS = [
-    {"symbol": "XAUUSD", "name": "Gold / USD", "category": "Metals", "icon": "fa-coins", "color": "amber", "default_price": 4400.0, "pip_size": 0.01},
-    {"symbol": "XAGUSD", "name": "Silver / USD", "category": "Metals", "icon": "fa-gem", "color": "slate", "default_price": 32.50, "pip_size": 0.001},
-    {"symbol": "EURUSD", "name": "EUR / USD", "category": "Forex", "icon": "fa-euro-sign", "color": "blue", "default_price": 1.0850, "pip_size": 0.0001},
-    {"symbol": "GBPUSD", "name": "GBP / USD", "category": "Forex", "icon": "fa-sterling-sign", "color": "emerald", "default_price": 1.2950, "pip_size": 0.0001},
-    {"symbol": "USDJPY", "name": "USD / JPY", "category": "Forex", "icon": "fa-yen-sign", "color": "rose", "default_price": 153.50, "pip_size": 0.01},
-    {"symbol": "AUDUSD", "name": "AUD / USD", "category": "Forex", "icon": "fa-dollar-sign", "color": "teal", "default_price": 0.6580, "pip_size": 0.0001},
-    {"symbol": "USDCHF", "name": "USD / CHF", "category": "Forex", "icon": "fa-franc-sign", "color": "purple", "default_price": 0.8850, "pip_size": 0.0001},
+    {"symbol": "XAUUSD", "name": "Gold / USD", "category": "Metals", "icon": "fa-coins", "color": "amber", "pip_size": 0.01},
+    {"symbol": "XAGUSD", "name": "Silver / USD", "category": "Metals", "icon": "fa-gem", "color": "slate", "pip_size": 0.001},
+    {"symbol": "EURUSD", "name": "EUR / USD", "category": "Forex", "icon": "fa-euro-sign", "color": "blue", "pip_size": 0.0001},
+    {"symbol": "GBPUSD", "name": "GBP / USD", "category": "Forex", "icon": "fa-sterling-sign", "color": "emerald", "pip_size": 0.0001},
+    {"symbol": "USDJPY", "name": "USD / JPY", "category": "Forex", "icon": "fa-yen-sign", "color": "rose", "pip_size": 0.01},
+    {"symbol": "AUDUSD", "name": "AUD / USD", "category": "Forex", "icon": "fa-dollar-sign", "color": "teal", "pip_size": 0.0001},
+    {"symbol": "USDCHF", "name": "USD / CHF", "category": "Forex", "icon": "fa-franc-sign", "color": "purple", "pip_size": 0.0001},
 ]
 
 DEFAULT_SETTINGS = {

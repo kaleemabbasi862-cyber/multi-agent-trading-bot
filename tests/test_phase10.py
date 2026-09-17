@@ -32,6 +32,10 @@ class TestPhase10LiveSafetyAndAutonomousIntegration(unittest.TestCase):
         from app.services.ctrader_execution_service import ctrader_execution_service
         ctrader_execution_service._positions_cache.clear()
 
+    def tearDown(self):
+        autonomous_trader.stop()
+        ctrader_cloud_gateway.reset_cooldown()
+
     @patch("ctrader_cloud_gateway.get_live_price", return_value=BROKER_QUOTE)
     def test_01_safety_gate_passes_valid_setup(self, _quote):
         """Test that a compliant setup passes all 6 institutional safety gates."""
@@ -97,10 +101,21 @@ class TestPhase10LiveSafetyAndAutonomousIntegration(unittest.TestCase):
         self.assertIn("INSUFFICIENT_RR", reason)
 
     @patch("ctrader_cloud_gateway.get_live_price", return_value=BROKER_QUOTE)
+    @patch("app.services.pretrade_intelligence_engine.pretrade_intelligence_engine.scan_market", return_value={"trade_allowed": True, "setup": {"direction": "BUY"}})
+    @patch("app.services.broker_candle_feed.get_broker_multi_timeframe_candles", return_value={"M5": [], "M15": [], "H1": [], "H4": []})
+    @patch("app.services.market_feed_v2.get_market_snapshot", return_value={
+        "symbol": "XAUUSD", "source": "CTRADER_CBOT", "candle_source": "CTRADER_CBOT",
+        "price": 2750.0, "bid": 2749.9, "ask": 2750.0, "spread": 0.1,
+        "pip_size": 0.01, "rsi": 55.0, "ema_20": 2748.0, "ema_50": 2745.0,
+        "h1_ema_20": 2747.0, "h1_ema_50": 2742.0, "trend": "BULLISH",
+        "support": 2740.0, "resistance": 2765.0, "timestamp": "2026-09-16T12:00:00+00:00",
+    })
     @patch("app.services.autonomous_trader.live_safety_gate.evaluate_order_safety", return_value=(True, "OK", {}))
     @patch("app.services.autonomous_trader.consensus_engine.process_signal")
     @patch("app.services.autonomous_trader.ctrader_execution_service.execute_market_order")
-    def test_05_autonomous_trader_lifecycle_and_setup_pipeline(self, mock_execute, mock_consensus, _safety, _quote):
+    def test_05_autonomous_trader_lifecycle_and_setup_pipeline(
+        self, mock_execute, mock_consensus, _safety, _snapshot, _candles, _pretrade, _quote
+    ):
         """Test autonomous lifecycle independently from consensus-engine state."""
         mock_consensus.return_value = Mock()
         mock_consensus.return_value.dict.return_value = {"decision_status": "APPROVED", "decision_score": 90.0, "signal_id": "SIG_PHASE10_LIFECYCLE"}

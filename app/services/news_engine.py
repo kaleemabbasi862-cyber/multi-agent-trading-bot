@@ -326,7 +326,7 @@ class NewsEngine:
                         if not title:
                             continue
 
-                        provider = item.get("publisher", "Yahoo Finance")
+                        provider = item.get("publisher") or "UNATTRIBUTED_PROVIDER"
                         if isinstance(item.get("content"), dict):
                             provider = item["content"].get("provider", {}).get("displayName", provider)
 

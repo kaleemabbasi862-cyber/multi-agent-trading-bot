@@ -16,6 +16,9 @@ def test_all_6_agents_evaluate_valid_setup():
         timeframe="15m"
     )
     market_data = {
+        "source": "CTRADER_CBOT",
+        "candle_source": "CTRADER_CBOT",
+        "updated_at": __import__("time").time(),
         "price": 2750.0,
         "spread": 0.35,
         "high_24h": 2765.0,
