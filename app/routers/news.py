@@ -19,10 +19,14 @@ async def get_recent_news(
     """Retrieves recent news items and sentiment analysis from SQLite."""
     try:
         news_items = db.get_recent_news(limit=limit, category=category, sentiment=sentiment)
+        metadata = news_engine.get_news_metadata()
         return {
             "status": "SUCCESS",
             "count": len(news_items),
-            "news": news_items
+            "news": news_items,
+            "source": metadata.get("source", "Yahoo Finance Real-Time News Feed"),
+            "last_sync": metadata.get("last_sync"),
+            "is_stale": metadata.get("is_stale", False)
         }
     except Exception as e:
         logger.error(f"Error fetching news: {e}")

@@ -92,8 +92,18 @@ async def get_kill_switch_status():
     }
 
 @router.get("/performance")
-async def get_performance_analytics():
-    return performance_engine.get_comprehensive_analytics()
+async def get_performance_analytics(
+    mode: Optional[str] = Query(None),
+    account_id: Optional[str] = Query(None)
+):
+    import settings_manager
+    active_mode = mode or settings_manager.load_settings().get("trading_mode", "DEMO")
+    active_acc = account_id or settings_manager.get_active_account_id() or "5908018"
+    return performance_engine.get_comprehensive_analytics(
+        trades_filter_mode=active_mode,
+        broker_account_id=active_acc,
+        is_broker_verified_only=True
+    )
 
 @router.get("/system/audit-logs")
 async def get_audit_logs():

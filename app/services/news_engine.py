@@ -292,6 +292,16 @@ class NewsEngine:
 
         return news_record
 
+    def get_news_metadata(self) -> Dict[str, Any]:
+        now_ts = time.time()
+        is_stale = (self._last_sync_timestamp == 0.0) or ((now_ts - self._last_sync_timestamp) > 3600.0)
+        return {
+            "source": "Yahoo Finance Real-Time News Feed",
+            "last_sync_timestamp": self._last_sync_timestamp,
+            "last_sync": datetime.datetime.fromtimestamp(self._last_sync_timestamp, datetime.timezone.utc).isoformat() if self._last_sync_timestamp > 0 else None,
+            "is_stale": is_stale
+        }
+
     def sync_live_news(self, force: bool = False) -> int:
         """
         Fetches genuine live market news headlines for Gold and USD macro from Yahoo Finance ticker feeds.

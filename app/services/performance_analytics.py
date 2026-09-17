@@ -5,24 +5,42 @@ from app.database.db import get_db_connection
 
 class QuantitativePerformanceEngine:
     @staticmethod
-    def calculate_full_performance(trades_filter_mode: Optional[str] = None) -> Dict[str, Any]:
+    def calculate_full_performance(
+        trades_filter_mode: Optional[str] = None,
+        broker_account_id: Optional[str] = None,
+        is_broker_verified_only: bool = True
+    ) -> Dict[str, Any]:
         with get_db_connection() as conn:
-            query = """
+            where_clauses = ["status = 'CLOSED'"]
+            params = []
+            
+            if is_broker_verified_only:
+                where_clauses.append("is_broker_verified = 1")
+                where_clauses.append("provenance IN ('BROKER_DEMO_VERIFIED', 'BROKER_LIVE_VERIFIED')")
+                where_clauses.append("mode NOT IN ('TEST', 'PAPER')")
+                where_clauses.append("id NOT LIKE 'TRD_TEST_%'")
+                where_clauses.append("(ticket_id IS NULL OR ticket_id NOT LIKE 'TEST_%')")
+
+            if trades_filter_mode and trades_filter_mode.upper() != "ALL":
+                where_clauses.append("mode = ?")
+                params.append(trades_filter_mode.upper())
+
+            if broker_account_id:
+                where_clauses.append("broker_account_id = ?")
+                params.append(str(broker_account_id))
+
+            where_str = " AND ".join(where_clauses)
+            query = f"""
             WITH dedup_trades AS (
                 SELECT *, ROW_NUMBER() OVER (
                     PARTITION BY CASE WHEN ticket_id IS NOT NULL AND ticket_id != '' THEN ticket_id ELSE id END 
                     ORDER BY CASE WHEN id LIKE 'TRD_%' THEN 1 ELSE 2 END, rowid DESC
                 ) as rn
                 FROM trades 
-                WHERE status = 'CLOSED'
+                WHERE {where_str}
             )
-            SELECT * FROM dedup_trades WHERE rn = 1
+            SELECT * FROM dedup_trades WHERE rn = 1 ORDER BY closed_at ASC
             """
-            params = []
-            if trades_filter_mode and trades_filter_mode.upper() != "ALL":
-                query += " AND mode = ?"
-                params.append(trades_filter_mode.upper())
-            query += " ORDER BY closed_at ASC"
             
             rows = conn.execute(query, params).fetchall()
             trades = [dict(r) for r in rows]
@@ -180,19 +198,44 @@ class QuantitativePerformanceEngine:
         }
 
     @staticmethod
-    def generate_equity_curve(initial_balance: float = 1000.0) -> List[Dict[str, Any]]:
+    def generate_equity_curve(
+        initial_balance: float = 1000.0,
+        trades_filter_mode: Optional[str] = None,
+        broker_account_id: Optional[str] = None,
+        is_broker_verified_only: bool = True
+    ) -> List[Dict[str, Any]]:
         with get_db_connection() as conn:
-            rows = conn.execute("""
+            where_clauses = ["status = 'CLOSED'"]
+            params = []
+            
+            if is_broker_verified_only:
+                where_clauses.append("is_broker_verified = 1")
+                where_clauses.append("provenance IN ('BROKER_DEMO_VERIFIED', 'BROKER_LIVE_VERIFIED')")
+                where_clauses.append("mode NOT IN ('TEST', 'PAPER')")
+                where_clauses.append("id NOT LIKE 'TRD_TEST_%'")
+                where_clauses.append("(ticket_id IS NULL OR ticket_id NOT LIKE 'TEST_%')")
+
+            if trades_filter_mode and trades_filter_mode.upper() != "ALL":
+                where_clauses.append("mode = ?")
+                params.append(trades_filter_mode.upper())
+
+            if broker_account_id:
+                where_clauses.append("broker_account_id = ?")
+                params.append(str(broker_account_id))
+
+            where_str = " AND ".join(where_clauses)
+            query = f"""
             WITH dedup_trades AS (
                 SELECT *, ROW_NUMBER() OVER (
                     PARTITION BY CASE WHEN ticket_id IS NOT NULL AND ticket_id != '' THEN ticket_id ELSE id END 
                     ORDER BY CASE WHEN id LIKE 'TRD_%' THEN 1 ELSE 2 END, rowid DESC
                 ) as rn
                 FROM trades 
-                WHERE status = 'CLOSED'
+                WHERE {where_str}
             )
             SELECT id, profit_loss, closed_at FROM dedup_trades WHERE rn = 1 ORDER BY closed_at ASC
-            """).fetchall()
+            """
+            rows = conn.execute(query, params).fetchall()
             trades = [dict(r) for r in rows]
 
         curve = [{
@@ -232,19 +275,43 @@ class QuantitativePerformanceEngine:
         return curve
 
     @staticmethod
-    def get_breakdown_analytics() -> Dict[str, Any]:
+    def get_breakdown_analytics(
+        trades_filter_mode: Optional[str] = None,
+        broker_account_id: Optional[str] = None,
+        is_broker_verified_only: bool = True
+    ) -> Dict[str, Any]:
         with get_db_connection() as conn:
-            trade_rows = conn.execute("""
+            where_clauses = ["status = 'CLOSED'"]
+            params = []
+            
+            if is_broker_verified_only:
+                where_clauses.append("is_broker_verified = 1")
+                where_clauses.append("provenance IN ('BROKER_DEMO_VERIFIED', 'BROKER_LIVE_VERIFIED')")
+                where_clauses.append("mode NOT IN ('TEST', 'PAPER')")
+                where_clauses.append("id NOT LIKE 'TRD_TEST_%'")
+                where_clauses.append("(ticket_id IS NULL OR ticket_id NOT LIKE 'TEST_%')")
+
+            if trades_filter_mode and trades_filter_mode.upper() != "ALL":
+                where_clauses.append("mode = ?")
+                params.append(trades_filter_mode.upper())
+
+            if broker_account_id:
+                where_clauses.append("broker_account_id = ?")
+                params.append(str(broker_account_id))
+
+            where_str = " AND ".join(where_clauses)
+            query = f"""
             WITH dedup_trades AS (
                 SELECT *, ROW_NUMBER() OVER (
                     PARTITION BY CASE WHEN ticket_id IS NOT NULL AND ticket_id != '' THEN ticket_id ELSE id END 
                     ORDER BY CASE WHEN id LIKE 'TRD_%' THEN 1 ELSE 2 END, rowid DESC
                 ) as rn
                 FROM trades 
-                WHERE status = 'CLOSED'
+                WHERE {where_str}
             )
             SELECT * FROM dedup_trades WHERE rn = 1
-            """).fetchall()
+            """
+            trade_rows = conn.execute(query, params).fetchall()
             trades = [dict(r) for r in trade_rows]
 
             # Journal mapping for Market Regime

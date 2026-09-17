@@ -59,6 +59,16 @@ class EconomicCalendarService:
         self._sync_lock = threading.Lock()
         self._initial_sync()
 
+    def get_calendar_metadata(self) -> Dict[str, Any]:
+        now_ts = time.time()
+        is_stale = (self._last_sync_timestamp == 0.0) or ((now_ts - self._last_sync_timestamp) > 3600.0)
+        return {
+            "source": "ForexFactory Real-Time Feed",
+            "last_sync_timestamp": self._last_sync_timestamp,
+            "last_sync": datetime.datetime.fromtimestamp(self._last_sync_timestamp, datetime.timezone.utc).isoformat() if self._last_sync_timestamp > 0 else None,
+            "is_stale": is_stale
+        }
+
     def seed_mock_schedule(self, base_date: Optional[datetime.datetime] = None) -> List[str]:
         """Test helper to seed simulated events for unit testing."""
         if not base_date:

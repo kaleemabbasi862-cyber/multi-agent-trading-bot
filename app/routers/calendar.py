@@ -19,17 +19,25 @@ async def get_calendar_events(
 ):
     """Retrieves economic calendar events from SQLite with optional filtering."""
     try:
+        import datetime
+        now_utc = datetime.datetime.now(datetime.timezone.utc)
+        effective_start = start_time if start_time is not None else (now_utc - datetime.timedelta(hours=6)).isoformat()
+
         events = db.get_economic_events(
-            start_time=start_time,
+            start_time=effective_start,
             end_time=end_time,
             impact=impact,
             currency=currency,
             limit=limit
         )
+        metadata = economic_calendar.get_calendar_metadata()
         return {
             "status": "SUCCESS",
             "count": len(events),
-            "events": events
+            "events": events,
+            "source": metadata.get("source", "ForexFactory Real-Time Feed"),
+            "last_sync": metadata.get("last_sync"),
+            "is_stale": metadata.get("is_stale", False)
         }
     except Exception as e:
         logger.error(f"Error fetching calendar events: {e}")

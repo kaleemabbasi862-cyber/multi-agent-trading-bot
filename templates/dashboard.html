@@ -1966,8 +1966,11 @@
                         <i class="fa-solid fa-chart-line text-sm"></i>
                     </div>
                     <div>
-                        <h3 class="font-bold text-white text-base">Quantitative Performance Analytics & Equity Curve</h3>
-                        <p class="text-[11px] text-slate-400">Institutional Risk-Adjusted Metrics &bull; Sharpe & Sortino &bull; Multi-Dimensional Breakdowns</p>
+                        <div class="flex items-center space-x-2">
+                            <h3 class="font-bold text-white text-base">Broker-Verified Performance Analytics</h3>
+                            <span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 text-[10px] font-mono font-bold">VERIFIED BROKER DATA</span>
+                        </div>
+                        <p class="text-[11px] text-slate-400">Authoritative cTrader DEMO Account #<span class="font-mono text-indigo-300" x-text="selectedAccountId || '5908018'"></span> &bull; Closed Broker Trades Only &bull; Zero Simulated/Paper Contamination</p>
                     </div>
                 </div>
                 <div class="flex items-center space-x-2">
@@ -2110,8 +2113,11 @@
                         <i class="fa-solid fa-coins text-sm"></i>
                     </div>
                     <div>
-                        <h3 class="font-bold text-white text-base">Paper Trading Engine & Virtual Simulated Account</h3>
-                        <p class="text-[11px] text-slate-400">Authentic Market Execution &bull; Zero Risk &bull; Realistic Spread & Slippage</p>
+                        <div class="flex items-center space-x-2">
+                            <h3 class="font-bold text-amber-400 text-base">Paper Trading Engine (Simulated)</h3>
+                            <span class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-mono font-bold">SIMULATED / NOT BROKER DATA</span>
+                        </div>
+                        <p class="text-[11px] text-slate-400">Isolated Virtual Sandbox &bull; Zero Real Risk &bull; Strictly Segregated from Broker Ledger</p>
                     </div>
                 </div>
                 <div class="flex items-center space-x-2">
@@ -2399,8 +2405,13 @@
                         <i class="fa-solid fa-calendar-days text-sm"></i>
                     </div>
                     <div>
-                        <h3 class="font-bold text-white text-base">Economic Calendar & High-Impact Protection Mode</h3>
-                        <p class="text-[11px] text-slate-400">Rule 6 Pre-Event Blackout &bull; Rule 7 Post-News Cooldown &bull; Spread Normalization Guard</p>
+                        <div class="flex items-center space-x-2">
+                            <h3 class="font-bold text-white text-base">Macroeconomic Calendar</h3>
+                            <span class="px-2 py-0.5 rounded text-[10px] font-mono font-bold"
+                                  :class="calendarIsStale ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'"
+                                  x-text="calendarIsStale ? 'DATA STALE / REFRESHING' : 'LIVE FEED ACTIVE'"></span>
+                        </div>
+                        <p class="text-[11px] text-slate-400">Source: <span class="text-indigo-300 font-mono" x-text="calendarSource"></span> &bull; <span x-show="calendarLastSync" x-text="'Last Sync: ' + calendarLastSync"></span> &bull; Rule 6/7 Protection Active</p>
                     </div>
                 </div>
                 <div class="flex items-center space-x-2">
@@ -2531,8 +2542,13 @@
                         <i class="fa-solid fa-newspaper text-sm"></i>
                     </div>
                     <div>
-                        <h3 class="font-bold text-white text-base">Financial News & NLP Sentiment Analyzer</h3>
-                        <p class="text-[11px] text-slate-400">Institutional Sentiment &bull; Macro Bias Extraction &bull; Real-Time AI News Scoring</p>
+                        <div class="flex items-center space-x-2">
+                            <h3 class="font-bold text-white text-base">Financial News & NLP Sentiment Analyzer</h3>
+                            <span class="px-2 py-0.5 rounded text-[10px] font-mono font-bold"
+                                  :class="newsIsStale ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'"
+                                  x-text="newsIsStale ? 'FEED STALE / REFRESHING' : 'LIVE RSS / API FEED'"></span>
+                        </div>
+                        <p class="text-[11px] text-slate-400">Source: <span class="text-indigo-300 font-mono" x-text="newsSource"></span> &bull; <span x-show="newsLastSync" x-text="'Last Ingested: ' + newsLastSync"></span> &bull; Real-Time NLP Scoring</p>
                     </div>
                 </div>
                 <button @click="activeTab = 'dashboard'" class="text-slate-400 hover:text-white p-1">
@@ -2957,11 +2973,17 @@
                 calendarSyncing: false,
                 calendarFilterImpact: 'ALL',
                 calendarFilterCurrency: 'ALL',
+                calendarSource: 'ForexFactory Real-Time Feed',
+                calendarLastSync: null,
+                calendarIsStale: false,
                 newsItems: [],
                 newsSentimentSummary: {},
                 newsHeadlineInput: '',
                 newsAnalysisResult: null,
                 newsAnalyzing: false,
+                newsSource: 'Yahoo Finance Real-Time News Feed',
+                newsLastSync: null,
+                newsIsStale: false,
                 journalFilterOutcome: 'ALL',
                 journalFilterSymbol: 'ALL',
                 journalFilterRegime: 'ALL',
@@ -3019,6 +3041,9 @@
                         if (res.ok) {
                             const data = await res.json();
                             this.calendarEvents = data.events || [];
+                            this.calendarSource = data.source || 'ForexFactory Real-Time Feed';
+                            this.calendarLastSync = data.last_sync ? data.last_sync.replace('T', ' ').substring(0, 16) + ' UTC' : null;
+                            this.calendarIsStale = Boolean(data.is_stale);
                         }
                     } catch (e) {}
                 },
@@ -3077,6 +3102,9 @@
                         if (res.ok) {
                             const data = await res.json();
                             this.newsItems = data.news || [];
+                            this.newsSource = data.source || 'Yahoo Finance Real-Time News Feed';
+                            this.newsLastSync = data.last_sync ? data.last_sync.replace('T', ' ').substring(0, 16) + ' UTC' : null;
+                            this.newsIsStale = Boolean(data.is_stale);
                         }
                     } catch (e) {}
                 },
@@ -3685,10 +3713,12 @@
                 async fetchPerformanceAnalytics() {
                     this.perfLoading = true;
                     try {
+                        const acc = this.selectedAccountId || (this.cbotStatus ? this.cbotStatus.account_id : '5908018') || '5908018';
+                        const mode = this.systemState?.trading_mode || 'DEMO';
                         const [ovRes, eqRes, bdRes] = await Promise.all([
-                            fetch('/api/performance/overview'),
-                            fetch('/api/performance/equity-curve'),
-                            fetch('/api/performance/breakdown')
+                            fetch(`/api/performance/overview?account_id=${acc}&mode=${mode}`),
+                            fetch(`/api/performance/equity-curve?account_id=${acc}&mode=${mode}`),
+                            fetch(`/api/performance/breakdown?account_id=${acc}&mode=${mode}`)
                         ]);
                         if (ovRes.ok) this.perfOverview = await ovRes.json();
                         if (eqRes.ok) this.equityCurvePoints = await eqRes.json();
