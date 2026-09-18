@@ -7,6 +7,7 @@ from app.engine.technical_indicators import technical_indicators
 from app.services.session_engine import session_engine
 from app.services.setup_classifier import setup_classifier
 from app.services.trade_quality_scorer import trade_quality_scorer
+from app.services.entry_safety_policy import directional_location_block_reason
 from app.config import trading_config
 import settings_manager
 
@@ -128,6 +129,7 @@ class PreTradeIntelligenceEngine:
         setup_direction = str(setup.get("direction", "FLAT")).upper()
         consolidation_detected = (structure in ("RANGE", "CONSOLIDATION", "CONSOLIDATING") and setup_type not in ("STRUCTURE_REVERSAL",)) or setup_type == "NO_VALID_SETUP"
         disallow_consolidation = bool(trading_config.get("DISALLOW_CONSOLIDATION_ENTRIES"))
+        location_block_reason = directional_location_block_reason(setup_direction, smc_result)
 
         if regime == "NO_TRADE":
             trade_allowed = False
@@ -141,6 +143,9 @@ class PreTradeIntelligenceEngine:
         elif disallow_consolidation and consolidation_detected:
             trade_allowed = False
             decision_reason = f"NO_TRADE_CONSOLIDATION: structure={structure}, setup={setup_type}."
+        elif location_block_reason:
+            trade_allowed = False
+            decision_reason = location_block_reason
         elif active_news_blackout:
             trade_allowed = False
             decision_reason = news_reason or "High-impact news blackout active."

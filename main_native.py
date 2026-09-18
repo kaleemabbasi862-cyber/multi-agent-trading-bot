@@ -213,10 +213,31 @@ async def autonomous_market_scanner_loop():
                     # 2. Post-Trade Close Cooldown Check
                     last_close = getattr(ctrader_cloud_gateway, "LAST_TRADE_CLOSE_TIMESTAMP", 0.0)
                     time_since_close = now - last_close
-                    close_cooldown_req = getattr(settings, "TRADE_CLOSE_COOLDOWN_SECONDS", 10)
+                    close_cooldown_req = getattr(settings, "TRADE_CLOSE_COOLDOWN_SECONDS", 1800)
                     if last_close > 0 and time_since_close < close_cooldown_req:
                         rem_s = int(close_cooldown_req - time_since_close)
                         logger.debug(f"[Autonomous Scanner] ⏳ Post-Trade Cooldown Active ({rem_s}s remaining to let market settle).")
+                        await asyncio.sleep(5)
+                        continue
+
+                    from app.database.db import db
+                    from app.services.entry_safety_policy import consecutive_loss_lockout
+                    gateway_account = str(
+                        ctrader_cloud_gateway.get_gateway_status().get("account_id") or ""
+                    )
+                    recent_broker_trades = db.get_recent_trades(
+                        limit=5,
+                        broker_account_id=gateway_account,
+                        is_broker_verified_only=True,
+                    )
+                    loss_lock, loss_remaining = consecutive_loss_lockout(
+                        recent_broker_trades,
+                        now_ts=now,
+                        required_losses=getattr(settings, "MAX_CONSECUTIVE_LOSSES", 2),
+                        cooldown_seconds=getattr(settings, "CONSECUTIVE_LOSS_COOLDOWN_SECONDS", 3600),
+                    )
+                    if loss_lock:
+                        logger.warning("[Autonomous Scanner] Consecutive-loss lockout active (%ss remaining).", loss_remaining)
                         await asyncio.sleep(5)
                         continue
 

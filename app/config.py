@@ -27,7 +27,7 @@ class Settings:
     # Risk & Capital Protection Parameters
     MAX_ACCOUNT_RISK_PERCENT: float = float(os.getenv("MAX_ACCOUNT_RISK_PERCENT", "1.0"))
     DAILY_LOSS_LIMIT: float = float(os.getenv("DAILY_LOSS_LIMIT", "5.0"))
-    MAX_CONSECUTIVE_LOSSES: int = int(os.getenv("MAX_CONSECUTIVE_LOSSES", "3"))
+    MAX_CONSECUTIVE_LOSSES: int = int(os.getenv("MAX_CONSECUTIVE_LOSSES", "2"))
     MAX_WEEKLY_DRAWDOWN_PERCENT: float = float(os.getenv("MAX_WEEKLY_DRAWDOWN_PERCENT", "5.0"))
     MAX_MONTHLY_DRAWDOWN_PERCENT: float = float(os.getenv("MAX_MONTHLY_DRAWDOWN_PERCENT", "10.0"))
     RISK_DAY_TIMEZONE: str = os.getenv("RISK_DAY_TIMEZONE", "UTC")
@@ -43,7 +43,8 @@ class Settings:
     
     # Trade Pacing & Anti-Churn Guards
     EXECUTION_COOLDOWN_SECONDS: int = int(os.getenv("EXECUTION_COOLDOWN_SECONDS", "30")) # 30 seconds debounce between trades
-    TRADE_CLOSE_COOLDOWN_SECONDS: int = int(os.getenv("TRADE_CLOSE_COOLDOWN_SECONDS", "10")) # 10 seconds debounce after trade close
+    TRADE_CLOSE_COOLDOWN_SECONDS: int = int(os.getenv("TRADE_CLOSE_COOLDOWN_SECONDS", "1800")) # 30 minutes after any broker-confirmed close
+    CONSECUTIVE_LOSS_COOLDOWN_SECONDS: int = int(os.getenv("CONSECUTIVE_LOSS_COOLDOWN_SECONDS", "3600")) # 60 minutes after two losses
     MIN_TRADE_HOLD_SECONDS: int = int(os.getenv("MIN_TRADE_HOLD_SECONDS", "60")) # 1 minute minimum hold time
     
     # Trailing Stop Configuration: 'DISABLED', 'ATR_TRAILING', 'STRUCTURE_TRAILING', 'SWING_TRAILING'
@@ -199,14 +200,14 @@ TRADING_CONSTANTS_REGISTRY: Dict[str, TradingConstantDefinition] = {
     ),
     "MAX_CONSECUTIVE_LOSSES": TradingConstantDefinition(
         name="MAX_CONSECUTIVE_LOSSES",
-        value=3,
+        value=2,
         unit="Count",
         category=ConstantCategory.SAFETY_POLICY,
         min_value=2,
         max_value=5,
         symbol_scope="GLOBAL",
         provenance_source="Anti-Tilt & Regime Invalidation Risk Policy",
-        rationale="Three consecutive stop-outs indicate market regime transition; triggers mandatory 60m cooldown."
+        rationale="Two consecutive stop-outs indicate setup or regime invalidation; triggers mandatory 60m cooldown."
     ),
     "MAX_CONCURRENT_POSITIONS": TradingConstantDefinition(
         name="MAX_CONCURRENT_POSITIONS",
