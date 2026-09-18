@@ -124,11 +124,14 @@ class HeadDeskManagerAgent:
         min_confidence = float(cur_settings.get("min_confidence_threshold", getattr(settings, "MIN_AGENT_CONFIDENCE", 65.0)))
         min_agents_required = int(cur_settings.get("min_consensus_agents", getattr(settings, "MIN_CONSENSUS_AGENTS", 4)))
 
+        signal_direction = str(getattr(signal, "action", "") or "").upper()
         agreeing_agents = [
-            d for d in agent_decisions 
+            d for d in agent_decisions
             if (d.decision == "PASS" or d.score >= min_confidence)
             and d.decision != "FAIL"
             and d.decision != "VETO"
+            and str(getattr(d, "direction", "NEUTRAL") or "NEUTRAL").upper()
+            in (signal_direction, "NEUTRAL")
         ]
         
         # General's vote counts as the 6th arbiter if aggregate score >= threshold

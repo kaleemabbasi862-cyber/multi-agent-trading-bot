@@ -126,6 +126,35 @@ class TechnicalAnalystAgent:
         reasons = []
         score = 70.0
         direction = "NEUTRAL"
+
+        # The scanner and consensus must evaluate the same broker-authoritative
+        # intraday state. H1 remains context, but confirmed M5/M15 momentum plus
+        # M15 structure may drive an intraday entry instead of being treated as
+        # an automatic counter-trend failure.
+        pretrade = market_data.get("_pretrade", {}) if isinstance(market_data, dict) else {}
+        mtf = pretrade.get("mtf", {}) if isinstance(pretrade, dict) else {}
+        smc = pretrade.get("smc", {}) if isinstance(pretrade, dict) else {}
+        setup = pretrade.get("setup", {}) if isinstance(pretrade, dict) else {}
+        breakdown = mtf.get("timeframe_breakdown", {}) if isinstance(mtf, dict) else {}
+        m5_trend = str(breakdown.get("M5", {}).get("trend", "NEUTRAL")).upper()
+        m15_trend = str(breakdown.get("M15", {}).get("trend", "NEUTRAL")).upper()
+        intraday_trend = str(mtf.get("intraday_trend", "NEUTRAL")).upper()
+        intraday_aligned = bool(mtf.get("intraday_aligned", False))
+        setup_direction = str(setup.get("direction", "FLAT")).upper()
+        smc_structure = str(smc.get("structure", "RANGE")).upper()
+        smc_event = str(smc.get("latest_event", "NONE")).upper()
+        momentum_direction = "BUY" if intraday_trend == "BULLISH" else ("SELL" if intraday_trend == "BEARISH" else "FLAT")
+        momentum_confirmed = (
+            intraday_aligned
+            and setup_direction == act
+            and momentum_direction == act
+            and m5_trend == intraday_trend
+            and m15_trend == intraday_trend
+        )
+        structure_confirmed = (
+            (act == "BUY" and (smc_structure == "BULLISH_TREND" or "BULLISH" in smc_event))
+            or (act == "SELL" and (smc_structure == "BEARISH_TREND" or "BEARISH" in smc_event))
+        )
         
         is_1h_bull = (trend_1h == "BULLISH" or ema_20_1h >= ema_50_1h)
         is_1h_bear = (trend_1h == "BEARISH" or ema_20_1h <= ema_50_1h)
@@ -135,6 +164,9 @@ class TechnicalAnalystAgent:
             if is_1h_bull:
                 score += 15.0
                 reasons.append(f"1H Trend Aligned BULLISH (EMA20: ${ema_20_1h:.2f} >= EMA50: ${ema_50_1h:.2f})")
+            elif momentum_confirmed and structure_confirmed:
+                score -= 10.0
+                reasons.append("1H context opposes entry, but broker M5/M15 bullish momentum and M15 bullish structure are confirmed")
             else:
                 score -= 35.0
                 reasons.append(f"1H Trend MISALIGNED (1H is {trend_1h})")
@@ -142,8 +174,9 @@ class TechnicalAnalystAgent:
                 score += 10.0
                 reasons.append("15m Price above EMA20 and EMA50 (Strong Bullish Stack)")
             elif p < ema_50_15m:
-                score -= 15.0
-                reasons.append("15m Price below EMA50")
+                penalty = 5.0 if momentum_confirmed and structure_confirmed else 15.0
+                score -= penalty
+                reasons.append("15m Price below EMA50" + ("; confirmed intraday momentum limits counter-context penalty" if penalty == 5.0 else ""))
             if 45.0 <= rsi_15m <= 68.0:
                 score += 5.0
                 reasons.append(f"RSI 14 in optimal expansion zone ({rsi_15m:.1f})")
@@ -159,6 +192,9 @@ class TechnicalAnalystAgent:
             if is_1h_bear:
                 score += 15.0
                 reasons.append(f"1H Trend Aligned BEARISH (EMA20: ${ema_20_1h:.2f} <= EMA50: ${ema_50_1h:.2f})")
+            elif momentum_confirmed and structure_confirmed:
+                score -= 10.0
+                reasons.append("1H context opposes entry, but broker M5/M15 bearish momentum and M15 bearish structure are confirmed")
             else:
                 score -= 35.0
                 reasons.append(f"1H Trend MISALIGNED (1H is {trend_1h})")
@@ -166,8 +202,9 @@ class TechnicalAnalystAgent:
                 score += 10.0
                 reasons.append("15m Price below EMA20 and EMA50 (Strong Bearish Stack)")
             elif p > ema_50_15m:
-                score -= 15.0
-                reasons.append("15m Price above EMA50")
+                penalty = 5.0 if momentum_confirmed and structure_confirmed else 15.0
+                score -= penalty
+                reasons.append("15m Price above EMA50" + ("; confirmed intraday momentum limits counter-context penalty" if penalty == 5.0 else ""))
             if 32.0 <= rsi_15m <= 55.0:
                 score += 5.0
                 reasons.append(f"RSI 14 in optimal bearish expansion zone ({rsi_15m:.1f})")
@@ -177,6 +214,13 @@ class TechnicalAnalystAgent:
             elif rsi_15m > 65.0:
                 score -= 15.0
                 reasons.append(f"RSI 14 Strong Bullish Momentum ({rsi_15m:.1f})")
+
+        if momentum_confirmed:
+            score += 5.0
+            reasons.append(f"Broker M5/M15 momentum aligned {intraday_trend}")
+        if structure_confirmed:
+            score += 10.0
+            reasons.append(f"M15 structure/event confirms {act} ({smc_structure}, {smc_event})")
 
         regime, range_span, ema_spread = self._classify_regime(
             rsi_15m, ema_20_15m, ema_50_15m, ema_200_15m, support, resistance, p

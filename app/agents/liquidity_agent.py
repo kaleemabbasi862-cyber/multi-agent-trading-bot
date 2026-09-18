@@ -24,11 +24,16 @@ class LiquiditySmartMoneyAgent:
         resistance = float(ind.get("resistance", p + 8.0))
         high_24h = float(market_data.get("high_24h", resistance + 5.0))
         low_24h = float(market_data.get("low_24h", support - 5.0))
-        
-        # Calculate Equilibrium (50% range)
-        equilibrium = round((high_24h + low_24h) / 2.0, 2)
-        is_discount = p < equilibrium  # Optimal for BUY
-        is_premium = p > equilibrium   # Optimal for SELL
+
+        pretrade = market_data.get("_pretrade", {}) if isinstance(market_data, dict) else {}
+        pretrade_smc = pretrade.get("smc", {}) if isinstance(pretrade, dict) else {}
+        dealing_range = pretrade_smc.get("dealing_range", {}) if isinstance(pretrade_smc, dict) else {}
+        range_high = float(dealing_range.get("range_high", high_24h))
+        range_low = float(dealing_range.get("range_low", low_24h))
+        equilibrium = float(dealing_range.get("equilibrium", round((range_high + range_low) / 2.0, 2)))
+        zone = str(dealing_range.get("zone", "EQUILIBRIUM")).upper()
+        is_discount = zone in ("DISCOUNT", "DEEP_DISCOUNT") if dealing_range else p < equilibrium
+        is_premium = zone in ("PREMIUM", "EXTREME_PREMIUM") if dealing_range else p > equilibrium
         
         reasons = []
         score = 80.0
@@ -75,7 +80,7 @@ class LiquiditySmartMoneyAgent:
 
         # 4. Integrate Smart Money Structural Engine if M15 candles available
         candles = market_data.get("candles", {}).get("M15") or market_data.get("m15_candles", [])
-        structure_state = "EQUILIBRIUM"
+        structure_state = str(pretrade_smc.get("structure", "EQUILIBRIUM"))
         if candles and len(candles) >= 10:
             try:
                 from app.engine.smart_money_engine import smart_money_engine
@@ -115,6 +120,9 @@ class LiquiditySmartMoneyAgent:
                 "is_premium": is_premium,
                 "high_24h": high_24h,
                 "low_24h": low_24h,
+                "dealing_range_high": range_high,
+                "dealing_range_low": range_low,
+                "dealing_zone": zone,
                 "structure_state": structure_state,
                 "evidence": evidence
             }

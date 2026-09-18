@@ -56,9 +56,17 @@ class MultiAgentConsensusEngine:
             signal, market_data, macro_data, account_status, _PROCESSED_SIGNAL_IDS
         )
         
+        # 2. Run all analytical/risk agents against the same broker-authoritative
+        # pre-trade context.  This prevents the final consensus stage from using a
+        # different timeframe/range interpretation than the scanner that created
+        # the candidate direction.
+        agent_market_data = dict(market_data or {})
+        if isinstance(pretrade_scan, dict):
+            agent_market_data["_pretrade"] = pretrade_scan
+
         # 2. Run All 5 Analytical / Risk Agents (Fail-safe per agent with Health Contracts)
         try:
-            tech_decision = technical_agent.evaluate(signal, market_data)
+            tech_decision = technical_agent.evaluate(signal, agent_market_data)
             if tech_decision.health_status != AgentHealthStatus.HEALTHY and tech_decision.decision != "PASS":
                 critical_failures.append(f"Chart Sniper: {tech_decision.health_status}")
         except Exception as e:
@@ -94,7 +102,7 @@ class MultiAgentConsensusEngine:
             )
 
         try:
-            risk_decision, risk_check_res = risk_agent.evaluate(signal, account_status, market_data)
+            risk_decision, risk_check_res = risk_agent.evaluate(signal, account_status, agent_market_data)
             if risk_decision.health_status != AgentHealthStatus.HEALTHY:
                 critical_failures.append(f"Shield Guard: {risk_decision.health_status}")
         except Exception as e:
@@ -124,7 +132,7 @@ class MultiAgentConsensusEngine:
             )
 
         try:
-            liq_decision = liquidity_agent.evaluate(signal, market_data)
+            liq_decision = liquidity_agent.evaluate(signal, agent_market_data)
             if liq_decision.health_status != AgentHealthStatus.HEALTHY and liq_decision.decision != "PASS":
                 critical_failures.append(f"SMC Hunter: {liq_decision.health_status}")
         except Exception as e:
@@ -144,7 +152,7 @@ class MultiAgentConsensusEngine:
         try:
             acc_id = ctrader_cloud_gateway.get_active_account_id()
             hist_stats = db.get_performance_stats(broker_account_id=acc_id) if acc_id else {"closed_trades": 0, "win_rate": 0.0, "net_pnl": 0.0, "gross_profit": 0.0, "gross_loss": 0.0, "profit_factor": 1.0, "avg_trade_pnl": 0.0}
-            quality_decision = quality_agent.evaluate(signal, hist_stats, market_data)
+            quality_decision = quality_agent.evaluate(signal, hist_stats, agent_market_data)
         except Exception as e:
             critical_failures.append(f"Quant Brain: ERROR ({e})")
             quality_decision = AgentDecisionOutput(
