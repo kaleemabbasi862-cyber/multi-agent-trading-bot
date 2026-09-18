@@ -645,7 +645,7 @@
                         <span><i class="fa-solid fa-gauge-high text-indigo-400 mr-1.5"></i> Quality Score</span>
                         <span class="font-mono text-[10px] font-black px-1.5 py-0.5 rounded"
                               :class="pretradeData && pretradeData.quality_score && pretradeData.quality_score.passed ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'"
-                              x-text="pretradeData && pretradeData.quality_score ? (pretradeData.quality_score.passed ? 'PASSED (>=75)' : 'BLOCKED (<75)') : 'EVALUATING'"></span>
+                              x-text="pretradeData && pretradeData.quality_score ? (pretradeData.quality_score.passed ? 'PASSED (>=' + (pretradeData.quality_score.threshold || 75) + ')' : 'BLOCKED (<' + (pretradeData.quality_score.threshold || 75) + ')') : 'EVALUATING'"></span>
                     </div>
 
                     <div class="flex items-center justify-center py-1">
@@ -653,7 +653,8 @@
                             <div class="text-3xl font-black font-mono tracking-tight"
                                  :class="pretradeData && pretradeData.quality_score && pretradeData.quality_score.passed ? 'text-emerald-400' : 'text-rose-400'"
                                  x-text="pretradeData && pretradeData.quality_score ? pretradeData.quality_score.score : '0'"></div>
-                            <div class="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">Threshold: 75 / 100</div>
+                            <div class="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-0.5"
+                                 x-text="'Threshold: ' + (pretradeData && pretradeData.quality_score ? pretradeData.quality_score.threshold : 75) + ' / 100'"></div>
                         </div>
                     </div>
 
