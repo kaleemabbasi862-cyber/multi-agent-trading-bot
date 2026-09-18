@@ -107,6 +107,30 @@ async def cloud_gateway_background_sync():
             logger.debug(f"[Cloud Gateway Sync Note]: {e}")
         await asyncio.sleep(2.5)
 
+AUTONOMOUS_TELEMETRY_REFRESH_ATTEMPTS = 2
+AUTONOMOUS_TELEMETRY_RETRY_DELAY_SECONDS = 0.35
+AUTONOMOUS_TELEMETRY_REFRESH_TIMEOUT_SECONDS = 1.0
+
+
+async def get_decision_ready_gateway_status() -> Dict[str, Any]:
+    """Refresh broker telemetry immediately before a scan, with one bounded stale-quote retry."""
+    status: Dict[str, Any] = {}
+    for attempt in range(AUTONOMOUS_TELEMETRY_REFRESH_ATTEMPTS):
+        await asyncio.to_thread(
+            ctrader_cloud_gateway.sync_local_cbot_telemetry,
+            AUTONOMOUS_TELEMETRY_REFRESH_TIMEOUT_SECONDS,
+        )
+        status = ctrader_cloud_gateway.get_gateway_status()
+        if status.get("execution_ready"):
+            return status
+        reason = status.get("telemetry", {}).get("reason")
+        if reason != "BROKER_QUOTE_STALE":
+            return status
+        if attempt + 1 < AUTONOMOUS_TELEMETRY_REFRESH_ATTEMPTS:
+            await asyncio.sleep(AUTONOMOUS_TELEMETRY_RETRY_DELAY_SECONDS)
+    return status
+
+
 async def autonomous_market_scanner_loop():
     """
     Autonomous Quantitative Market Scanner:
@@ -147,7 +171,7 @@ async def autonomous_market_scanner_loop():
                         await asyncio.sleep(5)
                         continue
 
-                    gateway_status = ctrader_cloud_gateway.get_gateway_status()
+                    gateway_status = await get_decision_ready_gateway_status()
                     if not gateway_status.get("execution_ready"):
                         logger.warning("Autonomous execution blocked: %s", gateway_status.get("telemetry", {}).get("reason"))
                         await asyncio.sleep(2)

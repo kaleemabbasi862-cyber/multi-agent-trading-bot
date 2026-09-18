@@ -185,3 +185,45 @@ class TestBrokerTelemetry(BrokerDatabaseFixture):
             with self.assertRaises(HTTPException):
                 asyncio.run(update_settings(SettingsUpdateRequest(auto_trade_enabled=True, account_id="other")))
             self.assertFalse(settings_manager.load_settings()["auto_trade_enabled"])
+
+    def test_decision_refresh_proceeds_with_fresh_broker_quote(self):
+        import main_native
+        ready = {"execution_ready": True, "telemetry": {"reason": None}}
+        with patch.object(gateway, "sync_local_cbot_telemetry") as refresh, \
+             patch.object(gateway, "get_gateway_status", return_value=ready):
+            result = asyncio.run(main_native.get_decision_ready_gateway_status())
+        self.assertIs(result, ready)
+        refresh.assert_called_once_with(main_native.AUTONOMOUS_TELEMETRY_REFRESH_TIMEOUT_SECONDS)
+
+    def test_stale_decision_refresh_retries_then_proceeds(self):
+        import main_native
+        stale = {"execution_ready": False, "telemetry": {"reason": "BROKER_QUOTE_STALE"}}
+        ready = {"execution_ready": True, "telemetry": {"reason": None}}
+        with patch.object(gateway, "sync_local_cbot_telemetry") as refresh, \
+             patch.object(gateway, "get_gateway_status", side_effect=[stale, ready]), \
+             patch.object(main_native.asyncio, "sleep", return_value=None) as delay:
+            result = asyncio.run(main_native.get_decision_ready_gateway_status())
+        self.assertIs(result, ready)
+        self.assertEqual(refresh.call_count, 2)
+        delay.assert_awaited_once_with(main_native.AUTONOMOUS_TELEMETRY_RETRY_DELAY_SECONDS)
+
+    def test_stale_decision_refresh_failure_remains_fail_closed(self):
+        import main_native
+        stale = {"execution_ready": False, "telemetry": {"reason": "BROKER_QUOTE_STALE"}}
+        with patch.object(gateway, "sync_local_cbot_telemetry") as refresh, \
+             patch.object(gateway, "get_gateway_status", return_value=stale), \
+             patch.object(main_native.asyncio, "sleep", return_value=None):
+            result = asyncio.run(main_native.get_decision_ready_gateway_status())
+        self.assertFalse(result["execution_ready"])
+        self.assertEqual(refresh.call_count, main_native.AUTONOMOUS_TELEMETRY_REFRESH_ATTEMPTS)
+
+    def test_disconnected_bridge_refresh_fails_closed_without_retry_loop(self):
+        import main_native
+        disconnected = {"execution_ready": False, "telemetry": {"reason": "BROKER_LOCAL_BRIDGE_UNAVAILABLE"}}
+        with patch.object(gateway, "sync_local_cbot_telemetry") as refresh, \
+             patch.object(gateway, "get_gateway_status", return_value=disconnected), \
+             patch.object(main_native.asyncio, "sleep", return_value=None) as delay:
+            result = asyncio.run(main_native.get_decision_ready_gateway_status())
+        self.assertFalse(result["execution_ready"])
+        refresh.assert_called_once()
+        delay.assert_not_awaited()
