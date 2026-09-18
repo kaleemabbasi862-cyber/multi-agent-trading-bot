@@ -8,6 +8,7 @@ from app.services.session_engine import session_engine
 from app.services.setup_classifier import setup_classifier
 from app.services.trade_quality_scorer import trade_quality_scorer
 from app.config import trading_config
+import settings_manager
 
 class PreTradeIntelligenceEngine:
     """
@@ -99,7 +100,8 @@ class PreTradeIntelligenceEngine:
             smc_data=smc_result,
             indicators=indicators,
             live_spread_pips=spread_pips,
-            target_rr_ratio=2.0
+            target_rr_ratio=2.0,
+            quality_threshold=settings_manager.get_min_confidence_threshold()
         )
 
         # 8. High-Impact News Check

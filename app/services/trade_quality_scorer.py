@@ -24,7 +24,8 @@ class TradeQualityScorer:
         smc_data: Dict[str, Any],
         indicators: Dict[str, Any],
         live_spread_pips: float,
-        target_rr_ratio: float = 2.0
+        target_rr_ratio: float = 2.0,
+        quality_threshold: float = None
     ) -> Dict[str, Any]:
         """
         Calculates itemized 0-100 score and returns full explanation.
@@ -261,13 +262,14 @@ class TradeQualityScorer:
         total_score += rr_total
 
         final_score = round(min(100.0, max(0.0, total_score)), 1)
-        passed = final_score >= cls.DEFAULT_THRESHOLD and setup_direction in ("BUY", "SELL")
+        effective_threshold = cls.DEFAULT_THRESHOLD if quality_threshold is None else max(60.0, min(90.0, float(quality_threshold)))
+        passed = final_score >= effective_threshold and setup_direction in ("BUY", "SELL")
 
         return {
             "score": final_score,
             "candidate_direction": scoring_direction,
             "actionable_direction": setup_direction,
-            "threshold": cls.DEFAULT_THRESHOLD,
+            "threshold": effective_threshold,
             "passed": passed,
             "verdict": "TRADE_APPROVED" if passed else "NO_TRADE_QUALITY_BELOW_THRESHOLD",
             "breakdown": breakdown

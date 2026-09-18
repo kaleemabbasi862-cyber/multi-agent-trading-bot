@@ -156,6 +156,17 @@ class TestTimeframeHierarchyAndDynamicScoring(unittest.TestCase):
         self.assertLess(score_res["score"], 75.0)
         self.assertFalse(score_res["passed"])
         self.assertEqual(score_res["verdict"], "NO_TRADE_QUALITY_BELOW_THRESHOLD")
+        verification_res = trade_quality_scorer.score_trade_setup(
+            setup=setup,
+            mtf_data=mtf_data,
+            smc_data=smc_data,
+            indicators=indicators,
+            live_spread_pips=4.0,
+            target_rr_ratio=1.5,
+            quality_threshold=score_res["score"],
+        )
+        self.assertEqual(verification_res["threshold"], score_res["score"])
+        self.assertTrue(verification_res["passed"])
 
     # 5. Test Dynamic Quality Score changes with changing market inputs
     def test_05_dynamic_score_changes_with_market_inputs(self):
