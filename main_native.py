@@ -131,6 +131,55 @@ async def get_decision_ready_gateway_status() -> Dict[str, Any]:
     return status
 
 
+TEMPORARY_QUALITY_DEFAULT_THRESHOLD = 75.0
+TEMPORARY_QUALITY_ACTIVE_KEY = "temporary_quality_verification_active"
+TEMPORARY_QUALITY_EXPIRES_KEY = "temporary_quality_verification_expires_at"
+TEMPORARY_QUALITY_ORIGINAL_KEY = "temporary_quality_verification_original_threshold"
+
+
+def reset_temporary_quality_verification(reason: str) -> bool:
+    """Restore the frozen quality gate after the controlled DEMO verification window."""
+    current = settings_manager.load_settings()
+    if not current.get(TEMPORARY_QUALITY_ACTIVE_KEY, False):
+        return False
+    current["min_confidence_threshold"] = float(
+        current.get(TEMPORARY_QUALITY_ORIGINAL_KEY, TEMPORARY_QUALITY_DEFAULT_THRESHOLD)
+    )
+    current[TEMPORARY_QUALITY_ACTIVE_KEY] = False
+    current["temporary_quality_verification_reset_reason"] = reason
+    current["temporary_quality_verification_reset_at"] = time.time()
+    settings_manager.save_settings(current)
+    logger.warning(
+        "Temporary DEMO quality verification ended (%s); threshold restored to %.1f",
+        reason,
+        current["min_confidence_threshold"],
+    )
+    return True
+
+
+async def temporary_quality_verification_guard():
+    """Auto-reset the temporary DEMO threshold after a broker-confirmed trade or expiry."""
+    await asyncio.sleep(2)
+    while True:
+        try:
+            current = settings_manager.load_settings()
+            if current.get(TEMPORARY_QUALITY_ACTIVE_KEY, False):
+                status = ctrader_cloud_gateway.get_gateway_status()
+                positions_confirmed = (
+                    status.get("positions_snapshot_valid")
+                    and str(status.get("positions_snapshot_account_id")) == str(status.get("account_id"))
+                    and bool(status.get("open_positions"))
+                )
+                expires_at = float(current.get(TEMPORARY_QUALITY_EXPIRES_KEY, 0) or 0)
+                if positions_confirmed:
+                    reset_temporary_quality_verification("BROKER_CONFIRMED_POSITION")
+                elif expires_at and time.time() >= expires_at:
+                    reset_temporary_quality_verification("ONE_HOUR_EXPIRED")
+        except Exception as exc:
+            logger.error("Temporary quality verification guard error: %s", exc)
+        await asyncio.sleep(2)
+
+
 async def autonomous_market_scanner_loop():
     """
     Autonomous Quantitative Market Scanner:
@@ -327,6 +376,7 @@ async def autonomous_market_scanner_loop():
                         if consensus_res.decision_status == "APPROVED":
                             exec_res = execution_engine.dispatch_trade(consensus_res, sig)
                             if exec_res.get("status", "").startswith("EXECUTED") or exec_res.get("status") == "SUCCESS":
+                                reset_temporary_quality_verification("BROKER_CONFIRMED_EXECUTION")
                                 logger.info(f"[Autonomous Engine] [+] 🟢 Approved Signal #{sig.id} Dispatched Directly to cTrader Cloud: {exec_res.get('status')} | Ticket: {exec_res.get('ticket')}")
                             else:
                                 logger.warning(f"[Autonomous Engine] [!] Approved Signal #{sig.id} Execution Deferred: {exec_res.get('status')} | Detail: {exec_res.get('error') or exec_res.get('reason')}")
@@ -362,6 +412,7 @@ async def on_startup():
     asyncio.create_task(local_cbot_background_sync())
     asyncio.create_task(cloud_gateway_background_sync())
     asyncio.create_task(autonomous_market_scanner_loop())
+    asyncio.create_task(temporary_quality_verification_guard())
 
 # Include Modular V2 Routers
 from app.routers import market, signals, trading, backtest, cbot, system, calendar, news, risk, paper, journal, performance, execution

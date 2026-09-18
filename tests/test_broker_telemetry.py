@@ -227,3 +227,44 @@ class TestBrokerTelemetry(BrokerDatabaseFixture):
         self.assertFalse(result["execution_ready"])
         refresh.assert_called_once()
         delay.assert_not_awaited()
+
+    def test_temporary_quality_reset_restores_frozen_threshold(self):
+        import main_native
+        import settings_manager
+        temporary = dict(settings_manager.DEFAULT_SETTINGS)
+        temporary.update({
+            "min_confidence_threshold": 65.0,
+            main_native.TEMPORARY_QUALITY_ACTIVE_KEY: True,
+            main_native.TEMPORARY_QUALITY_ORIGINAL_KEY: 75.0,
+        })
+        with patch.object(settings_manager, "_IN_MEMORY_SETTINGS", temporary):
+            self.assertTrue(main_native.reset_temporary_quality_verification("TEST"))
+            restored = settings_manager.load_settings()
+            self.assertEqual(restored["min_confidence_threshold"], 75.0)
+            self.assertFalse(restored[main_native.TEMPORARY_QUALITY_ACTIVE_KEY])
+            self.assertEqual(restored["temporary_quality_verification_reset_reason"], "TEST")
+
+    def test_temporary_quality_guard_resets_on_broker_confirmed_position(self):
+        import main_native
+        import settings_manager
+        temporary = dict(settings_manager.DEFAULT_SETTINGS)
+        temporary.update({
+            "min_confidence_threshold": 65.0,
+            main_native.TEMPORARY_QUALITY_ACTIVE_KEY: True,
+            main_native.TEMPORARY_QUALITY_ORIGINAL_KEY: 75.0,
+            main_native.TEMPORARY_QUALITY_EXPIRES_KEY: time.time() + 3600,
+        })
+        confirmed = {
+            "positions_snapshot_valid": True,
+            "positions_snapshot_account_id": "5908018",
+            "account_id": "5908018",
+            "open_positions": [{"id": "broker-ticket"}],
+        }
+        with patch.object(settings_manager, "_IN_MEMORY_SETTINGS", temporary), \
+             patch.object(gateway, "get_gateway_status", return_value=confirmed), \
+             patch.object(main_native.asyncio, "sleep", side_effect=[None, asyncio.CancelledError]):
+            with self.assertRaises(asyncio.CancelledError):
+                asyncio.run(main_native.temporary_quality_verification_guard())
+            restored = settings_manager.load_settings()
+            self.assertEqual(restored["min_confidence_threshold"], 75.0)
+            self.assertFalse(restored[main_native.TEMPORARY_QUALITY_ACTIVE_KEY])
