@@ -6,6 +6,7 @@ import time
 from typing import Any, Dict, List
 
 from app.database.db import db
+from app.services.entry_safety_policy import directional_location_block_reason
 
 _lock = threading.Lock()
 
@@ -42,12 +43,29 @@ class AdxNearMissTracker:
         adx_info = (scan.get("indicators") or {}).get("adx") or {}
         adx = float(adx_info.get("adx", 0.0)) if isinstance(adx_info, dict) else float(adx_info)
         direction = str(setup.get("direction") or "").upper()
+        smc = scan.get("smc") or {}
+        structure = str(smc.get("structure") or "RANGE").upper()
+        setup_type = str(setup.get("setup_type") or "NO_VALID_SETUP").upper()
+        consolidation = (
+            structure in ("RANGE", "CONSOLIDATION", "CONSOLIDATING")
+            and setup_type != "STRUCTURE_REVERSAL"
+        ) or setup_type == "NO_VALID_SETUP"
+        location_blocked = directional_location_block_reason(direction, smc) is not None
+        spread = float(scan.get("spread_pips") or 0.0)
+        spread_blocked = (
+            ("XAU" in str(symbol).upper() and spread > 5.0)
+            or ("EUR" in str(symbol).upper() and spread > 2.0)
+        )
         if (
             not reason.startswith("NO_TRADE_REGIME_ADX")
             or not self.min_adx <= adx < self.max_adx
             or not bool(quality.get("passed"))
             or direction not in ("BUY", "SELL")
             or not bool(setup.get("is_actionable"))
+            or consolidation
+            or location_blocked
+            or bool(scan.get("news_blackout"))
+            or spread_blocked
         ):
             return False
 

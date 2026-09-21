@@ -55,6 +55,18 @@ def test_does_not_record_outside_adx_band_or_failed_quality():
     assert adx_near_miss_tracker.recent() == []
 
 
+def test_does_not_record_when_another_safety_gate_would_block():
+    _clear()
+    scan = _scan()
+    scan["smc"]["dealing_range"] = {
+        "zone": "DEEP_DISCOUNT", "location_pct": 20.0
+    }
+    assert not adx_near_miss_tracker.observe_scan(
+        scan, entry_price=4358.0, symbol="XAUUSD", now_ts=1_800_000_000
+    )
+    assert adx_near_miss_tracker.recent() == []
+
+
 def test_resolves_two_r_target_from_broker_price_path():
     _clear()
     now = 1_800_000_000
