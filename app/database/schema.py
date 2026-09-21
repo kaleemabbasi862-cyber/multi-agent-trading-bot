@@ -436,7 +436,38 @@ SCHEMA_STATEMENTS = [
     );
     """,
     "CREATE INDEX IF NOT EXISTS idx_exec_intents_sig ON execution_intents(signal_id);",
-    "CREATE INDEX IF NOT EXISTS idx_exec_intents_status ON execution_intents(status);"
+    "CREATE INDEX IF NOT EXISTS idx_exec_intents_status ON execution_intents(status);",
+
+    # 21. Shadow research for high-quality setups rejected at ADX 18-20
+    """
+    CREATE TABLE IF NOT EXISTS adx_near_miss_opportunities (
+        id TEXT PRIMARY KEY,
+        symbol TEXT NOT NULL,
+        direction TEXT NOT NULL,
+        setup_type TEXT NOT NULL,
+        detected_at TEXT NOT NULL,
+        entry_price REAL NOT NULL,
+        adx REAL NOT NULL,
+        plus_di REAL DEFAULT 0.0,
+        minus_di REAL DEFAULT 0.0,
+        quality_score REAL NOT NULL,
+        quality_threshold REAL NOT NULL,
+        initial_r REAL NOT NULL,
+        stop_1r REAL NOT NULL,
+        target_1r REAL NOT NULL,
+        target_2r REAL NOT NULL,
+        status TEXT NOT NULL DEFAULT 'OPEN',
+        result TEXT NOT NULL DEFAULT 'PENDING',
+        max_favorable_r REAL DEFAULT 0.0,
+        max_adverse_r REAL DEFAULT 0.0,
+        last_price REAL,
+        last_observed_at TEXT,
+        hit_1r_at TEXT,
+        resolved_at TEXT,
+        metadata_json TEXT
+    );
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_adx_near_miss_status ON adx_near_miss_opportunities(status, symbol);"
 ]
 
 

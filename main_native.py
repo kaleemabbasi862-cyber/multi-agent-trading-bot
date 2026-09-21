@@ -291,6 +291,17 @@ async def autonomous_market_scanner_loop():
                         pretrade_scan["timestamp_epoch"] = now
                         PRETRADE_LATEST_STATE[cur_sym] = pretrade_scan
 
+                        # Shadow-only evidence: track high-quality ADX 18-20 rejects.
+                        # This recorder never creates a signal or dispatches an order.
+                        try:
+                            from app.services.adx_near_miss_tracker import adx_near_miss_tracker
+                            adx_near_miss_tracker.update_open(cur_sym, p, now_ts=now)
+                            adx_near_miss_tracker.observe_scan(
+                                pretrade_scan, entry_price=p, symbol=cur_sym, now_ts=now
+                            )
+                        except Exception as shadow_exc:
+                            logger.warning("ADX near-miss shadow tracker error: %s", shadow_exc)
+
                         setup_info = pretrade_scan.get("setup", {})
                         act = setup_info.get("direction", "FLAT")
                         setup_type = setup_info.get("setup_type", "NO_VALID_SETUP")
@@ -731,6 +742,13 @@ async def trigger_pretrade_scan(symbol: Optional[str] = None):
     scan["timestamp_epoch"] = time.time()
     PRETRADE_LATEST_STATE[cur_sym] = scan
     return scan
+
+
+@app.get("/api/research/adx-near-misses")
+async def get_adx_near_misses(limit: int = 50):
+    """Returns shadow outcomes; this endpoint never dispatches an order."""
+    from app.services.adx_near_miss_tracker import adx_near_miss_tracker
+    return adx_near_miss_tracker.recent(limit=limit)
 
 
 @app.get("/api/pairs/settings")
